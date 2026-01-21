@@ -11,9 +11,12 @@ import (
 
 // InboxPanel displays unread messages and provides an input field for sending.
 type InboxPanel struct {
-	state  *session.State
-	width  int
-	height int
+	state        *session.State
+	width        int
+	height       int
+	inputValue   string
+	inputFocused bool
+	cursorPos    int
 }
 
 // NewInboxPanel creates a new InboxPanel component.
@@ -23,8 +26,83 @@ func NewInboxPanel() *InboxPanel {
 
 // Update handles messages for the inbox panel.
 func (i *InboxPanel) Update(msg tea.Msg) tea.Cmd {
-	// TODO: Implement inbox panel updates (input handling)
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		k := msg.String()
+
+		// Handle focus toggle
+		if k == "i" && !i.inputFocused {
+			i.inputFocused = true
+			i.cursorPos = len(i.inputValue)
+			return nil
+		}
+
+		if k == "esc" && i.inputFocused {
+			i.inputFocused = false
+			return nil
+		}
+
+		// Only handle input when focused
+		if !i.inputFocused {
+			return nil
+		}
+
+		switch k {
+		case "enter":
+			// Send message
+			if i.inputValue != "" {
+				return i.sendMessage()
+			}
+		case "backspace":
+			if i.cursorPos > 0 && len(i.inputValue) > 0 {
+				// Remove character before cursor
+				i.inputValue = i.inputValue[:i.cursorPos-1] + i.inputValue[i.cursorPos:]
+				i.cursorPos--
+			}
+		case "left":
+			if i.cursorPos > 0 {
+				i.cursorPos--
+			}
+		case "right":
+			if i.cursorPos < len(i.inputValue) {
+				i.cursorPos++
+			}
+		case "home":
+			i.cursorPos = 0
+		case "end":
+			i.cursorPos = len(i.inputValue)
+		case "ctrl+u":
+			// Clear line
+			i.inputValue = ""
+			i.cursorPos = 0
+		default:
+			// Insert regular characters (single printable characters)
+			if len(k) == 1 && k[0] >= 32 && k[0] <= 126 {
+				// Insert at cursor position
+				i.inputValue = i.inputValue[:i.cursorPos] + k + i.inputValue[i.cursorPos:]
+				i.cursorPos++
+			}
+		}
+	}
 	return nil
+}
+
+// sendMessage sends the current input value as a message.
+func (i *InboxPanel) sendMessage() tea.Cmd {
+	content := i.inputValue
+	i.inputValue = ""
+	i.cursorPos = 0
+
+	// TODO: Actually send message via session store
+	// For now, this is a placeholder
+	return func() tea.Msg {
+		return SendMessageMsg{Content: content}
+	}
+}
+
+// SendMessageMsg is sent when a message should be sent.
+type SendMessageMsg struct {
+	Content string
 }
 
 // Render returns the inbox panel view as a string.
@@ -62,6 +140,10 @@ func (i *InboxPanel) Render() string {
 		}
 	}
 
+	// Add input field at the bottom
+	content.WriteString("\n")
+	content.WriteString(i.renderInputField())
+
 	// Render in panel style
 	return stylePanel.Width(i.width - 4).Height(i.height - 4).Render(content.String())
 }
@@ -84,6 +166,44 @@ func (i *InboxPanel) renderMessage(msg *session.Message) string {
 	parts = append(parts, styleMessageUnread.Render(msg.Content))
 
 	return lipgloss.JoinHorizontal(lipgloss.Left, parts...)
+}
+
+// renderInputField renders the message input field.
+func (i *InboxPanel) renderInputField() string {
+	var content strings.Builder
+
+	// Separator
+	content.WriteString(strings.Repeat("─", i.width-8))
+	content.WriteString("\n\n")
+
+	// Prompt
+	prompt := styleInputPrompt.Render("Send message: ")
+	content.WriteString(prompt)
+
+	// Input value with cursor
+	inputText := i.inputValue
+	if i.inputFocused && i.cursorPos <= len(inputText) {
+		// Insert cursor character at cursor position
+		if i.cursorPos == len(inputText) {
+			inputText += "▌"
+		} else {
+			inputText = inputText[:i.cursorPos] + "▌" + inputText[i.cursorPos:]
+		}
+	}
+
+	content.WriteString(styleInputField.Render(inputText))
+	content.WriteString("\n")
+
+	// Help text
+	if i.inputFocused {
+		help := styleDim.Render("Enter=send | Ctrl+U=clear | Esc=unfocus")
+		content.WriteString(help)
+	} else {
+		help := styleDim.Render("Press 'i' to focus input field")
+		content.WriteString(help)
+	}
+
+	return content.String()
 }
 
 // UpdateSize updates the inbox panel dimensions.
