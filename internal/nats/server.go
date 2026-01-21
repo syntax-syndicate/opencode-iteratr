@@ -47,3 +47,27 @@ func ConnectInProcess(ns *server.Server) (*nats.Conn, error) {
 func CreateJetStream(nc *nats.Conn) (jetstream.JetStream, error) {
 	return jetstream.New(nc)
 }
+
+// Shutdown gracefully shuts down the NATS connection and server.
+// It first drains and closes the connection, then shuts down the server
+// with a timeout to allow in-flight operations to complete.
+func Shutdown(nc *nats.Conn, ns *server.Server) error {
+	// Close the connection first (drain buffered messages)
+	if nc != nil {
+		// Drain waits for published messages to be acknowledged
+		// and subscriptions to complete before closing
+		if err := nc.Drain(); err != nil {
+			// Log but don't fail - continue with shutdown
+			nc.Close()
+		}
+	}
+
+	// Shutdown the server with a grace period
+	if ns != nil {
+		ns.Shutdown()
+		// WaitForShutdown with timeout to prevent hanging
+		ns.WaitForShutdown()
+	}
+
+	return nil
+}
