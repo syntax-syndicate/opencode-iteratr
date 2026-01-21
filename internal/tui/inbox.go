@@ -74,9 +74,13 @@ func (i *InboxPanel) renderMessage(msg *session.Message) string {
 		idPrefix = idPrefix[:8]
 	}
 
-	// Format: [id] content
+	// Format timestamp as "2006-01-02 15:04:05"
+	timestamp := msg.CreatedAt.Format("2006-01-02 15:04:05")
+
+	// Format: [id] timestamp: content
 	var parts []string
 	parts = append(parts, styleMessageUnread.Render(fmt.Sprintf("[%s]", idPrefix)))
+	parts = append(parts, styleMessageTimestamp.Render(timestamp+":"))
 	parts = append(parts, styleMessageUnread.Render(msg.Content))
 
 	return lipgloss.JoinHorizontal(lipgloss.Left, parts...)
