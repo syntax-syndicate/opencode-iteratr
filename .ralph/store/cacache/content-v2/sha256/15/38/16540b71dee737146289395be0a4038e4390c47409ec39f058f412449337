@@ -1,0 +1,1 @@
+Added comprehensive TUI component tests covering Dashboard, TaskList, App, and AgentOutput components. Tests verify rendering, state management, navigation, filtering, and message handling. Achieved 51.5% TUI coverage with all tests passing.
