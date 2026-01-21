@@ -41,6 +41,12 @@ func (d *Dashboard) Render() string {
 	if d.state != nil {
 		progressInfo := d.renderProgressIndicator()
 		sections = append(sections, "", progressInfo)
+
+		// Section 2.5: Task Stats
+		taskStats := d.renderTaskStats()
+		if taskStats != "" {
+			sections = append(sections, taskStats)
+		}
 	}
 
 	// Section 3: Current Task
@@ -98,19 +104,13 @@ func (d *Dashboard) UpdateState(state *session.State) tea.Cmd {
 // renderProgressIndicator renders a progress bar showing task completion.
 func (d *Dashboard) renderProgressIndicator() string {
 	// Count tasks by status
-	var total, completed int
-	for _, task := range d.state.Tasks {
-		total++
-		if task.Status == "completed" {
-			completed++
-		}
-	}
+	stats := d.getTaskStats()
 
 	// Build progress bar
 	const barWidth = 40
 	var completedWidth int
-	if total > 0 {
-		completedWidth = (completed * barWidth) / total
+	if stats.Total > 0 {
+		completedWidth = (stats.Completed * barWidth) / stats.Total
 	}
 
 	// Create the bar with filled and empty portions
@@ -124,12 +124,68 @@ func (d *Dashboard) renderProgressIndicator() string {
 	}
 
 	// Format the progress text
-	progressText := fmt.Sprintf("%d/%d tasks", completed, total)
+	progressText := fmt.Sprintf("%d/%d tasks", stats.Completed, stats.Total)
 
 	// Combine bar and text
 	bar := styleProgressFill.Render(filled) + styleDim.Render(empty)
 	label := styleStatLabel.Render("Progress:")
 	return fmt.Sprintf("%s [%s] %s", label, bar, styleStatValue.Render(progressText))
+}
+
+// renderTaskStats renders detailed task completion statistics.
+func (d *Dashboard) renderTaskStats() string {
+	stats := d.getTaskStats()
+
+	// Build stats line with color-coded counts
+	var parts []string
+
+	if stats.Remaining > 0 {
+		parts = append(parts, styleStatusRemaining.Render(fmt.Sprintf("%d remaining", stats.Remaining)))
+	}
+	if stats.InProgress > 0 {
+		parts = append(parts, styleStatusInProgress.Render(fmt.Sprintf("%d in progress", stats.InProgress)))
+	}
+	if stats.Completed > 0 {
+		parts = append(parts, styleStatusCompleted.Render(fmt.Sprintf("%d completed", stats.Completed)))
+	}
+	if stats.Blocked > 0 {
+		parts = append(parts, styleStatusBlocked.Render(fmt.Sprintf("%d blocked", stats.Blocked)))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	label := styleStatLabel.Render("Status:")
+	return fmt.Sprintf("%s %s", label, lipgloss.JoinHorizontal(lipgloss.Left, parts...))
+}
+
+// taskStats holds task statistics by status.
+type taskStats struct {
+	Total      int
+	Remaining  int
+	InProgress int
+	Completed  int
+	Blocked    int
+}
+
+// getTaskStats computes task statistics from current state.
+func (d *Dashboard) getTaskStats() taskStats {
+	var stats taskStats
+	for _, task := range d.state.Tasks {
+		stats.Total++
+		switch task.Status {
+		case "remaining":
+			stats.Remaining++
+		case "in_progress":
+			stats.InProgress++
+		case "completed":
+			stats.Completed++
+		case "blocked":
+			stats.Blocked++
+		}
+	}
+	return stats
 }
 
 // renderCurrentTask renders the current in_progress task (if any).
