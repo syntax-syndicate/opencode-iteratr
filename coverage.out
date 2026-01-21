@@ -1,2 +1,8 @@
 mode: atomic
 github.com/anomalyco/iteratr/cmd/iteratr/main.go:8.13,11.2 2 0
+github.com/anomalyco/iteratr/internal/nats/server.go:14.64,22.16 3 0
+github.com/anomalyco/iteratr/internal/nats/server.go:22.16,24.3 1 0
+github.com/anomalyco/iteratr/internal/nats/server.go:27.2,30.46 2 0
+github.com/anomalyco/iteratr/internal/nats/server.go:30.46,32.3 1 0
+github.com/anomalyco/iteratr/internal/nats/server.go:34.2,34.16 1 0
+github.com/anomalyco/iteratr/internal/nats/server.go:39.62,41.2 1 0
