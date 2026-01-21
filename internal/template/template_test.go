@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mark3labs/iteratr/internal/session"
 )
 
 func TestRender(t *testing.T) {
@@ -246,4 +249,144 @@ func TestGetTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatInbox(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *session.State
+		want  string
+	}{
+		{
+			name: "no messages",
+			state: &session.State{
+				Inbox: []*session.Message{},
+			},
+			want: "No messages",
+		},
+		{
+			name: "all messages read",
+			state: &session.State{
+				Inbox: []*session.Message{
+					{ID: "msg001", Content: "Test", Read: true, CreatedAt: time.Now()},
+				},
+			},
+			want: "No unread messages",
+		},
+		{
+			name: "unread messages",
+			state: &session.State{
+				Inbox: []*session.Message{
+					{ID: "msg001abc", Content: "Message 1", Read: false, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+					{ID: "msg002xyz", Content: "Message 2", Read: false, CreatedAt: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)},
+					{ID: "msg003def", Content: "Read message", Read: true, CreatedAt: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)},
+				},
+			},
+			want: "2 unread message(s):",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatInbox(tt.state)
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("formatInbox() = %q, want to contain %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatNotes(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *session.State
+		want  []string // Strings that should be present
+	}{
+		{
+			name: "no notes",
+			state: &session.State{
+				Notes: []*session.Note{},
+			},
+			want: []string{"No notes recorded"},
+		},
+		{
+			name: "notes by type",
+			state: &session.State{
+				Notes: []*session.Note{
+					{ID: "n1", Content: "Learned something", Type: "learning", Iteration: 5},
+					{ID: "n2", Content: "Made a choice", Type: "decision", Iteration: 7},
+					{ID: "n3", Content: "Hit a blocker", Type: "stuck", Iteration: 10},
+				},
+			},
+			want: []string{"Learning:", "[#5] Learned something", "Decision:", "[#7] Made a choice", "Stuck:", "[#10] Hit a blocker"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatNotes(tt.state)
+			for _, expected := range tt.want {
+				if !strings.Contains(got, expected) {
+					t.Errorf("formatNotes() = %q, want to contain %q", got, expected)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatTasks(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *session.State
+		want  []string // Strings that should be present
+	}{
+		{
+			name: "no tasks",
+			state: &session.State{
+				Tasks: map[string]*session.Task{},
+			},
+			want: []string{"No tasks"},
+		},
+		{
+			name: "tasks by status",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task001": {ID: "task001abc", Content: "Do thing 1", Status: "remaining", Iteration: 0},
+					"task002": {ID: "task002xyz", Content: "Do thing 2", Status: "in_progress", Iteration: 5},
+					"task003": {ID: "task003def", Content: "Done thing", Status: "completed", Iteration: 3},
+					"task004": {ID: "task004ghi", Content: "Blocked thing", Status: "blocked", Iteration: 0},
+				},
+			},
+			want: []string{
+				"Remaining:",
+				"[task001a] Do thing 1",
+				"In progress:",
+				"[task002x] Do thing 2",
+				"[iteration #5]",
+				"Completed:",
+				"[task003d] Done thing",
+				"[iteration #3]",
+				"Blocked:",
+				"[task004g] Blocked thing",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatTasks(tt.state)
+			for _, expected := range tt.want {
+				if !strings.Contains(got, expected) {
+					t.Errorf("formatTasks() = %q, want to contain %q", got, expected)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPrompt(t *testing.T) {
+	// This is an integration test - requires actual NATS setup
+	// For now, test the formatting functions independently above
+	// Full BuildPrompt testing will be done in integration tests
+	t.Skip("Integration test - requires NATS setup")
 }

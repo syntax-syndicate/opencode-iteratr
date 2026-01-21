@@ -1,9 +1,14 @@
 package template
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/mark3labs/iteratr/internal/session"
 )
 
 // Variables holds the data to be injected into template placeholders.
@@ -64,4 +69,148 @@ func GetTemplate(customPath string) (string, error) {
 		return DefaultTemplate, nil
 	}
 	return LoadFromFile(customPath)
+}
+
+// BuildConfig holds configuration for building a prompt.
+type BuildConfig struct {
+	SessionName       string         // Name of the session
+	Store             *session.Store // Session store for loading state
+	IterationNumber   int            // Current iteration number
+	SpecPath          string         // Path to spec file
+	TemplatePath      string         // Path to custom template (optional)
+	ExtraInstructions string         // Extra instructions (optional)
+}
+
+// BuildPrompt loads session state, formats it, and injects it into the template.
+// This is the main function for creating prompts with current state injection.
+func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
+	// Load session state
+	state, err := cfg.Store.LoadState(ctx, cfg.SessionName)
+	if err != nil {
+		return "", fmt.Errorf("failed to load session state: %w", err)
+	}
+
+	// Load spec file content
+	specContent := ""
+	if cfg.SpecPath != "" {
+		data, err := os.ReadFile(cfg.SpecPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read spec file: %w", err)
+		}
+		specContent = string(data)
+	}
+
+	// Load template
+	templateContent, err := GetTemplate(cfg.TemplatePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get template: %w", err)
+	}
+
+	// Format state data
+	vars := Variables{
+		Session:   cfg.SessionName,
+		Iteration: strconv.Itoa(cfg.IterationNumber),
+		Spec:      specContent,
+		Inbox:     formatInbox(state),
+		Notes:     formatNotes(state),
+		Tasks:     formatTasks(state),
+		Extra:     cfg.ExtraInstructions,
+	}
+
+	// Render template with variables
+	return Render(templateContent, vars), nil
+}
+
+// formatInbox formats unread inbox messages for template injection.
+func formatInbox(state *session.State) string {
+	if len(state.Inbox) == 0 {
+		return "No messages"
+	}
+
+	unread := []*session.Message{}
+	for _, msg := range state.Inbox {
+		if !msg.Read {
+			unread = append(unread, msg)
+		}
+	}
+
+	if len(unread) == 0 {
+		return "No unread messages"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%d unread message(s):\n", len(unread)))
+	for _, msg := range unread {
+		sb.WriteString(fmt.Sprintf("- [%s] %s (%s)\n",
+			msg.ID[:8],
+			msg.Content,
+			msg.CreatedAt.Format(time.RFC3339),
+		))
+	}
+	return sb.String()
+}
+
+// formatNotes formats notes grouped by type for template injection.
+func formatNotes(state *session.State) string {
+	if len(state.Notes) == 0 {
+		return "No notes recorded"
+	}
+
+	// Group notes by type
+	byType := make(map[string][]*session.Note)
+	for _, note := range state.Notes {
+		byType[note.Type] = append(byType[note.Type], note)
+	}
+
+	var sb strings.Builder
+	types := []string{"learning", "stuck", "tip", "decision"}
+	for _, noteType := range types {
+		notes := byType[noteType]
+		if len(notes) == 0 {
+			continue
+		}
+
+		// Uppercase first letter for display
+		displayType := strings.ToUpper(noteType[:1]) + noteType[1:]
+		sb.WriteString(fmt.Sprintf("%s:\n", displayType))
+		for _, note := range notes {
+			sb.WriteString(fmt.Sprintf("  - [#%d] %s\n", note.Iteration, note.Content))
+		}
+	}
+	return sb.String()
+}
+
+// formatTasks formats tasks grouped by status for template injection.
+func formatTasks(state *session.State) string {
+	if len(state.Tasks) == 0 {
+		return "No tasks"
+	}
+
+	// Group tasks by status
+	byStatus := make(map[string][]*session.Task)
+	for _, task := range state.Tasks {
+		byStatus[task.Status] = append(byStatus[task.Status], task)
+	}
+
+	var sb strings.Builder
+	statuses := []string{"remaining", "in_progress", "completed", "blocked"}
+	for _, status := range statuses {
+		tasks := byStatus[status]
+		if len(tasks) == 0 {
+			continue
+		}
+
+		// Uppercase first letter for display
+		displayStatus := strings.ToUpper(status[:1]) + strings.ReplaceAll(status[1:], "_", " ")
+		sb.WriteString(fmt.Sprintf("%s:\n", displayStatus))
+		for _, task := range tasks {
+			iterInfo := ""
+			if task.Iteration > 0 {
+				iterInfo = fmt.Sprintf(" [iteration #%d]", task.Iteration)
+			}
+			sb.WriteString(fmt.Sprintf("  - [%s] %s%s\n", task.ID[:8], task.Content, iterInfo))
+		}
+	}
+
+	return sb.String()
 }
