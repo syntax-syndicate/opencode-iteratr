@@ -57,7 +57,7 @@ Example:
 
 When you need up-to-date information about technologies used in this project, use btca to query source repositories directly.
 
-**Available resources**: opencode, bubbleteaV2, natsGo, acpGoSdk
+**Available resources**: opencode, bubbleteaV2, bubbles, natsGo, acpGoSdk
 
 ### Usage
 
@@ -70,3 +70,16 @@ Use multiple `-r` flags to query multiple resources at once:
 ```bash
 btca ask -r opencode -r bubbleteaV2 -q "How do I build a TUI with opencode?"
 ```
+
+### Using Bubbles Components
+
+When building TUI components, prefer using Bubbles v2 pre-built components whenever possible instead of building from scratch. Bubbles provides production-ready components like:
+- List (interactive scrollable lists with filtering)
+- Viewport (scrollable text containers)
+- TextInput (text entry fields)
+- Progress (progress bars)
+- Spinner (loading indicators)
+- Table (interactive tables)
+- Paginator (page navigation)
+
+Query bubbles resource for component usage: `btca ask -r bubbles -q "How do I use the viewport component?"`
