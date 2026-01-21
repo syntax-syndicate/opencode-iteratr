@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -51,18 +52,23 @@ func (s *Store) PublishEvent(ctx context.Context, event Event) (*jetstream.PubAc
 	// Marshal event to JSON
 	data, err := json.Marshal(event)
 	if err != nil {
+		logger.Error("Failed to marshal event: %v", err)
 		return nil, fmt.Errorf("failed to marshal event: %w", err)
 	}
 
 	// Build subject: iteratr.{session}.{type}
 	subject := nats.SubjectForEvent(event.Session, event.Type)
 
+	logger.Debug("Publishing event: session=%s type=%s action=%s", event.Session, event.Type, event.Action)
+
 	// Publish to JetStream
 	ack, err := s.js.Publish(ctx, subject, data)
 	if err != nil {
+		logger.Error("Failed to publish event to subject %s: %v", subject, err)
 		return nil, fmt.Errorf("failed to publish event: %w", err)
 	}
 
+	logger.Debug("Event published successfully: seq=%d", ack.Sequence)
 	return ack, nil
 }
 
@@ -274,6 +280,8 @@ func (st *State) applyControlEvent(event Event) {
 // LoadState reconstructs the current state of a session by reading and reducing
 // all events from the JetStream event log. This implements the event sourcing pattern.
 func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
+	logger.Debug("Loading state for session: %s", session)
+
 	// Create a consumer filtered to this session's events
 	consumer, err := s.stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		FilterSubject: nats.SubjectForSession(session),
@@ -281,6 +289,7 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 	})
 	if err != nil {
+		logger.Error("Failed to create consumer for session %s: %v", session, err)
 		return nil, fmt.Errorf("failed to create consumer: %w", err)
 	}
 
@@ -294,23 +303,27 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 	// Using a large batch size to minimize round trips
 	const batchSize = 1000
 	malformedCount := 0
+	totalEvents := 0
 	for {
 		// Fetch with short timeout to avoid blocking forever
 		msgs, err := consumer.FetchNoWait(batchSize)
 		if err != nil {
 			// No more messages or error - we've read everything
+			logger.Debug("Finished reading events (batch fetch complete)")
 			break
 		}
 
 		msgCount := 0
 		for msg := range msgs.Messages() {
 			msgCount++
+			totalEvents++
 			// Unmarshal event
 			var event Event
 			if err := json.Unmarshal(msg.Data(), &event); err != nil {
 				// Log malformed event and skip (but acknowledge to prevent redelivery)
 				malformedCount++
 				meta, _ := msg.Metadata()
+				logger.Warn("Skipping malformed event (seq=%d): %v", meta.Sequence.Stream, err)
 				fmt.Fprintf(os.Stderr, "Warning: Skipping malformed event (seq=%d): %v\n", meta.Sequence.Stream, err)
 				msg.Ack()
 				continue
@@ -329,6 +342,8 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 			msg.Ack()
 		}
 
+		logger.Debug("Processed batch: %d events", msgCount)
+
 		// If we got fewer messages than batch size, we've reached the end
 		if msgCount < batchSize {
 			break
@@ -337,8 +352,12 @@ func (s *Store) LoadState(ctx context.Context, session string) (*State, error) {
 
 	// Warn if we encountered malformed events
 	if malformedCount > 0 {
+		logger.Warn("Skipped %d malformed events while loading state", malformedCount)
 		fmt.Fprintf(os.Stderr, "Warning: Skipped %d malformed events while loading state\n", malformedCount)
 	}
+
+	logger.Debug("State loaded: %d total events, %d tasks, %d notes, %d iterations",
+		totalEvents, len(state.Tasks), len(state.Notes), len(state.Iterations))
 
 	return state, nil
 }

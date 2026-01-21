@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +16,11 @@ var (
 )
 
 func main() {
+	// Ensure logger is closed on exit
+	defer logger.Close()
+
 	if err := rootCmd.Execute(); err != nil {
+		logger.Error("Command execution failed: %v", err)
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

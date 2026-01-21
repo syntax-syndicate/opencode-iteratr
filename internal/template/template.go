@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
@@ -84,25 +85,37 @@ type BuildConfig struct {
 // BuildPrompt loads session state, formats it, and injects it into the template.
 // This is the main function for creating prompts with current state injection.
 func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
+	logger.Debug("Building prompt for session: %s, iteration: %d", cfg.SessionName, cfg.IterationNumber)
+
 	// Load session state
 	state, err := cfg.Store.LoadState(ctx, cfg.SessionName)
 	if err != nil {
+		logger.Error("Failed to load session state: %v", err)
 		return "", fmt.Errorf("failed to load session state: %w", err)
 	}
 
 	// Load spec file content
 	specContent := ""
 	if cfg.SpecPath != "" {
+		logger.Debug("Loading spec file: %s", cfg.SpecPath)
 		data, err := os.ReadFile(cfg.SpecPath)
 		if err != nil {
+			logger.Error("Failed to read spec file: %v", err)
 			return "", fmt.Errorf("failed to read spec file: %w", err)
 		}
 		specContent = string(data)
+		logger.Debug("Spec file loaded: %d bytes", len(specContent))
 	}
 
 	// Load template
+	if cfg.TemplatePath != "" {
+		logger.Debug("Using custom template: %s", cfg.TemplatePath)
+	} else {
+		logger.Debug("Using default embedded template")
+	}
 	templateContent, err := GetTemplate(cfg.TemplatePath)
 	if err != nil {
+		logger.Error("Failed to get template: %v", err)
 		return "", fmt.Errorf("failed to get template: %w", err)
 	}
 
@@ -117,8 +130,13 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Extra:     cfg.ExtraInstructions,
 	}
 
+	logger.Debug("Formatted state: %d tasks, %d notes, %d inbox messages",
+		len(state.Tasks), len(state.Notes), len(state.Inbox))
+
 	// Render template with variables
-	return Render(templateContent, vars), nil
+	result := Render(templateContent, vars)
+	logger.Debug("Prompt rendered: %d characters", len(result))
+	return result, nil
 }
 
 // formatInbox formats unread inbox messages for template injection.

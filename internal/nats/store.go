@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -36,12 +37,19 @@ func SubjectForEvent(session, eventType string) string {
 // The stream captures all events for all sessions with 30-day retention.
 // Subject pattern: iteratr.> matches all sessions and event types.
 func SetupStream(ctx context.Context, js jetstream.JetStream) (jetstream.Stream, error) {
-	return js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+	logger.Debug("Setting up JetStream stream: %s", streamName)
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     streamName,
 		Subjects: []string{"iteratr.>"}, // Match all iteratr events
 		Storage:  jetstream.FileStorage,
 		MaxAge:   30 * 24 * time.Hour, // 30 day retention
 	})
+	if err != nil {
+		logger.Error("Failed to create/update stream: %v", err)
+		return nil, err
+	}
+	logger.Debug("JetStream stream ready: %s", streamName)
+	return stream, nil
 }
 
 // CreateConsumer creates a durable consumer for reading event history.

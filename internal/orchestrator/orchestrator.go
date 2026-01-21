@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/acp"
 	ierr "github.com/mark3labs/iteratr/internal/errors"
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/template"
@@ -74,47 +75,71 @@ func New(cfg Config) (*Orchestrator, error) {
 
 // Start initializes all components and starts the orchestrator.
 func (o *Orchestrator) Start() error {
+	logger.Info("Starting orchestrator for session '%s'", o.cfg.SessionName)
+
 	// 1. Start embedded NATS server
+	logger.Debug("Starting embedded NATS server")
 	if err := o.startNATS(); err != nil {
+		logger.Error("Failed to start NATS: %v", err)
 		return fmt.Errorf("failed to start NATS: %w", err)
 	}
+	logger.Debug("NATS server started successfully")
 
 	// 2. Connect to NATS in-process
+	logger.Debug("Connecting to NATS in-process")
 	if err := o.connectNATS(); err != nil {
+		logger.Error("Failed to connect to NATS: %v", err)
 		return fmt.Errorf("failed to connect to NATS: %w", err)
 	}
+	logger.Debug("Connected to NATS")
 
 	// 3. Setup JetStream stream
+	logger.Debug("Setting up JetStream")
 	if err := o.setupJetStream(); err != nil {
+		logger.Error("Failed to setup JetStream: %v", err)
 		return fmt.Errorf("failed to setup JetStream: %w", err)
 	}
+	logger.Debug("JetStream setup complete")
 
 	// 4. Create ACP client
+	logger.Debug("Creating ACP client")
 	o.acpClient = acp.NewACPClient(o.store, o.cfg.SessionName, o.cfg.WorkDir)
 
 	// 5. Start TUI if not headless
 	if !o.cfg.Headless {
+		logger.Debug("Starting TUI")
 		if err := o.startTUI(); err != nil {
+			logger.Error("Failed to start TUI: %v", err)
 			return fmt.Errorf("failed to start TUI: %w", err)
 		}
+		logger.Debug("TUI started")
+	} else {
+		logger.Info("Running in headless mode")
 	}
 
+	logger.Info("Orchestrator started successfully")
 	return nil
 }
 
 // Run executes the main iteration loop.
 func (o *Orchestrator) Run() error {
+	logger.Info("Starting iteration loop for session '%s'", o.cfg.SessionName)
+
 	// Load current session state to determine starting iteration
+	logger.Debug("Loading session state")
 	state, err := o.store.LoadState(o.ctx, o.cfg.SessionName)
 	if err != nil {
+		logger.Error("Failed to load session state: %v", err)
 		return fmt.Errorf("failed to load session state: %w", err)
 	}
 
 	// Determine starting iteration number
 	startIteration := len(state.Iterations) + 1
+	logger.Debug("Starting from iteration %d (found %d previous iterations)", startIteration, len(state.Iterations))
 
 	// Check if session is already complete
 	if state.Complete {
+		logger.Info("Session '%s' is already marked as complete", o.cfg.SessionName)
 		fmt.Printf("Session '%s' is already marked as complete\n", o.cfg.SessionName)
 		return nil
 	}
@@ -150,12 +175,16 @@ func (o *Orchestrator) Run() error {
 
 		// Check iteration limit (0 = infinite)
 		if o.cfg.Iterations > 0 && iterationCount >= o.cfg.Iterations {
+			logger.Info("Reached iteration limit of %d", o.cfg.Iterations)
 			fmt.Printf("Reached iteration limit of %d\n", o.cfg.Iterations)
 			break
 		}
 
+		logger.Info("=== Starting iteration #%d ===", currentIteration)
+
 		// Log iteration start
 		if err := o.store.IterationStart(o.ctx, o.cfg.SessionName, currentIteration); err != nil {
+			logger.Error("Failed to log iteration start: %v", err)
 			return fmt.Errorf("failed to log iteration start: %w", err)
 		}
 
@@ -165,6 +194,7 @@ func (o *Orchestrator) Run() error {
 		}
 
 		// Build prompt with current state
+		logger.Debug("Building prompt for iteration #%d", currentIteration)
 		prompt, err := template.BuildPrompt(o.ctx, template.BuildConfig{
 			SessionName:       o.cfg.SessionName,
 			Store:             o.store,
@@ -174,8 +204,10 @@ func (o *Orchestrator) Run() error {
 			ExtraInstructions: o.cfg.ExtraInstructions,
 		})
 		if err != nil {
+			logger.Error("Failed to build prompt: %v", err)
 			return fmt.Errorf("failed to build prompt: %w", err)
 		}
+		logger.Debug("Prompt built, length: %d characters", len(prompt))
 
 		// Setup callbacks for streaming output
 		if o.tuiProgram != nil {
@@ -191,28 +223,35 @@ func (o *Orchestrator) Run() error {
 		}
 
 		// Run agent iteration with panic recovery
+		logger.Info("Running agent for iteration #%d", currentIteration)
 		fmt.Printf("Running iteration #%d...\n", currentIteration)
 		err = ierr.Recover(func() error {
 			return o.acpClient.RunIteration(o.ctx, prompt)
 		})
 		if err != nil {
 			// Log the error but continue with graceful handling
+			logger.Error("Iteration #%d failed: %v", currentIteration, err)
 			fmt.Fprintf(os.Stderr, "Iteration #%d failed: %v\n", currentIteration, err)
 
 			// Check if it's a panic error - these are critical
 			var panicErr *ierr.PanicError
 			if errors.As(err, &panicErr) {
+				logger.Error("Iteration #%d panicked with stack trace: %s", currentIteration, panicErr.StackTrace)
 				return fmt.Errorf("iteration #%d panicked: %w", currentIteration, err)
 			}
 
 			// For other errors, return immediately
 			return fmt.Errorf("iteration #%d failed: %w", currentIteration, err)
 		}
+		logger.Info("Iteration #%d agent execution completed", currentIteration)
 
 		// Log iteration complete
 		if err := o.store.IterationComplete(o.ctx, o.cfg.SessionName, currentIteration); err != nil {
+			logger.Error("Failed to log iteration complete: %v", err)
 			return fmt.Errorf("failed to log iteration complete: %w", err)
 		}
+
+		logger.Info("=== Iteration #%d completed successfully ===", currentIteration)
 
 		// Print completion message in headless mode
 		if o.cfg.Headless {
@@ -221,6 +260,7 @@ func (o *Orchestrator) Run() error {
 
 		// Check if session_complete was signaled
 		if o.acpClient.IsSessionComplete() {
+			logger.Info("Session '%s' marked as complete by agent", o.cfg.SessionName)
 			fmt.Printf("Session '%s' marked as complete by agent\n", o.cfg.SessionName)
 			break
 		}
@@ -228,6 +268,7 @@ func (o *Orchestrator) Run() error {
 		iterationCount++
 	}
 
+	logger.Info("Iteration loop finished for session '%s'", o.cfg.SessionName)
 	return nil
 }
 
@@ -241,6 +282,8 @@ func (o *Orchestrator) Stop() error {
 	}
 	o.stopped = true
 
+	logger.Info("Stopping orchestrator for session '%s'", o.cfg.SessionName)
+
 	// Use MultiError to collect all shutdown errors
 	multiErr := &ierr.MultiError{}
 
@@ -251,13 +294,15 @@ func (o *Orchestrator) Stop() error {
 
 	// Stop TUI and wait for it to finish
 	if o.tuiProgram != nil {
+		logger.Debug("Stopping TUI")
 		o.tuiProgram.Quit()
 		// Wait for TUI to finish with timeout
 		select {
 		case <-o.tuiDone:
-			// TUI finished cleanly
+			logger.Debug("TUI stopped successfully")
 		case <-time.After(2 * time.Second):
 			// TUI didn't finish in time, continue with shutdown
+			logger.Warn("TUI shutdown timed out after 2s")
 			multiErr.Append(ierr.NewTransientError("TUI shutdown", fmt.Errorf("timed out after 2s")))
 		}
 		o.tuiProgram = nil
@@ -265,19 +310,29 @@ func (o *Orchestrator) Stop() error {
 
 	// Stop ACP client (kill subprocess if running)
 	if o.acpClient != nil {
+		logger.Debug("Cleaning up ACP client")
 		if err := o.acpClient.Cleanup(); err != nil {
+			logger.Error("ACP client cleanup failed: %v", err)
 			multiErr.Append(fmt.Errorf("ACP client cleanup failed: %w", err))
+		} else {
+			logger.Debug("ACP client cleaned up")
 		}
 	}
 
 	// Close NATS connection and server using helper
+	logger.Debug("Shutting down NATS")
 	if err := nats.Shutdown(o.nc, o.ns); err != nil {
+		logger.Error("NATS shutdown failed: %v", err)
 		multiErr.Append(fmt.Errorf("NATS shutdown failed: %w", err))
+	} else {
+		logger.Debug("NATS shut down successfully")
 	}
 
 	// Clear references
 	o.nc = nil
 	o.ns = nil
+
+	logger.Info("Orchestrator stopped")
 
 	// Return combined errors if any
 	return multiErr.ErrorOrNil()

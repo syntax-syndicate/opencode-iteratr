@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/coder/acp-go-sdk"
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
@@ -215,39 +216,50 @@ func formatResult(result any, err error) string {
 
 // RunIteration launches the agent subprocess and runs a single iteration
 func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
+	logger.Debug("Starting agent iteration")
+
 	// Validate inputs
 	if prompt == "" {
+		logger.Error("Prompt is empty")
 		return fmt.Errorf("prompt cannot be empty")
 	}
 	if c.workDir == "" {
+		logger.Error("Working directory not set")
 		return fmt.Errorf("working directory not set")
 	}
 
 	// Start opencode as subprocess
+	logger.Debug("Launching opencode subprocess")
 	cmd := exec.CommandContext(ctx, "opencode", "acp")
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		logger.Error("Failed to create stdin pipe: %v", err)
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		logger.Error("Failed to create stdout pipe: %v", err)
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		logger.Error("Failed to start opencode: %v", err)
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
+	logger.Debug("opencode subprocess started")
 
 	// Store command reference for cleanup
 	c.cmd = cmd
 
 	// Create client-side connection
+	logger.Debug("Creating ACP connection")
 	c.conn = acp.NewClientSideConnection(c, stdin, stdout)
 
 	// Initialize connection
+	logger.Debug("Initializing ACP connection")
 	_, err = c.conn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{
@@ -258,32 +270,42 @@ func (c *ACPClient) RunIteration(ctx context.Context, prompt string) error {
 		},
 	})
 	if err != nil {
+		logger.Error("ACP initialize failed: %v", err)
 		return fmt.Errorf("initialize failed: %w", err)
 	}
+	logger.Debug("ACP connection initialized")
 
 	// Create session
+	logger.Debug("Creating ACP session")
 	newSess, err := c.conn.NewSession(ctx, acp.NewSessionRequest{
 		Cwd: c.workDir,
 	})
 	if err != nil {
+		logger.Error("ACP new session failed: %v", err)
 		return fmt.Errorf("new session failed: %w", err)
 	}
+	logger.Debug("ACP session created: %s", newSess.SessionId)
 
 	c.currentSessionID = newSess.SessionId
 
 	// Send prompt and stream response
+	logger.Debug("Sending prompt to agent (length: %d chars)", len(prompt))
 	_, err = c.conn.Prompt(ctx, acp.PromptRequest{
 		SessionId: newSess.SessionId,
 		Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
 	})
 	if err != nil {
+		logger.Error("ACP prompt failed: %v", err)
 		return fmt.Errorf("prompt failed: %w", err)
 	}
+	logger.Debug("Prompt sent, waiting for agent to complete")
 
 	// Wait for agent process to complete
 	if err := cmd.Wait(); err != nil {
+		logger.Error("Agent process failed: %v", err)
 		return fmt.Errorf("agent process failed: %w", err)
 	}
+	logger.Debug("Agent process completed successfully")
 
 	// Clear command reference after completion
 	c.cmd = nil
