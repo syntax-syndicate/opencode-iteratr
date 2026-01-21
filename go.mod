@@ -1,4 +1,4 @@
-module github.com/anomalyco/iteratr
+module github.com/mark3labs/iteratr
 
 go 1.25.5
 
