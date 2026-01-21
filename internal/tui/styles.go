@@ -87,4 +87,186 @@ var (
 
 	styleDim = lipgloss.NewStyle().
 			Foreground(colorTextDim)
+
+	// Dashboard styles
+	styleProgressBar = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Background(colorMuted)
+
+	styleProgressFill = lipgloss.NewStyle().
+				Foreground(colorTextBright).
+				Background(colorPrimary)
+
+	styleStatLabel = lipgloss.NewStyle().
+			Foreground(colorTextDim).
+			Bold(false)
+
+	styleStatValue = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
+
+	styleCurrentTask = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorPrimary).
+				Padding(0, 1).
+				Foreground(colorTextBright)
+
+	// Task list styles
+	styleTaskID = lipgloss.NewStyle().
+			Foreground(colorMuted).
+			Bold(false)
+
+	styleTaskContent = lipgloss.NewStyle().
+				Foreground(colorText)
+
+	styleTaskSelected = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Background(lipgloss.Color("237")). // Slightly lighter than background
+				Bold(true)
+
+	styleGroupHeader = lipgloss.NewStyle().
+				Foreground(colorSecondary).
+				Bold(true).
+				Underline(true).
+				MarginTop(1)
+
+	// Log viewer styles
+	styleLogTimestamp = lipgloss.NewStyle().
+				Foreground(colorTextDim).
+				Bold(false)
+
+	styleLogTask = lipgloss.NewStyle().
+			Foreground(colorSecondary)
+
+	styleLogNote = lipgloss.NewStyle().
+			Foreground(colorWarning)
+
+	styleLogInbox = lipgloss.NewStyle().
+			Foreground(colorPrimary)
+
+	styleLogIteration = lipgloss.NewStyle().
+				Foreground(colorSuccess)
+
+	styleLogControl = lipgloss.NewStyle().
+			Foreground(colorError)
+
+	styleLogContent = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	// Notes panel styles
+	styleNoteTypeLearning = lipgloss.NewStyle().
+				Foreground(colorSuccess).
+				Bold(true)
+
+	styleNoteTypeStuck = lipgloss.NewStyle().
+				Foreground(colorError).
+				Bold(true)
+
+	styleNoteTypeTip = lipgloss.NewStyle().
+				Foreground(colorSecondary).
+				Bold(true)
+
+	styleNoteTypeDecision = lipgloss.NewStyle().
+				Foreground(colorWarning).
+				Bold(true)
+
+	styleNoteIteration = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Bold(false)
+
+	styleNoteContent = lipgloss.NewStyle().
+				Foreground(colorText).
+				PaddingLeft(2)
+
+	// Inbox styles
+	styleMessageUnread = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Bold(true)
+
+	styleMessageRead = lipgloss.NewStyle().
+				Foreground(colorTextDim)
+
+	styleMessageTimestamp = lipgloss.NewStyle().
+				Foreground(colorTextDim).
+				Bold(false)
+
+	styleInputField = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorSecondary).
+			Padding(0, 1).
+			Foreground(colorText)
+
+	styleInputPrompt = lipgloss.NewStyle().
+				Foreground(colorSecondary).
+				Bold(true)
+
+	// Agent output styles
+	styleAgentText = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	styleAgentCode = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Background(lipgloss.Color("236"))
+
+	styleAgentThinking = lipgloss.NewStyle().
+				Foreground(colorTextDim).
+				Italic(true)
+
+	// List styles
+	styleListItem = lipgloss.NewStyle().
+			Foreground(colorText).
+			PaddingLeft(2)
+
+	styleListBullet = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true)
+
+	// Panel styles
+	stylePanel = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorMuted).
+			Padding(1, 2)
+
+	stylePanelTitle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true).
+			MarginBottom(1)
+
+	// Badge styles
+	styleBadge = lipgloss.NewStyle().
+			Padding(0, 1).
+			Bold(true)
+
+	styleBadgeSuccess = styleBadge.Copy().
+				Foreground(colorTextBright).
+				Background(colorSuccess)
+
+	styleBadgeWarning = styleBadge.Copy().
+				Foreground(colorTextBright).
+				Background(colorWarning)
+
+	styleBadgeError = styleBadge.Copy().
+			Foreground(colorTextBright).
+			Background(colorError)
+
+	styleBadgeInfo = styleBadge.Copy().
+			Foreground(colorTextBright).
+			Background(colorSecondary)
+
+	styleBadgeMuted = styleBadge.Copy().
+			Foreground(colorText).
+			Background(colorMuted)
+
+	// Scrollbar styles
+	styleScrollbar = lipgloss.NewStyle().
+			Foreground(colorMuted)
+
+	styleScrollbarThumb = lipgloss.NewStyle().
+				Foreground(colorSecondary)
+
+	// Empty state styles
+	styleEmptyState = lipgloss.NewStyle().
+			Foreground(colorTextDim).
+			Italic(true).
+			Align(lipgloss.Center)
 )
