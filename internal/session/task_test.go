@@ -161,8 +161,11 @@ func TestTaskOperations(t *testing.T) {
 	})
 
 	t.Run("TaskStatus supports prefix matching", func(t *testing.T) {
+		// Use a dedicated session to avoid conflicts with other tests
+		prefixSession := "test-session-prefix"
+
 		// Create a task
-		task, err := store.TaskAdd(ctx, session, TaskAddParams{
+		task, err := store.TaskAdd(ctx, prefixSession, TaskAddParams{
 			Content:   "Task for prefix test",
 			Iteration: 1,
 		})
@@ -177,7 +180,7 @@ func TestTaskOperations(t *testing.T) {
 		prefix := task.ID[:8]
 
 		// Update using prefix
-		err = store.TaskStatus(ctx, session, TaskStatusParams{
+		err = store.TaskStatus(ctx, prefixSession, TaskStatusParams{
 			ID:        prefix,
 			Status:    "in_progress",
 			Iteration: 1,
@@ -187,7 +190,7 @@ func TestTaskOperations(t *testing.T) {
 		}
 
 		// Verify the update
-		state, err := store.LoadState(ctx, session)
+		state, err := store.LoadState(ctx, prefixSession)
 		if err != nil {
 			t.Fatalf("LoadState failed: %v", err)
 		}

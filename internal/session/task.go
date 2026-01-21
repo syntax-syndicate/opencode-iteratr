@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/iteratr/internal/nats"
+	"github.com/rs/xid"
 )
 
 // TaskAddParams represents the parameters for adding a task.
@@ -50,6 +52,10 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 		return nil, fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, or blocked)", status)
 	}
 
+	// Generate unique ID and timestamp
+	id := xid.New().String()
+	now := time.Now()
+
 	// Create event metadata
 	meta, _ := json.Marshal(map[string]any{
 		"status":    status,
@@ -58,25 +64,27 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 
 	// Create and publish event
 	event := Event{
-		Session: session,
-		Type:    nats.EventTypeTask,
-		Action:  "add",
-		Data:    params.Content,
-		Meta:    meta,
+		ID:        id,
+		Timestamp: now,
+		Session:   session,
+		Type:      nats.EventTypeTask,
+		Action:    "add",
+		Data:      params.Content,
+		Meta:      meta,
 	}
 
-	ack, err := s.PublishEvent(ctx, event)
+	_, err := s.PublishEvent(ctx, event)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build task object to return, using NATS sequence as ID
+	// Build task object to return
 	task := &Task{
-		ID:        fmt.Sprintf("%d", ack.Sequence),
+		ID:        id,
 		Content:   params.Content,
 		Status:    status,
-		CreatedAt: event.Timestamp,
-		UpdatedAt: event.Timestamp,
+		CreatedAt: now,
+		UpdatedAt: now,
 		Iteration: params.Iteration,
 	}
 

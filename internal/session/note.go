@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/mark3labs/iteratr/internal/nats"
+	"github.com/rs/xid"
 )
 
 // NoteAddParams represents the parameters for adding a note.
@@ -36,6 +38,10 @@ func (s *Store) NoteAdd(ctx context.Context, session string, params NoteAddParam
 		return nil, fmt.Errorf("invalid type: %s (must be learning, stuck, tip, or decision)", params.Type)
 	}
 
+	// Generate unique ID and timestamp
+	id := xid.New().String()
+	now := time.Now()
+
 	// Create event metadata
 	meta, _ := json.Marshal(map[string]any{
 		"type":      params.Type,
@@ -44,24 +50,26 @@ func (s *Store) NoteAdd(ctx context.Context, session string, params NoteAddParam
 
 	// Create and publish event
 	event := Event{
-		Session: session,
-		Type:    nats.EventTypeNote,
-		Action:  "add",
-		Data:    params.Content,
-		Meta:    meta,
+		ID:        id,
+		Timestamp: now,
+		Session:   session,
+		Type:      nats.EventTypeNote,
+		Action:    "add",
+		Data:      params.Content,
+		Meta:      meta,
 	}
 
-	ack, err := s.PublishEvent(ctx, event)
+	_, err := s.PublishEvent(ctx, event)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build note object to return, using NATS sequence as ID
+	// Build note object to return
 	note := &Note{
-		ID:        fmt.Sprintf("%d", ack.Sequence),
+		ID:        id,
 		Content:   params.Content,
 		Type:      params.Type,
-		CreatedAt: event.Timestamp,
+		CreatedAt: now,
 		Iteration: params.Iteration,
 	}
 
