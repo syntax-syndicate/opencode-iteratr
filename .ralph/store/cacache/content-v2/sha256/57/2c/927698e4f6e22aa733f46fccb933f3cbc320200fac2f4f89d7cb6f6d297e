@@ -1,0 +1,1 @@
+Task "TUI Log Viewer - Timestamps" was already completed. The renderEvent method in logs.go:119-121 formats event.Timestamp as "15:04:05" and applies styleLogTimestamp, including it in the output at logs.go:161.
