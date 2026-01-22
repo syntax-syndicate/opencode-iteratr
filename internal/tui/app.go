@@ -24,42 +24,46 @@ type App struct {
 	header    *Header
 	footer    *Footer
 	status    *StatusBar
+	sidebar   *Sidebar
 
 	// Layout management
 	layout      Layout
 	layoutDirty bool
 
 	// State
-	activeView  ViewType
-	store       *session.Store
-	sessionName string
-	nc          *nats.Conn
-	ctx         context.Context
-	width       int
-	height      int
-	quitting    bool
-	eventChan   chan session.Event // Channel for receiving NATS events
+	activeView     ViewType
+	sidebarVisible bool // Toggle for sidebar visibility in compact mode
+	store          *session.Store
+	sessionName    string
+	nc             *nats.Conn
+	ctx            context.Context
+	width          int
+	height         int
+	quitting       bool
+	eventChan      chan session.Event // Channel for receiving NATS events
 }
 
 // NewApp creates a new TUI application with the given session store and NATS connection.
 func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *nats.Conn) *App {
 	agent := NewAgentOutput()
 	return &App{
-		store:       store,
-		sessionName: sessionName,
-		nc:          nc,
-		ctx:         ctx,
-		activeView:  ViewDashboard,
-		dashboard:   NewDashboard(agent), // Pass agent output to dashboard
-		logs:        NewLogViewer(),
-		notes:       NewNotesPanel(),
-		inbox:       NewInboxPanel(),
-		agent:       agent,
-		header:      NewHeader(sessionName),
-		footer:      NewFooter(),
-		status:      NewStatusBar(),
-		eventChan:   make(chan session.Event, 100), // Buffered channel for events
-		layoutDirty: true,                          // Calculate layout on first render
+		store:          store,
+		sessionName:    sessionName,
+		nc:             nc,
+		ctx:            ctx,
+		activeView:     ViewDashboard,
+		sidebarVisible: false,               // Sidebar hidden by default in compact mode
+		dashboard:      NewDashboard(agent), // Pass agent output to dashboard
+		logs:           NewLogViewer(),
+		notes:          NewNotesPanel(),
+		inbox:          NewInboxPanel(),
+		agent:          agent,
+		header:         NewHeader(sessionName),
+		footer:         NewFooter(),
+		status:         NewStatusBar(),
+		sidebar:        NewSidebar(),
+		eventChan:      make(chan session.Event, 100), // Buffered channel for events
+		layoutDirty:    true,                          // Calculate layout on first render
 	}
 }
 
@@ -106,6 +110,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Propagate state updates to all components
 		a.header.SetState(msg.State)
 		a.status.SetState(msg.State)
+		a.sidebar.SetState(msg.State)
 		a.dashboard.UpdateState(msg.State)
 		a.logs.SetState(msg.State)
 		a.notes.UpdateState(msg.State)
@@ -193,6 +198,10 @@ func (a *App) handleViewKeys(msg tea.KeyPressMsg) tea.Cmd {
 		a.activeView = ViewInbox
 		a.footer.SetActiveView(ViewInbox)
 		return func() tea.Msg { return nil }
+	case "s":
+		// Toggle sidebar visibility (only relevant in compact mode)
+		a.sidebarVisible = !a.sidebarVisible
+		return func() tea.Msg { return nil }
 	}
 	return nil
 }
@@ -270,10 +279,28 @@ func (a *App) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	a.status.Draw(scr, a.layout.Status)
 	a.footer.Draw(scr, a.layout.Footer)
 
-	// TODO: Draw sidebar in desktop mode (Phase 14)
-	// if a.layout.Mode == LayoutDesktop {
-	// 	a.sidebar.Draw(scr, a.layout.Sidebar)
-	// }
+	// Draw sidebar based on mode:
+	// - Desktop mode: always show sidebar on the right
+	// - Compact mode: show sidebar only if toggled visible (overlay on main content)
+	if a.layout.Mode == LayoutDesktop {
+		// Desktop mode: sidebar is always visible in dedicated area
+		a.sidebar.Draw(scr, a.layout.Sidebar)
+	} else if a.sidebarVisible {
+		// Compact mode: sidebar overlays main content when toggled visible
+		// Use sidebar width from desktop mode
+		sidebarWidth := SidebarWidthDesktop
+		if a.layout.Main.Dx()/2 < sidebarWidth {
+			sidebarWidth = a.layout.Main.Dx() / 2
+		}
+		// Position sidebar on the right side of main area
+		sidebarRect := uv.Rect(
+			a.layout.Main.Max.X-sidebarWidth,
+			a.layout.Main.Min.Y,
+			sidebarWidth,
+			a.layout.Main.Dy(),
+		)
+		a.sidebar.Draw(scr, sidebarRect)
+	}
 
 	return cursor
 }
@@ -397,4 +424,17 @@ func (a *App) propagateSizes() {
 	a.logs.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 	a.notes.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 	a.inbox.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
+
+	// Propagate sidebar size based on layout mode
+	if a.layout.Mode == LayoutDesktop {
+		// Desktop mode: use dedicated sidebar area
+		a.sidebar.SetSize(a.layout.Sidebar.Dx(), a.layout.Sidebar.Dy())
+	} else {
+		// Compact mode: sidebar overlays with fixed width
+		sidebarWidth := SidebarWidthDesktop
+		if a.layout.Main.Dx()/2 < sidebarWidth {
+			sidebarWidth = a.layout.Main.Dx() / 2
+		}
+		a.sidebar.SetSize(sidebarWidth, a.layout.Main.Dy())
+	}
 }

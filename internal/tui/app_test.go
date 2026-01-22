@@ -232,3 +232,31 @@ func TestViewType_Constants(t *testing.T) {
 		t.Errorf("expected 4 distinct view types, got %d", len(seen))
 	}
 }
+
+func TestApp_HandleKeyPress_SidebarToggle(t *testing.T) {
+	ctx := context.Background()
+	app := NewApp(ctx, nil, "test-session", nil)
+
+	// Initially sidebar should be hidden
+	if app.sidebarVisible {
+		t.Error("expected sidebar to be hidden initially")
+	}
+
+	// Press 's' to toggle sidebar visible
+	msg := tea.KeyPressMsg{Code: 's', Text: "s"}
+	updatedModel, _ := app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if !app.sidebarVisible {
+		t.Error("expected sidebar to be visible after pressing 's'")
+	}
+
+	// Press 's' again to toggle sidebar hidden
+	msg = tea.KeyPressMsg{Code: 's', Text: "s"}
+	updatedModel, _ = app.handleKeyPress(msg)
+	app = updatedModel.(*App)
+
+	if app.sidebarVisible {
+		t.Error("expected sidebar to be hidden after pressing 's' again")
+	}
+}
