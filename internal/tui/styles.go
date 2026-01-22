@@ -4,25 +4,104 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Color palette
+// ============================================================================
+// COLOR PALETTE - Catppuccin Mocha Inspired
+// ============================================================================
+//
+// This palette provides a modern, cohesive color system with:
+// - Excellent contrast for accessibility
+// - Soothing pastel tones that reduce eye strain
+// - Semantic color meanings for intuitive UI
+// - Layered backgrounds for depth and hierarchy
+//
+// COLOR USAGE GUIDELINES:
+//
+// BACKGROUNDS (darkest to lightest):
+//
+//	colorCrust   - Deep backgrounds, rarely used
+//	colorMantle  - Header/footer backgrounds
+//	colorBase    - Main application background
+//	colorSurface0/1/2 - Layered panels, cards, overlays
+//
+// TEXT (dimmest to brightest):
+//
+//	colorSubtext0 - Very muted text (timestamps, hints)
+//	colorSubtext1 - Muted text (secondary info)
+//	colorText     - Primary text content
+//	colorTextBright - Emphasized text, titles
+//
+// ACCENTS:
+//
+//	colorPrimary  - Brand color, primary actions, focused elements
+//	colorSecondary - Secondary actions, links, interactive elements
+//	colorTertiary - Subtle highlights, tertiary actions
+//
+// SEMANTIC:
+//
+//	colorSuccess - Completed tasks, success states
+//	colorWarning - In-progress, warnings, attention needed
+//	colorError   - Errors, blocked states, destructive actions
+//	colorInfo    - Informational notes, tips
+//
+// BORDERS:
+//
+//	colorBorderMuted   - Inactive/unfocused borders
+//	colorBorderDefault - Standard borders
+//	colorBorderFocused - Focused element borders
+//	colorBorderActive  - Active/interactive borders
+//
+// ============================================================================
 var (
-	// Primary colors
-	colorPrimary   = lipgloss.Color("99")  // Bright purple
-	colorSecondary = lipgloss.Color("39")  // Bright blue
-	colorSuccess   = lipgloss.Color("42")  // Green
-	colorWarning   = lipgloss.Color("214") // Orange
-	colorError     = lipgloss.Color("196") // Red
-	colorMuted     = lipgloss.Color("240") // Gray
+	// === BASE LAYER (backgrounds) ===
+	// Darkest to lightest background shades for layering UI elements
+	colorBase     = lipgloss.Color("#1e1e2e") // Base background (darkest)
+	colorMantle   = lipgloss.Color("#181825") // Slightly darker than base
+	colorCrust    = lipgloss.Color("#11111b") // Darkest shade for deep backgrounds
+	colorSurface0 = lipgloss.Color("#313244") // Surface overlay (light)
+	colorSurface1 = lipgloss.Color("#45475a") // Surface overlay (medium)
+	colorSurface2 = lipgloss.Color("#585b70") // Surface overlay (dark)
+	colorOverlay0 = lipgloss.Color("#6c7086") // Overlay for subtle elements
+	colorOverlay1 = lipgloss.Color("#7f849c") // Overlay medium
+	colorOverlay2 = lipgloss.Color("#9399b2") // Overlay light
 
-	// Background colors
-	colorBgHeader = lipgloss.Color("235") // Dark gray
-	colorBgFooter = lipgloss.Color("235") // Dark gray
-	colorBgSubtle = lipgloss.Color("237") // Slightly lighter than background
+	// === TEXT LAYER (foreground) ===
+	// Shades for different text emphasis levels
+	colorSubtext0   = lipgloss.Color("#a6adc8") // Subtext (muted)
+	colorSubtext1   = lipgloss.Color("#bac2de") // Subtext (less muted)
+	colorText       = lipgloss.Color("#cdd6f4") // Main text color
+	colorTextBright = lipgloss.Color("#f5e0dc") // Brightest text (rosewater)
 
-	// Text colors
-	colorText       = lipgloss.Color("252") // Light gray
-	colorTextBright = lipgloss.Color("255") // White
-	colorTextDim    = lipgloss.Color("243") // Dim gray
+	// === ACCENT COLORS (semantic) ===
+	// Vibrant colors for UI highlights and status indicators
+	colorPrimary   = lipgloss.Color("#cba6f7") // Mauve (primary brand color)
+	colorSecondary = lipgloss.Color("#89b4fa") // Blue (secondary actions)
+	colorTertiary  = lipgloss.Color("#b4befe") // Lavender (tertiary highlights)
+
+	// Semantic status colors
+	colorSuccess = lipgloss.Color("#a6e3a1") // Green (success, completed)
+	colorWarning = lipgloss.Color("#f9e2af") // Yellow (warning, in-progress)
+	colorError   = lipgloss.Color("#f38ba8") // Red (error, blocked)
+	colorInfo    = lipgloss.Color("#89dceb") // Sky (info, notes)
+
+	// Additional accent colors
+	colorPeach = lipgloss.Color("#fab387") // Peach (warm accent)
+	colorTeal  = lipgloss.Color("#94e2d5") // Teal (cool accent)
+	colorPink  = lipgloss.Color("#f5c2e7") // Pink (special highlight)
+
+	// === BORDER COLORS ===
+	// Border shades for different focus states
+	colorBorderMuted   = colorOverlay0  // Unfocused borders
+	colorBorderDefault = colorSurface2  // Default borders
+	colorBorderFocused = colorPrimary   // Focused element borders
+	colorBorderActive  = colorSecondary // Active/interactive borders
+
+	// === LEGACY ALIASES (for backward compatibility) ===
+	// These map old color names to new palette
+	colorMuted    = colorOverlay0 // Muted elements
+	colorTextDim  = colorSubtext0 // Dim text
+	colorBgHeader = colorMantle   // Header background
+	colorBgFooter = colorMantle   // Footer background
+	colorBgSubtle = colorSurface0 // Subtle background highlights
 )
 
 // Style definitions
