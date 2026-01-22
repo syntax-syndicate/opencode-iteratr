@@ -95,6 +95,30 @@ func ReadPort(dataDir string) (int, error) {
 	return port, nil
 }
 
+// TryConnectExisting attempts to connect to an existing NATS server.
+// Returns the connection if successful, or nil if no server is running.
+// This is used to detect if another iteratr instance is already running
+// and connect to it instead of starting a new server.
+func TryConnectExisting(dataDir string) *nats.Conn {
+	port, err := ReadPort(dataDir)
+	if err != nil {
+		// No port file = no server running
+		return nil
+	}
+
+	// Try to connect with short timeout
+	url := fmt.Sprintf("nats://127.0.0.1:%d", port)
+	nc, err := nats.Connect(url, nats.Timeout(500*time.Millisecond))
+	if err != nil {
+		// Server not responding = stale port file
+		logger.Debug("Found port file but server not responding: %v", err)
+		return nil
+	}
+
+	logger.Debug("Connected to existing NATS server on port %d", port)
+	return nc
+}
+
 // ConnectToPort connects to a NATS server on the specified port
 func ConnectToPort(port int) (*nats.Conn, error) {
 	url := fmt.Sprintf("nats://127.0.0.1:%d", port)

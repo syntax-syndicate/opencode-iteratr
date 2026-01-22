@@ -37,7 +37,7 @@ type Config struct {
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
 type Orchestrator struct {
 	cfg        Config
-	ns         *natsserver.Server // Embedded NATS server
+	ns         *natsserver.Server // Embedded NATS server (nil if node mode)
 	natsPort   int                // NATS server port
 	nc         *natsgo.Conn       // NATS connection
 	store      *session.Store     // Session store
@@ -48,6 +48,7 @@ type Orchestrator struct {
 	ctx        context.Context    // Context for cancellation
 	cancel     context.CancelFunc // Cancel function
 	stopped    bool               // Track if Stop() was already called
+	isPrimary  bool               // True if this instance owns the NATS server
 }
 
 // New creates a new Orchestrator with the given configuration.
@@ -79,21 +80,17 @@ func New(cfg Config) (*Orchestrator, error) {
 func (o *Orchestrator) Start() error {
 	logger.Info("Starting orchestrator for session '%s'", o.cfg.SessionName)
 
-	// 1. Start embedded NATS server
-	logger.Debug("Starting embedded NATS server")
-	if err := o.startNATS(); err != nil {
-		logger.Error("Failed to start NATS: %v", err)
-		return fmt.Errorf("failed to start NATS: %w", err)
+	// 1. Connect to existing NATS server or start a new one
+	logger.Debug("Ensuring NATS connection")
+	if err := o.ensureNATS(); err != nil {
+		logger.Error("Failed to ensure NATS: %v", err)
+		return fmt.Errorf("failed to ensure NATS: %w", err)
 	}
-	logger.Debug("NATS server started successfully")
-
-	// 2. Connect to NATS in-process
-	logger.Debug("Connecting to NATS in-process")
-	if err := o.connectNATS(); err != nil {
-		logger.Error("Failed to connect to NATS: %v", err)
-		return fmt.Errorf("failed to connect to NATS: %w", err)
+	if o.isPrimary {
+		logger.Debug("Running as primary (owns NATS server)")
+	} else {
+		logger.Debug("Running as node (connected to existing server)")
 	}
-	logger.Debug("Connected to NATS")
 
 	// 3. Setup JetStream stream
 	logger.Debug("Setting up JetStream")
@@ -377,13 +374,22 @@ func (o *Orchestrator) Stop() error {
 	// Agent runner cleanup is automatic - context cancellation will stop any running subprocess
 	logger.Debug("Agent runner will be cleaned up via context cancellation")
 
-	// Close NATS connection and server using helper
-	logger.Debug("Shutting down NATS")
-	if err := nats.Shutdown(o.nc, o.ns); err != nil {
-		logger.Error("NATS shutdown failed: %v", err)
-		multiErr.Append(fmt.Errorf("NATS shutdown failed: %w", err))
+	// Close NATS connection (and server if primary)
+	if o.isPrimary {
+		// Primary mode: shut down the server we own
+		logger.Debug("Shutting down NATS server (primary mode)")
+		if err := nats.Shutdown(o.nc, o.ns); err != nil {
+			logger.Error("NATS shutdown failed: %v", err)
+			multiErr.Append(fmt.Errorf("NATS shutdown failed: %w", err))
+		} else {
+			logger.Debug("NATS shut down successfully")
+		}
 	} else {
-		logger.Debug("NATS shut down successfully")
+		// Node mode: just close the connection, don't kill the server
+		logger.Debug("Closing NATS connection (node mode)")
+		if o.nc != nil {
+			o.nc.Close()
+		}
 	}
 
 	// Clear references
@@ -396,37 +402,40 @@ func (o *Orchestrator) Stop() error {
 	return multiErr.ErrorOrNil()
 }
 
-// startNATS starts the embedded NATS server.
-func (o *Orchestrator) startNATS() error {
+// ensureNATS connects to an existing NATS server or starts a new one.
+// If another iteratr instance is already running with a NATS server,
+// this instance runs in "node mode" and connects to the existing server.
+// Otherwise, it starts a new embedded server and runs in "primary mode".
+func (o *Orchestrator) ensureNATS() error {
 	// Ensure data directory exists
 	dataDir := filepath.Join(o.cfg.DataDir, "nats")
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("failed to create NATS data directory: %w", err)
 	}
 
-	// Use the shared nats package to start the server
+	// Try to connect to existing server first
+	if nc := nats.TryConnectExisting(dataDir); nc != nil {
+		logger.Info("Connected to existing NATS server (node mode)")
+		o.nc = nc
+		o.isPrimary = false
+		return nil
+	}
+
+	// No server running, start one (primary mode)
+	logger.Info("Starting NATS server (primary mode)")
 	ns, port, err := nats.StartEmbeddedNATS(dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to start NATS server: %w", err)
 	}
-
 	o.ns = ns
 	o.natsPort = port
-	return nil
-}
+	o.isPrimary = true
 
-// connectNATS creates a connection to the embedded NATS server.
-func (o *Orchestrator) connectNATS() error {
-	// Read the port from the port file
-	dataDir := filepath.Join(o.cfg.DataDir, "nats")
-	port, err := nats.ReadPort(dataDir)
-	if err != nil {
-		return fmt.Errorf("failed to read NATS port: %w", err)
-	}
-
-	// Connect via TCP
+	// Connect to our own server
 	nc, err := nats.ConnectToPort(port)
 	if err != nil {
+		// Failed to connect to server we just started - shut it down
+		ns.Shutdown()
 		return fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 	o.nc = nc

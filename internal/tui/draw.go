@@ -53,20 +53,17 @@ func DrawBorder(scr uv.Screen, area uv.Rectangle, style lipgloss.Style) uv.Recta
 
 // DrawPanel renders a bordered panel with optional title and returns the inner area
 func DrawPanel(scr uv.Screen, area uv.Rectangle, title string, focused bool) uv.Rectangle {
-	// Select border style based on focus
-	borderStyle := styleBorder.Copy()
-	if focused {
-		borderStyle = borderStyle.BorderForeground(colorPrimary)
-	}
+	// Use the borderStyle helper for consistent focus styling
+	panelStyle := borderStyle(focused)
 
 	// Draw the border
-	inner := DrawBorder(scr, area, borderStyle)
+	inner := DrawBorder(scr, area, panelStyle)
 
 	// Draw title if provided
 	if title != "" {
 		titleStyle := stylePanelTitle
 		if focused {
-			titleStyle = stylePanelTitle.Copy().Foreground(colorPrimary)
+			titleStyle = stylePanelTitleFocused
 		}
 		titleText := titleStyle.Render(" " + title + " ")
 
