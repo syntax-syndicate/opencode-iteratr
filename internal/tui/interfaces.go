@@ -50,3 +50,13 @@ type FocusableComponent interface {
 	FullComponent
 	Focusable
 }
+
+// ViewType represents the different view screens in the TUI
+type ViewType int
+
+const (
+	ViewDashboard ViewType = iota
+	ViewLogs
+	ViewNotes
+	ViewInbox
+)

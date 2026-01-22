@@ -12,16 +12,6 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-// ViewType represents the different views in the TUI
-type ViewType int
-
-const (
-	ViewDashboard ViewType = iota
-	ViewLogs
-	ViewNotes
-	ViewInbox
-)
-
 // App is the main Bubbletea model that manages the TUI application.
 // It contains all view components and handles routing between them.
 type App struct {
