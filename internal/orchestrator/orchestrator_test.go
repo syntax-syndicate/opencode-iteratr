@@ -462,5 +462,88 @@ Model configuration test.
 	}
 }
 
+// TestHeadlessMode verifies that headless mode works correctly
+func TestHeadlessMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# Test Spec
+Headless mode test.
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	// Create orchestrator in headless mode
+	orch, err := New(Config{
+		SessionName: "test-headless",
+		SpecPath:    specPath,
+		Iterations:  1,
+		DataDir:     dataDir,
+		WorkDir:     tmpDir,
+		Headless:    true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator in headless mode: %v", err)
+	}
+
+	if err := orch.Start(); err != nil {
+		t.Fatalf("failed to start orchestrator in headless mode: %v", err)
+	}
+	defer orch.Stop()
+
+	// Verify TUI is not initialized in headless mode
+	if orch.tuiApp != nil {
+		t.Error("expected tuiApp to be nil in headless mode")
+	}
+	if orch.tuiProgram != nil {
+		t.Error("expected tuiProgram to be nil in headless mode")
+	}
+}
+
+// TestTUIInitialization verifies that TUI mode initializes without errors
+func TestTUIInitialization(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, ".iteratr")
+
+	specPath := filepath.Join(tmpDir, "test.md")
+	specContent := `# Test Spec
+TUI mode test.
+`
+	if err := os.WriteFile(specPath, []byte(specContent), 0644); err != nil {
+		t.Fatalf("failed to write spec file: %v", err)
+	}
+
+	// Create orchestrator with TUI enabled
+	orch, err := New(Config{
+		SessionName: "test-tui",
+		SpecPath:    specPath,
+		Iterations:  1,
+		DataDir:     dataDir,
+		WorkDir:     tmpDir,
+		Headless:    false, // Enable TUI
+	})
+	if err != nil {
+		t.Fatalf("failed to create orchestrator with TUI: %v", err)
+	}
+
+	if err := orch.Start(); err != nil {
+		t.Fatalf("failed to start orchestrator with TUI: %v", err)
+	}
+	defer orch.Stop()
+
+	// Verify TUI is initialized
+	if orch.tuiApp == nil {
+		t.Error("expected tuiApp to be initialized with TUI mode enabled")
+	}
+	if orch.tuiProgram == nil {
+		t.Error("expected tuiProgram to be initialized with TUI mode enabled")
+	}
+
+	// Note: We can't actually run the TUI in a test environment,
+	// but we verify it initializes without errors
+}
+
 // Suppress unused variable warning
 var _ = syscall.SIGTERM
