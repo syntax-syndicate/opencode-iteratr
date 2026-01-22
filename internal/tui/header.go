@@ -93,9 +93,8 @@ func (h *Header) buildDesktopLeft() string {
 
 // buildDesktopRight builds the full right side for desktop mode.
 func (h *Header) buildDesktopRight() string {
-	// Show full "● connected" text
-	indicator := styleHeaderInfo.Render("● connected")
-	return indicator
+	// Connection status is shown in StatusBar, header right side is empty
+	return ""
 }
 
 // buildCompactLeft builds the condensed left side for compact mode.
@@ -124,9 +123,8 @@ func (h *Header) buildCompactLeft() string {
 
 // buildCompactRight builds the condensed right side for compact mode.
 func (h *Header) buildCompactRight() string {
-	// Show just the indicator dot, no text
-	indicator := styleHeaderInfo.Render("●")
-	return indicator
+	// Connection status is shown in StatusBar, header right side is empty
+	return ""
 }
 
 // SetSize updates the header width.

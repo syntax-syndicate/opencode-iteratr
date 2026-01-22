@@ -9,12 +9,13 @@ import (
 )
 
 // TestHeader_AdaptToLayoutMode verifies Header adapts to compact mode.
+// Note: Connection status is shown in StatusBar, not Header.
 func TestHeader_AdaptToLayoutMode(t *testing.T) {
 	tests := []struct {
 		name       string
 		mode       LayoutMode
 		width      int
-		expectFull bool // Expect full "connected" text vs just "●"
+		expectFull bool // Expect full "Iteration #X" text vs just "#X"
 	}{
 		{
 			name:       "desktop mode shows full text",
@@ -55,28 +56,20 @@ func TestHeader_AdaptToLayoutMode(t *testing.T) {
 
 			// Verify based on mode
 			if tt.expectFull {
-				// Desktop mode should show "connected"
-				if !strings.Contains(content, "connected") {
-					t.Errorf("Desktop mode should contain 'connected' text, got: %q", content)
-				}
 				// Desktop mode should show "Iteration #"
 				if !strings.Contains(content, "Iteration") {
 					t.Errorf("Desktop mode should contain 'Iteration' text, got: %q", content)
 				}
 			} else {
-				// Compact mode should NOT show "connected" (just dot)
-				if strings.Contains(content, "connected") {
-					t.Errorf("Compact mode should not contain 'connected' text, got: %q", content)
-				}
 				// Compact mode should show just "#" prefix
 				if !strings.Contains(content, "#5") {
 					t.Errorf("Compact mode should contain '#5' for iteration, got: %q", content)
 				}
 			}
 
-			// Both modes should show the dot indicator
-			if !strings.Contains(content, "●") {
-				t.Errorf("Both modes should contain '●' indicator, got: %q", content)
+			// Both modes should show session name
+			if !strings.Contains(content, "test-session") && !strings.Contains(content, "test-ses") {
+				t.Errorf("Both modes should contain session name, got: %q", content)
 			}
 		})
 	}

@@ -28,7 +28,8 @@ func NewStatusBar() *StatusBar {
 }
 
 // Draw renders the status bar to the screen.
-// Format: [indicator] Working | Current Task Name
+// Format: [spinner] ● connected | task: Current Task Name
+// When idle (not working), spinner is hidden. When working, shows animated spinner.
 func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if area.Dx() <= 0 || area.Dy() <= 0 {
 		return nil
@@ -37,9 +38,10 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Build status content based on layout mode
 	var content string
 
-	// Add working indicator
-	indicator := s.getWorkingIndicator()
-	content += indicator + " "
+	// Add spinner only when working (not when idle)
+	if s.working {
+		content += s.spinner.View() + " "
+	}
 
 	// Add connection status (condensed in compact mode)
 	connStatus := s.getConnectionStatus()
@@ -107,16 +109,6 @@ func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
 		return s.spinner.Tick()
 	}
 	return nil
-}
-
-// getWorkingIndicator returns the appropriate working indicator.
-// Uses animated spinner when working, ○ when idle
-func (s *StatusBar) getWorkingIndicator() string {
-	if s.working {
-		// Show animated spinner
-		return s.spinner.View()
-	}
-	return styleDim.Render("○")
 }
 
 // getConnectionStatus returns the connection status indicator.
