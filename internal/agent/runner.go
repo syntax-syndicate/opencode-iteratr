@@ -85,9 +85,25 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 		return fmt.Errorf("failed to start opencode: %w", err)
 	}
 
+	// Monitor context cancellation and ensure process cleanup
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			logger.Debug("Context cancelled, killing opencode process")
+			// Kill the process group to ensure all children are terminated
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		case <-done:
+			// Normal completion
+		}
+	}()
+
 	// Send prompt to stdin
 	logger.Debug("Sending prompt to opencode (length: %d)", len(prompt))
 	if _, err := io.WriteString(stdin, prompt); err != nil {
+		close(done)
 		logger.Error("Failed to write prompt: %v", err)
 		return fmt.Errorf("failed to write prompt: %w", err)
 	}
@@ -97,11 +113,26 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 	logger.Debug("Parsing JSON events from opencode")
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
+		// Check context between reads
+		if ctx.Err() != nil {
+			logger.Debug("Context cancelled during output parsing")
+			break
+		}
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
 		r.parseEvent(line)
+	}
+
+	// Signal the monitor goroutine we're done
+	close(done)
+
+	// Check for context cancellation first
+	if ctx.Err() != nil {
+		// Wait briefly for process to die, then return
+		cmd.Wait()
+		return ctx.Err()
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -112,6 +143,10 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 	// Wait for process to complete
 	logger.Debug("Waiting for opencode process to exit")
 	if err := cmd.Wait(); err != nil {
+		// If context was cancelled, don't treat as error
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		logger.Error("opencode exited with error: %v", err)
 		return fmt.Errorf("opencode failed: %w", err)
 	}

@@ -208,6 +208,14 @@ func (o *Orchestrator) Run() error {
 	// Run iteration loop
 	iterationCount := 0
 	for {
+		// Check for context cancellation (TUI quit, signal, etc.)
+		select {
+		case <-o.ctx.Done():
+			logger.Info("Context cancelled, stopping iteration loop")
+			return nil
+		default:
+		}
+
 		currentIteration := startIteration + iterationCount
 
 		// Check iteration limit (0 = infinite)
@@ -282,11 +290,16 @@ func (o *Orchestrator) Run() error {
 
 		// Run agent iteration with panic recovery
 		logger.Info("Running agent for iteration #%d", currentIteration)
-		fmt.Printf("Running iteration #%d...\n", currentIteration)
 		err = ierr.Recover(func() error {
 			return o.runner.RunIteration(o.ctx, prompt)
 		})
 		if err != nil {
+			// Check if context was cancelled (TUI quit, signal, etc.) - exit gracefully
+			if o.ctx.Err() != nil {
+				logger.Info("Context cancelled during iteration, stopping gracefully")
+				return nil
+			}
+
 			// Log the error but continue with graceful handling
 			logger.Error("Iteration #%d failed: %v", currentIteration, err)
 			fmt.Fprintf(os.Stderr, "Iteration #%d failed: %v\n", currentIteration, err)

@@ -278,7 +278,10 @@ func (a *App) View() tea.View {
 	view.ReportFocus = true                  // Enable focus events
 
 	if a.quitting {
-		// Return minimal view when quitting - don't render full UI
+		// Return minimal view when quitting - exit alt screen for proper terminal restoration
+		view.AltScreen = false
+		view.MouseMode = 0
+		view.ReportFocus = false
 		view.Content = lipglossv2.NewLayer("")
 		return view
 	}
