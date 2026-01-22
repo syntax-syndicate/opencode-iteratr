@@ -382,6 +382,35 @@ var (
 				Foreground(colorSubtext0).
 				Background(colorSurface0).
 				Padding(0, 1)
+
+	// Modal styles
+	styleModalContainer = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorBorderFocused).
+				Background(colorBase).
+				Padding(1, 2)
+
+	styleModalTitle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true).
+			Align(lipgloss.Center)
+
+	styleModalSection = lipgloss.NewStyle().
+				Foreground(colorText)
+
+	styleModalSeparator = lipgloss.NewStyle().
+				Foreground(colorSurface2)
+
+	styleModalLabel = lipgloss.NewStyle().
+			Foreground(colorSubtext0)
+
+	styleModalValue = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	styleModalHint = lipgloss.NewStyle().
+			Foreground(colorSubtext0).
+			Italic(true).
+			Align(lipgloss.Center)
 )
 
 // borderStyle returns the appropriate border style based on focus state

@@ -55,6 +55,13 @@
       "url": "https://github.com/charmbracelet/lipgloss",
       "branch": "master",
       "specialNotes": "Style definitions for terminal UIs. Flexbox-like composition with JoinVertical/JoinHorizontal."
+    },
+    {
+      "type": "git",
+      "name": "bubblezone",
+      "url": "https://github.com/lrstanley/bubblezone",
+      "branch": "v2-exp",
+      "specialNotes": "Mouse zone management for Bubbletea v2. Enables clickable regions in TUIs."
     }
   ],
   "model": "claude-haiku-4-5",

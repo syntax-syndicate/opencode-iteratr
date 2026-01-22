@@ -8,13 +8,14 @@ import (
 
 // Dialog represents a modal dialog overlay
 type Dialog struct {
-	title   string
-	message string
-	button  string
-	visible bool
-	width   int
-	height  int
-	onClose func() tea.Cmd
+	title      string
+	message    string
+	button     string
+	visible    bool
+	width      int
+	height     int
+	onClose    func() tea.Cmd
+	dialogArea uv.Rectangle // Screen area where dialog is drawn (for mouse hit detection)
 }
 
 // NewDialog creates a new dialog
@@ -144,13 +145,25 @@ func (d *Dialog) Draw(scr uv.Screen, area uv.Rectangle) {
 	}
 
 	// Create centered area for dialog
-	dialogArea := uv.Rectangle{
+	d.dialogArea = uv.Rectangle{
 		Min: uv.Position{X: area.Min.X + x, Y: area.Min.Y + y},
 		Max: uv.Position{X: area.Min.X + x + dialogWidth, Y: area.Min.Y + y + dialogHeight},
 	}
 
 	// Draw dialog
-	uv.NewStyledString(dialog).Draw(scr, dialogArea)
+	uv.NewStyledString(dialog).Draw(scr, d.dialogArea)
+}
+
+// HandleClick processes a mouse click. Clicking anywhere dismisses the dialog.
+func (d *Dialog) HandleClick(x, y int) tea.Cmd {
+	if !d.visible {
+		return nil
+	}
+	d.Hide()
+	if d.onClose != nil {
+		return d.onClose()
+	}
+	return nil
 }
 
 // SessionCompleteMsg is sent when the session is marked complete

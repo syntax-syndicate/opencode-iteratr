@@ -161,9 +161,10 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 }
 
 // formatInbox formats unread inbox messages for template injection.
+// Returns empty string if no unread messages (section header will be omitted).
 func formatInbox(state *session.State) string {
 	if len(state.Inbox) == 0 {
-		return "No messages"
+		return ""
 	}
 
 	unread := []*session.Message{}
@@ -174,11 +175,11 @@ func formatInbox(state *session.State) string {
 	}
 
 	if len(unread) == 0 {
-		return "No unread messages"
+		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%d unread message(s):\n", len(unread)))
+	sb.WriteString(fmt.Sprintf("## Inbox\n%d unread message(s):\n", len(unread)))
 	for _, msg := range unread {
 		sb.WriteString(fmt.Sprintf("- [%s] %s (%s)\n",
 			msg.ID[:8],
@@ -190,9 +191,10 @@ func formatInbox(state *session.State) string {
 }
 
 // formatNotes formats notes grouped by type for template injection.
+// Returns empty string if no notes (section header will be omitted).
 func formatNotes(state *session.State) string {
 	if len(state.Notes) == 0 {
-		return "No notes recorded"
+		return ""
 	}
 
 	// Group notes by type
@@ -202,6 +204,7 @@ func formatNotes(state *session.State) string {
 	}
 
 	var sb strings.Builder
+	sb.WriteString("## Notes\n")
 	types := []string{"learning", "stuck", "tip", "decision"}
 	for _, noteType := range types {
 		notes := byType[noteType]
@@ -220,9 +223,10 @@ func formatNotes(state *session.State) string {
 }
 
 // formatTasks formats tasks grouped by status for template injection.
+// Always includes section header since workflow requires checking tasks.
 func formatTasks(state *session.State) string {
 	if len(state.Tasks) == 0 {
-		return "No tasks"
+		return "## Current Tasks\nNo tasks yet - sync tasks from spec before starting work."
 	}
 
 	// Group tasks by status
@@ -232,6 +236,7 @@ func formatTasks(state *session.State) string {
 	}
 
 	var sb strings.Builder
+	sb.WriteString("## Current Tasks\n")
 	statuses := []string{"remaining", "in_progress", "completed", "blocked"}
 	for _, status := range statuses {
 		tasks := byStatus[status]
@@ -276,9 +281,10 @@ func formatTasks(state *session.State) string {
 
 // formatIterationHistory formats recent iteration summaries for template injection.
 // Shows the last 5 completed iterations with their summaries and tasks worked.
+// Returns empty string if no history (section header will be omitted).
 func formatIterationHistory(state *session.State) string {
 	if len(state.Iterations) == 0 {
-		return "No iteration history yet"
+		return ""
 	}
 
 	// Filter to iterations with summaries
@@ -290,7 +296,7 @@ func formatIterationHistory(state *session.State) string {
 	}
 
 	if len(withSummaries) == 0 {
-		return "No iteration summaries recorded yet"
+		return ""
 	}
 
 	// Take the last 5 iterations (most recent)
@@ -301,6 +307,7 @@ func formatIterationHistory(state *session.State) string {
 	recent := withSummaries[start:]
 
 	var sb strings.Builder
+	sb.WriteString("## Recent Progress\n")
 	for _, iter := range recent {
 		// Calculate time ago
 		elapsed := time.Since(iter.EndedAt)

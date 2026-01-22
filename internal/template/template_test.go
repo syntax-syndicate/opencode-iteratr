@@ -266,7 +266,7 @@ func TestFormatInbox(t *testing.T) {
 			state: &session.State{
 				Inbox: []*session.Message{},
 			},
-			want: "No messages",
+			want: "", // Empty sections return empty string to omit header
 		},
 		{
 			name: "all messages read",
@@ -275,7 +275,7 @@ func TestFormatInbox(t *testing.T) {
 					{ID: "msg001", Content: "Test", Read: true, CreatedAt: time.Now()},
 				},
 			},
-			want: "No unread messages",
+			want: "", // Empty sections return empty string to omit header
 		},
 		{
 			name: "unread messages",
@@ -293,7 +293,11 @@ func TestFormatInbox(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatInbox(tt.state)
-			if !strings.Contains(got, tt.want) {
+			if tt.want == "" {
+				if got != "" {
+					t.Errorf("formatInbox() = %q, want empty string", got)
+				}
+			} else if !strings.Contains(got, tt.want) {
 				t.Errorf("formatInbox() = %q, want to contain %q", got, tt.want)
 			}
 		})
@@ -311,7 +315,7 @@ func TestFormatNotes(t *testing.T) {
 			state: &session.State{
 				Notes: []*session.Note{},
 			},
-			want: []string{"No notes recorded"},
+			want: []string{}, // Empty sections return empty string to omit header
 		},
 		{
 			name: "notes by type",
@@ -434,7 +438,7 @@ func TestFormatIterationHistory(t *testing.T) {
 			state: &session.State{
 				Iterations: []*session.Iteration{},
 			},
-			want: []string{"No iteration history yet"},
+			want: []string{}, // Empty sections return empty string to omit header
 		},
 		{
 			name: "no summaries",
@@ -443,7 +447,7 @@ func TestFormatIterationHistory(t *testing.T) {
 					{Number: 1, StartedAt: now.Add(-1 * time.Hour), EndedAt: now.Add(-50 * time.Minute), Complete: true, Summary: ""},
 				},
 			},
-			want: []string{"No iteration summaries recorded yet"},
+			want: []string{}, // Empty sections return empty string to omit header
 		},
 		{
 			name: "one iteration with summary",

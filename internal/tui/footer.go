@@ -9,11 +9,33 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+// FooterAction represents a clickable action in the footer.
+type FooterAction string
+
+const (
+	FooterActionDashboard FooterAction = "dashboard"
+	FooterActionLogs      FooterAction = "logs"
+	FooterActionNotes     FooterAction = "notes"
+	FooterActionInbox     FooterAction = "inbox"
+	FooterActionSidebar   FooterAction = "sidebar"
+	FooterActionHelp      FooterAction = "help"
+	FooterActionQuit      FooterAction = "quit"
+)
+
+// footerButton tracks the hit region for a clickable footer button.
+type footerButton struct {
+	action FooterAction
+	startX int // inclusive
+	endX   int // exclusive
+}
+
 // Footer renders the bottom footer bar with navigation hints.
 type Footer struct {
 	width      int
 	activeView ViewType
 	layoutMode LayoutMode
+	area       uv.Rectangle   // Screen area where footer is drawn
+	buttons    []footerButton // Clickable hit regions
 }
 
 // NewFooter creates a new Footer component.
@@ -30,6 +52,9 @@ func (f *Footer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
+	// Store area for mouse hit detection
+	f.area = area
+
 	// Build footer content based on available width
 	content := f.buildFooterContent(area.Dx())
 
@@ -41,48 +66,63 @@ func (f *Footer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 // buildFooterContent creates the footer text with navigation hints.
 func (f *Footer) buildFooterContent(availableWidth int) string {
-	var parts []string
+	type buttonPart struct {
+		rendered string
+		action   FooterAction
+	}
 
 	// View navigation shortcuts
 	views := []struct {
-		key  string
-		name string
-		view ViewType
+		key    string
+		name   string
+		view   ViewType
+		action FooterAction
 	}{
-		{"1", "Dashboard", ViewDashboard},
-		{"2", "Logs", ViewLogs},
-		{"3", "Notes", ViewNotes},
-		{"4", "Inbox", ViewInbox},
+		{"1", "Dashboard", ViewDashboard, FooterActionDashboard},
+		{"2", "Logs", ViewLogs, FooterActionLogs},
+		{"3", "Notes", ViewNotes, FooterActionNotes},
+		{"4", "Inbox", ViewInbox, FooterActionInbox},
 	}
 
+	var leftButtons []buttonPart
 	for _, v := range views {
 		key := styleFooterKey.Render(fmt.Sprintf("[%s]", v.key))
 		var label string
 		if v.view == f.activeView {
-			// Highlight active view
 			label = styleFooterActive.Render(v.name)
 		} else {
 			label = styleFooterLabel.Render(v.name)
 		}
-		parts = append(parts, key+" "+label)
+		leftButtons = append(leftButtons, buttonPart{
+			rendered: key + " " + label,
+			action:   v.action,
+		})
 	}
 
 	// In compact mode, add sidebar toggle hint
 	if f.layoutMode == LayoutCompact {
-		sidebarHint := styleFooterKey.Render("[s]") + styleFooterLabel.Render("Sidebar")
-		parts = append(parts, sidebarHint)
+		leftButtons = append(leftButtons, buttonPart{
+			rendered: styleFooterKey.Render("[s]") + styleFooterLabel.Render("Sidebar"),
+			action:   FooterActionSidebar,
+		})
 	}
 
-	// Add help and quit hints
-	helpHint := styleFooterKey.Render("[?]") + styleFooterLabel.Render("Help")
-	quitHint := styleFooterKey.Render("[q]") + styleFooterLabel.Render("Quit")
+	rightButtons := []buttonPart{
+		{rendered: styleFooterKey.Render("[?]") + styleFooterLabel.Render("Help"), action: FooterActionHelp},
+		{rendered: styleFooterKey.Render("[q]") + styleFooterLabel.Render("Quit"), action: FooterActionQuit},
+	}
 
-	// Build left side (view navigation + optional sidebar toggle)
-	leftParts := parts
+	// Build left and right strings
+	var leftParts []string
+	for _, b := range leftButtons {
+		leftParts = append(leftParts, b.rendered)
+	}
 	left := strings.Join(leftParts, "  ")
 
-	// Build right side (help + quit)
-	rightParts := []string{helpHint, quitHint}
+	var rightParts []string
+	for _, b := range rightButtons {
+		rightParts = append(rightParts, b.rendered)
+	}
 	right := strings.Join(rightParts, "  ")
 
 	// Calculate spacing to fill width
@@ -96,9 +136,42 @@ func (f *Footer) buildFooterContent(availableWidth int) string {
 	// Combine with spacing
 	content := left + strings.Repeat(" ", padding) + right
 
-	// If content is too wide, use condensed version
+	// If content is too wide, use condensed version (no button tracking for condensed)
 	if lipgloss.Width(content) > availableWidth {
-		content = f.buildCondensedContent(availableWidth)
+		f.buttons = nil
+		return f.buildCondensedContent(availableWidth)
+	}
+
+	// Track button hit regions (accounting for 1 char left padding from styleFooter)
+	f.buttons = nil
+	xOffset := f.area.Min.X + 1 // 1 for styleFooter left padding
+
+	for i, b := range leftButtons {
+		w := lipgloss.Width(b.rendered)
+		f.buttons = append(f.buttons, footerButton{
+			action: b.action,
+			startX: xOffset,
+			endX:   xOffset + w,
+		})
+		xOffset += w
+		if i < len(leftButtons)-1 {
+			xOffset += 2 // separator "  "
+		}
+	}
+
+	// Right side buttons start after left + padding
+	xOffset = f.area.Min.X + 1 + leftWidth + padding
+	for i, b := range rightButtons {
+		w := lipgloss.Width(b.rendered)
+		f.buttons = append(f.buttons, footerButton{
+			action: b.action,
+			startX: xOffset,
+			endX:   xOffset + w,
+		})
+		xOffset += w
+		if i < len(rightButtons)-1 {
+			xOffset += 2 // separator "  "
+		}
 	}
 
 	return content
@@ -122,6 +195,21 @@ func (f *Footer) buildCondensedContent(availableWidth int) string {
 	}
 
 	return content
+}
+
+// ActionAtPosition returns the footer action at the given screen coordinates, or empty string if none.
+func (f *Footer) ActionAtPosition(x, y int) FooterAction {
+	// Check Y is within footer area
+	if y < f.area.Min.Y || y >= f.area.Max.Y {
+		return ""
+	}
+
+	for _, b := range f.buttons {
+		if x >= b.startX && x < b.endX {
+			return b.action
+		}
+	}
+	return ""
 }
 
 // SetSize updates the footer width.

@@ -5,19 +5,12 @@ package template
 const DefaultTemplate = `# iteratr Session
 Session: {{session}} | Iteration: #{{iteration}}
 
-## Recent Progress
 {{history}}
-
 ## Spec
 {{spec}}
 
-## Inbox
 {{inbox}}
-
-## Notes
 {{notes}}
-
-## Current Tasks
 {{tasks}}
 
 ## iteratr Tool Commands

@@ -27,10 +27,14 @@ type App struct {
 	status    *StatusBar
 	sidebar   *Sidebar
 	dialog    *Dialog
+	taskModal *TaskModal
+	noteModal *NoteModal
 
 	// Layout management
 	layout      Layout
 	layoutDirty bool
+
+	// Mouse interaction (coordinate-based hit detection, no zone manager needed)
 
 	// State
 	activeView     ViewType
@@ -54,8 +58,8 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		nc:             nc,
 		ctx:            ctx,
 		activeView:     ViewDashboard,
-		sidebarVisible: false,               // Sidebar hidden by default in compact mode
-		dashboard:      NewDashboard(agent), // Pass agent output to dashboard
+		sidebarVisible: false, // Sidebar hidden by default in compact mode
+		dashboard:      NewDashboard(agent),
 		logs:           NewLogViewer(),
 		notes:          NewNotesPanel(),
 		inbox:          NewInboxPanel(),
@@ -65,6 +69,8 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		status:         NewStatusBar(),
 		sidebar:        NewSidebar(),
 		dialog:         NewDialog(),
+		taskModal:      NewTaskModal(),
+		noteModal:      NewNoteModal(),
 		eventChan:      make(chan session.Event, 100), // Buffered channel for events
 		layoutDirty:    true,                          // Calculate layout on first render
 	}
@@ -87,6 +93,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return a.handleKeyPress(msg)
+
+	case tea.MouseClickMsg:
+		return a.handleMouse(msg)
 
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
@@ -146,6 +155,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			},
 		)
 		return a, nil
+
+	case OpenTaskModalMsg:
+		// Open task modal with the selected task
+		a.taskModal.SetTask(msg.Task)
+		return a, nil
 	}
 
 	// Update status bar (for spinner animation) - always visible
@@ -190,7 +204,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKeyPress processes keyboard input using hierarchical priority routing.
-// Priority: Dialog → Global → View → Focus → Component
+// Priority: Dialog → Modal → Global → View → Focus → Component
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// 0. Dialog gets priority when visible
 	if a.dialog.IsVisible() {
@@ -200,7 +214,32 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, nil // Consume all keys when dialog is visible
 	}
 
-	// 1. Global keys (highest priority)
+	// 1. Modal gets priority when visible
+	if a.taskModal != nil && a.taskModal.IsVisible() {
+		// ESC key closes the modal
+		if msg.String() == "esc" {
+			a.taskModal.Close()
+			if a.sidebar != nil {
+				a.sidebar.ClearActiveTask()
+			}
+			return a, nil
+		}
+		// Block all other keys when modal is visible
+		return a, nil
+	}
+
+	if a.noteModal != nil && a.noteModal.IsVisible() {
+		if msg.String() == "esc" {
+			a.noteModal.Close()
+			if a.sidebar != nil {
+				a.sidebar.ClearActiveNote()
+			}
+			return a, nil
+		}
+		return a, nil
+	}
+
+	// 2. Global keys (highest priority)
 	if cmd := a.handleGlobalKeys(msg); cmd != nil {
 		return a, cmd
 	}
@@ -217,6 +256,94 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// 4. Delegate to active component
 	return a, a.delegateToActive(msg)
+}
+
+// handleMouse processes mouse click events using coordinate-based hit detection.
+func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	mouse := msg.Mouse()
+
+	// Only handle left mouse button
+	if mouse.Button != tea.MouseLeft {
+		return a, nil
+	}
+
+	// Dialog takes priority - any click dismisses it
+	if a.dialog.IsVisible() {
+		return a, a.dialog.HandleClick(mouse.X, mouse.Y)
+	}
+
+	// Check if task modal is open - click outside closes it
+	if a.taskModal.IsVisible() {
+		// If click is on a different task, switch to that task
+		if task := a.sidebar.TaskAtPosition(mouse.X, mouse.Y); task != nil {
+			a.taskModal.SetTask(task)
+			a.sidebar.SetActiveTask(task.ID)
+			return a, nil
+		}
+		// Click anywhere else closes the modal
+		a.taskModal.Close()
+		a.sidebar.ClearActiveTask()
+		return a, nil
+	}
+
+	// Check if note modal is open - click outside closes it
+	if a.noteModal.IsVisible() {
+		// If click is on a different note, switch to that note
+		if note := a.sidebar.NoteAtPosition(mouse.X, mouse.Y); note != nil {
+			a.noteModal.SetNote(note)
+			a.sidebar.SetActiveNote(note.ID)
+			return a, nil
+		}
+		// Click anywhere else closes the modal
+		a.noteModal.Close()
+		a.sidebar.ClearActiveNote()
+		return a, nil
+	}
+
+	// Check if a task was clicked
+	if task := a.sidebar.TaskAtPosition(mouse.X, mouse.Y); task != nil {
+		a.taskModal.SetTask(task)
+		a.sidebar.SetActiveTask(task.ID)
+		return a, nil
+	}
+
+	// Check if a note was clicked
+	if note := a.sidebar.NoteAtPosition(mouse.X, mouse.Y); note != nil {
+		a.noteModal.SetNote(note)
+		a.sidebar.SetActiveNote(note.ID)
+		return a, nil
+	}
+
+	// Check if a footer button was clicked
+	if action := a.footer.ActionAtPosition(mouse.X, mouse.Y); action != "" {
+		return a, a.handleFooterAction(action)
+	}
+
+	return a, nil
+}
+
+// handleFooterAction processes a footer button click action.
+func (a *App) handleFooterAction(action FooterAction) tea.Cmd {
+	switch action {
+	case FooterActionDashboard:
+		a.activeView = ViewDashboard
+		a.footer.SetActiveView(ViewDashboard)
+	case FooterActionLogs:
+		a.activeView = ViewLogs
+		a.footer.SetActiveView(ViewLogs)
+	case FooterActionNotes:
+		a.activeView = ViewNotes
+		a.footer.SetActiveView(ViewNotes)
+	case FooterActionInbox:
+		a.activeView = ViewInbox
+		a.footer.SetActiveView(ViewInbox)
+	case FooterActionSidebar:
+		a.sidebarVisible = !a.sidebarVisible
+	case FooterActionQuit:
+		a.quitting = true
+		return tea.Quit
+	}
+	return func() tea.Msg { return nil }
 }
 
 // handleGlobalKeys processes global keyboard shortcuts (highest priority).
@@ -321,8 +448,10 @@ func (a *App) View() tea.View {
 	// Draw all components to canvas
 	view.Cursor = a.Draw(canvas, canvas.Bounds())
 
-	// Convert canvas to lipgloss Layer
-	view.Content = lipglossv2.NewLayer(canvas.Render())
+	// Render canvas to string
+	content := canvas.Render()
+
+	view.Content = lipglossv2.NewLayer(content)
 
 	return view
 }
@@ -360,7 +489,13 @@ func (a *App) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		a.sidebar.Draw(scr, sidebarRect)
 	}
 
-	// Draw dialog on top if visible
+	// Draw overlays on top (modals, then dialog)
+	if a.taskModal.IsVisible() {
+		a.taskModal.Draw(scr, area)
+	}
+	if a.noteModal.IsVisible() {
+		a.noteModal.Draw(scr, area)
+	}
 	if a.dialog.IsVisible() {
 		a.dialog.Draw(scr, area)
 	}

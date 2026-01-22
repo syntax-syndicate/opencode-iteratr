@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -11,20 +12,29 @@ import (
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
+// OpenTaskModalMsg is sent when a task should be opened in the modal.
+type OpenTaskModalMsg struct {
+	Task *session.Task
+}
+
 // Sidebar displays tasks and notes in two sections.
 type Sidebar struct {
-	state         *session.State
-	width         int
-	height        int
-	tasksViewport viewport.Model
-	notesViewport viewport.Model
-	cursor        int // Selected task index (for future interactivity)
-	focused       bool
-	taskIndex     map[string]int // O(1) lookup: task ID -> index in ordered task list
-	noteIndex     map[string]int // O(1) lookup: note ID -> index in state.Notes
-	pulse         Pulse
-	pulsedTaskIDs map[string]string // Track task ID -> last status to detect changes
-	needsPulse    bool              // Flag indicating pulse should start on next Update
+	state            *session.State
+	width            int
+	height           int
+	tasksViewport    viewport.Model
+	notesViewport    viewport.Model
+	cursor           int    // Selected task index (for keyboard navigation)
+	activeTaskID     string // Currently active task (shown in modal)
+	focused          bool
+	taskIndex        map[string]int // O(1) lookup: task ID -> index in ordered task list
+	noteIndex        map[string]int // O(1) lookup: note ID -> index in state.Notes
+	pulse            Pulse
+	pulsedTaskIDs    map[string]string // Track task ID -> last status to detect changes
+	needsPulse       bool              // Flag indicating pulse should start on next Update
+	tasksContentArea uv.Rectangle      // Screen area where task lines are drawn (for mouse hit detection)
+	notesContentArea uv.Rectangle      // Screen area where note lines are drawn (for mouse hit detection)
+	activeNoteID     string            // Currently active note (shown in modal)
 }
 
 // NewSidebar creates a new Sidebar component.
@@ -62,9 +72,36 @@ func (s *Sidebar) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// handleKeyPress handles keyboard input for viewport scrolling.
+// handleKeyPress handles keyboard input for task navigation and viewport scrolling.
 func (s *Sidebar) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
-	// Delegate to viewports for scrolling
+	tasks := s.getTasks()
+
+	switch msg.String() {
+	case "j", "down":
+		// Move cursor down
+		if len(tasks) > 0 && s.cursor < len(tasks)-1 {
+			s.cursor++
+			s.updateContent() // Rebuild content with new cursor position
+		}
+		return nil
+	case "k", "up":
+		// Move cursor up
+		if s.cursor > 0 {
+			s.cursor--
+			s.updateContent() // Rebuild content with new cursor position
+		}
+		return nil
+	case "enter":
+		// Return OpenTaskModalMsg for the selected task
+		if len(tasks) > 0 && s.cursor < len(tasks) {
+			return func() tea.Msg {
+				return OpenTaskModalMsg{Task: tasks[s.cursor]}
+			}
+		}
+		return nil
+	}
+
+	// Delegate to viewports for scrolling (pgup/pgdown, etc.)
 	var cmds []tea.Cmd
 
 	var cmd tea.Cmd
@@ -92,6 +129,9 @@ func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
 	// Draw panel with "Tasks" title
 	inner := DrawPanel(scr, area, title, s.focused)
 
+	// Store the inner content area for coordinate-based mouse hit detection
+	s.tasksContentArea = inner
+
 	// Render viewport content
 	content := s.tasksViewport.View()
 	DrawText(scr, inner, content)
@@ -115,6 +155,9 @@ func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 	// Draw panel with "Notes" title
 	inner := DrawPanel(scr, area, "Notes", false) // Notes section never focused
 
+	// Store the inner content area for coordinate-based mouse hit detection
+	s.notesContentArea = inner
+
 	// Render viewport content
 	content := s.notesViewport.View()
 	DrawText(scr, inner, content)
@@ -133,32 +176,21 @@ func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 	}
 }
 
-// getTasks returns all tasks in display order (completed, in_progress, remaining, blocked).
+// getTasks returns all tasks ordered by ID.
 func (s *Sidebar) getTasks() []*session.Task {
 	if s.state == nil {
 		return nil
 	}
 
-	var inProgress, remaining, blocked, completed []*session.Task
+	tasks := make([]*session.Task, 0, len(s.state.Tasks))
 	for _, task := range s.state.Tasks {
-		switch task.Status {
-		case "in_progress":
-			inProgress = append(inProgress, task)
-		case "remaining":
-			remaining = append(remaining, task)
-		case "blocked":
-			blocked = append(blocked, task)
-		case "completed":
-			completed = append(completed, task)
-		}
+		tasks = append(tasks, task)
 	}
 
-	// Concatenate in order: completed first, then in_progress, remaining, blocked
-	var tasks []*session.Task
-	tasks = append(tasks, completed...)
-	tasks = append(tasks, inProgress...)
-	tasks = append(tasks, remaining...)
-	tasks = append(tasks, blocked...)
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].ID < tasks[j].ID
+	})
+
 	return tasks
 }
 
@@ -194,16 +226,17 @@ func (s *Sidebar) buildTasksContent() string {
 	}
 
 	var lines []string
-	for _, task := range tasks {
-		line := s.renderTask(task)
+	for idx, task := range tasks {
+		isSelected := (s.focused && idx == s.cursor) || task.ID == s.activeTaskID
+		line := s.renderTask(task, isSelected)
 		lines = append(lines, line)
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// renderTask renders a single task line.
-func (s *Sidebar) renderTask(task *session.Task) string {
+// renderTask renders a single task line with optional highlight for selected task.
+func (s *Sidebar) renderTask(task *session.Task, isSelected bool) string {
 	// Status indicator
 	var indicator string
 	var indicatorStyle lipgloss.Style
@@ -237,11 +270,88 @@ func (s *Sidebar) renderTask(task *session.Task) string {
 		content = content[:maxContentWidth-3] + "..."
 	}
 
-	// Build line
+	// Build line with selection arrow or placeholder space
 	styledIndicator := indicatorStyle.Render(indicator)
-	line := fmt.Sprintf(" %s %s", styledIndicator, content)
+	prefix := " "
+	if isSelected {
+		prefix = "▸"
+	}
+	line := fmt.Sprintf("%s %s %s", prefix, styledIndicator, content)
 
 	return line
+}
+
+// TaskAtPosition returns the task at the given screen coordinates, or nil if none.
+// Uses coordinate-based hit detection against the tasks content area.
+func (s *Sidebar) TaskAtPosition(x, y int) *session.Task {
+	area := s.tasksContentArea
+	// Check if the click is within the tasks content area
+	if x < area.Min.X || x >= area.Max.X || y < area.Min.Y || y >= area.Max.Y {
+		return nil
+	}
+
+	// Calculate which task line was clicked, accounting for viewport scroll
+	lineIndex := (y - area.Min.Y) + s.tasksViewport.YOffset()
+
+	tasks := s.getTasks()
+	if lineIndex < 0 || lineIndex >= len(tasks) {
+		return nil
+	}
+
+	return tasks[lineIndex]
+}
+
+// NoteAtPosition returns the note at the given screen coordinates, or nil if none.
+// Uses coordinate-based hit detection against the notes content area.
+func (s *Sidebar) NoteAtPosition(x, y int) *session.Note {
+	area := s.notesContentArea
+	// Check if the click is within the notes content area
+	if x < area.Min.X || x >= area.Max.X || y < area.Min.Y || y >= area.Max.Y {
+		return nil
+	}
+
+	// Calculate which note line was clicked, accounting for viewport scroll
+	lineIndex := (y - area.Min.Y) + s.notesViewport.YOffset()
+
+	// Notes display the last 10 notes
+	if s.state == nil || len(s.state.Notes) == 0 {
+		return nil
+	}
+	startIdx := 0
+	if len(s.state.Notes) > 10 {
+		startIdx = len(s.state.Notes) - 10
+	}
+	notes := s.state.Notes[startIdx:]
+
+	if lineIndex < 0 || lineIndex >= len(notes) {
+		return nil
+	}
+
+	return notes[lineIndex]
+}
+
+// SetActiveNote marks a note as active (highlighted) and rebuilds content.
+func (s *Sidebar) SetActiveNote(id string) {
+	s.activeNoteID = id
+	s.updateContent()
+}
+
+// ClearActiveNote removes the active note highlight and rebuilds content.
+func (s *Sidebar) ClearActiveNote() {
+	s.activeNoteID = ""
+	s.updateContent()
+}
+
+// SetActiveTask marks a task as active (highlighted) and rebuilds content.
+func (s *Sidebar) SetActiveTask(id string) {
+	s.activeTaskID = id
+	s.updateContent()
+}
+
+// ClearActiveTask removes the active task highlight and rebuilds content.
+func (s *Sidebar) ClearActiveTask() {
+	s.activeTaskID = ""
+	s.updateContent()
 }
 
 // SetFocus sets whether the sidebar has keyboard focus.
@@ -307,6 +417,14 @@ func (s *Sidebar) SetState(state *session.State) {
 	}
 
 	s.updateContent()
+
+	// Clamp cursor to valid range after state update
+	tasks := s.getTasks()
+	if len(tasks) == 0 {
+		s.cursor = 0
+	} else if s.cursor >= len(tasks) {
+		s.cursor = len(tasks) - 1
+	}
 }
 
 // rebuildIndex rebuilds the ID-based lookup indices for tasks and notes.
@@ -363,15 +481,16 @@ func (s *Sidebar) buildNotesContent() string {
 	}
 
 	for _, note := range s.state.Notes[startIdx:] {
-		line := s.renderNote(note)
+		isSelected := note.ID == s.activeNoteID
+		line := s.renderNote(note, isSelected)
 		lines = append(lines, line)
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// renderNote renders a single note line with type indicator.
-func (s *Sidebar) renderNote(note *session.Note) string {
+// renderNote renders a single note line with type indicator and optional selection highlight.
+func (s *Sidebar) renderNote(note *session.Note, isSelected bool) string {
 	// Type indicator
 	var indicator string
 	var indicatorStyle lipgloss.Style
@@ -405,9 +524,13 @@ func (s *Sidebar) renderNote(note *session.Note) string {
 		content = content[:maxContentWidth-3] + "..."
 	}
 
-	// Build line
+	// Build line with selection arrow or placeholder space
 	styledIndicator := indicatorStyle.Render(indicator)
-	line := fmt.Sprintf(" %s %s", styledIndicator, content)
+	prefix := " "
+	if isSelected {
+		prefix = "▸"
+	}
+	line := fmt.Sprintf("%s %s %s", prefix, styledIndicator, content)
 
 	return line
 }
