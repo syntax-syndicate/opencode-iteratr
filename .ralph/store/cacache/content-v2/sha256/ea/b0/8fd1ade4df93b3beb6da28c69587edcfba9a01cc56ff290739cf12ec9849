@@ -1,1 +1,0 @@
-Added bubbles v2 resource to btca config. When building TUI components, prefer using Bubbles v2 pre-built components (viewport, list, textinput, progress, spinner, table, paginator) instead of building from scratch.

@@ -1,1 +1,0 @@
-Successfully removed MCP server from orchestrator. ACP client now receives empty string for mcpURL parameter (will be removed entirely when ACP client is replaced with agent runner).

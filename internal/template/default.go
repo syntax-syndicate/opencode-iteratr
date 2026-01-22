@@ -14,20 +14,20 @@ Spec: {{spec}}
 Use Bash to call iteratr tools. All commands require --data-dir flag.
 
 ### Task Management
-- iteratr tool task-add --data-dir .iteratr --name {{session}} --content "description" [--status remaining|in_progress|completed|blocked]
-- iteratr tool task-status --data-dir .iteratr --name {{session}} --id ID --status STATUS
-- iteratr tool task-list --data-dir .iteratr --name {{session}}
+- {{binary}} tool task-add --data-dir .iteratr --name {{session}} --content "description" [--status remaining|in_progress|completed|blocked]
+- {{binary}} tool task-status --data-dir .iteratr --name {{session}} --id ID --status STATUS
+- {{binary}} tool task-list --data-dir .iteratr --name {{session}}
 
 ### Notes
-- iteratr tool note-add --data-dir .iteratr --name {{session}} --content "text" --type learning|stuck|tip|decision
-- iteratr tool note-list --data-dir .iteratr --name {{session}} [--type TYPE]
+- {{binary}} tool note-add --data-dir .iteratr --name {{session}} --content "text" --type learning|stuck|tip|decision
+- {{binary}} tool note-list --data-dir .iteratr --name {{session}} [--type TYPE]
 
 ### Inbox
-- iteratr tool inbox-list --data-dir .iteratr --name {{session}}
-- iteratr tool inbox-mark-read --data-dir .iteratr --name {{session}} --id ID
+- {{binary}} tool inbox-list --data-dir .iteratr --name {{session}}
+- {{binary}} tool inbox-mark-read --data-dir .iteratr --name {{session}} --id ID
 
 ### Session Control
-- iteratr tool session-complete --data-dir .iteratr --name {{session}} - Call when ALL tasks done
+- {{binary}} tool session-complete --data-dir .iteratr --name {{session}} - Call when ALL tasks done
 
 ## Workflow
 1. Check inbox, mark read after processing

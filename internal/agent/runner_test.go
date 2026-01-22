@@ -15,22 +15,35 @@ func TestParseEvent(t *testing.T) {
 	}{
 		{
 			name:       "text event",
-			jsonLine:   `{"type":"text","content":"Hello, world!"}`,
+			jsonLine:   `{"type":"text","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"text","text":"Hello, world!"}}`,
 			expectText: "Hello, world!",
 		},
 		{
 			name:          "tool_use event",
-			jsonLine:      `{"type":"tool_use","content":{"name":"task-add","input":{"content":"Test task","status":"remaining"}}}`,
+			jsonLine:      `{"type":"tool_use","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"tool","tool":"task-add","state":{"status":"completed","input":{"content":"Test task","status":"remaining"}}}}`,
 			expectToolUse: "task-add",
 		},
 		{
 			name:        "error event",
-			jsonLine:    `{"type":"error","content":"Something went wrong"}`,
+			jsonLine:    `{"type":"error","timestamp":1234567890,"sessionID":"ses_123","error":{"name":"APIError","data":{"message":"Something went wrong"}}}`,
 			expectError: "Something went wrong",
 		},
 		{
+			name:        "error event with name only",
+			jsonLine:    `{"type":"error","timestamp":1234567890,"sessionID":"ses_123","error":{"name":"UnknownError"}}`,
+			expectError: "UnknownError",
+		},
+		{
+			name:     "step_start event",
+			jsonLine: `{"type":"step_start","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"step-start"}}`,
+		},
+		{
+			name:     "step_finish event",
+			jsonLine: `{"type":"step_finish","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"step-finish","reason":"stop"}}`,
+		},
+		{
 			name:     "unknown event type",
-			jsonLine: `{"type":"unknown","content":"ignored"}`,
+			jsonLine: `{"type":"unknown","timestamp":1234567890,"sessionID":"ses_123"}`,
 		},
 		{
 			name:     "invalid JSON",
@@ -82,7 +95,7 @@ func TestParseEventToolUseInput(t *testing.T) {
 		},
 	}
 
-	jsonLine := `{"type":"tool_use","content":{"name":"task-add","input":{"content":"Test task","status":"remaining"}}}`
+	jsonLine := `{"type":"tool_use","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"tool","tool":"task-add","state":{"status":"completed","input":{"content":"Test task","status":"remaining"}}}}`
 	runner.parseEvent(jsonLine)
 
 	if gotName != "task-add" {
@@ -116,36 +129,48 @@ func TestParseEventEmptyLine(t *testing.T) {
 
 func TestJSONMarshaling(t *testing.T) {
 	// Test that our expected JSON structure matches what opencode produces
+	type Part struct {
+		Type  string         `json:"type"`
+		Text  string         `json:"text,omitempty"`
+		Tool  string         `json:"tool,omitempty"`
+		State map[string]any `json:"state,omitempty"`
+	}
 	type Event struct {
-		Type    string          `json:"type"`
-		Content json.RawMessage `json:"content"`
+		Type      string `json:"type"`
+		Timestamp int64  `json:"timestamp"`
+		SessionID string `json:"sessionID"`
+		Part      *Part  `json:"part,omitempty"`
 	}
 
 	// Text event
 	textEvent := Event{
-		Type:    "text",
-		Content: json.RawMessage(`"Hello"`),
+		Type:      "text",
+		Timestamp: 1234567890,
+		SessionID: "ses_123",
+		Part:      &Part{Type: "text", Text: "Hello"},
 	}
 	data, err := json.Marshal(textEvent)
 	if err != nil {
 		t.Fatalf("failed to marshal text event: %v", err)
 	}
-	if string(data) != `{"type":"text","content":"Hello"}` {
+	expected := `{"type":"text","timestamp":1234567890,"sessionID":"ses_123","part":{"type":"text","text":"Hello"}}`
+	if string(data) != expected {
 		t.Errorf("unexpected JSON: %s", data)
 	}
 
 	// Tool use event
-	toolContent := struct {
-		Name  string         `json:"name"`
-		Input map[string]any `json:"input"`
-	}{
-		Name:  "task-add",
-		Input: map[string]any{"content": "Test"},
-	}
-	toolContentJSON, _ := json.Marshal(toolContent)
 	toolEvent := Event{
-		Type:    "tool_use",
-		Content: json.RawMessage(toolContentJSON),
+		Type:      "tool_use",
+		Timestamp: 1234567890,
+		SessionID: "ses_123",
+		Part: &Part{
+			Type: "tool",
+			Tool: "task-add",
+			State: map[string]any{
+				"status": "completed",
+				"input":  map[string]any{"content": "Test"},
+			},
+		},
 	}
 	data, err = json.Marshal(toolEvent)
 	if err != nil {
@@ -159,5 +184,8 @@ func TestJSONMarshaling(t *testing.T) {
 	}
 	if parsed.Type != "tool_use" {
 		t.Errorf("expected type %q, got %q", "tool_use", parsed.Type)
+	}
+	if parsed.Part == nil || parsed.Part.Tool != "task-add" {
+		t.Errorf("expected tool %q, got %v", "task-add", parsed.Part)
 	}
 }

@@ -1,1 +1,0 @@
-Task "Documentation - Document environment variables" was already completed in a previous iteration. README.md:293-310 documents all three environment variables (ITERATR_DATA_DIR, ITERATR_LOG_FILE, ITERATR_LOG_LEVEL) with descriptions and usage examples. Implementation in build.go, message.go, and logger.go matches documentation.

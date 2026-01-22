@@ -1,1 +1,0 @@
-Task "TUI Agent Output - Auto-scroll with manual override" was already completed in iteration #43. The agent.go file implements auto-scroll that enables by default, disables when user scrolls away from bottom (detected via AtBottom()), and re-enables when user scrolls back to bottom. New content calls GotoBottom() only when autoScroll is true.

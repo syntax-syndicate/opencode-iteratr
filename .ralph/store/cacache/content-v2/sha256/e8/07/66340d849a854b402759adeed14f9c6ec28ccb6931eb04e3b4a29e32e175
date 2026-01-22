@@ -1,1 +1,0 @@
-Updated default template to use tool CLI commands with --data-dir flag instead of --port. This matches the existing tool.go implementation which uses --data-dir to read the port from a file.

@@ -231,8 +231,10 @@ func (o *Orchestrator) Run() error {
 				OnText: func(content string) {
 					o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
 				},
-				OnToolUse: nil, // Not needed - tools called via CLI
-				OnError:   nil, // Errors returned from RunIteration
+				OnToolUse: func(name string, input map[string]any) {
+					o.tuiProgram.Send(tui.AgentToolMsg{Tool: name, Input: input})
+				},
+				OnError: nil, // Errors returned from RunIteration
 			})
 		} else {
 			// Print to stdout in headless mode
@@ -244,8 +246,10 @@ func (o *Orchestrator) Run() error {
 				OnText: func(content string) {
 					fmt.Print(content)
 				},
-				OnToolUse: nil, // Not needed - tools called via CLI
-				OnError:   nil, // Errors returned from RunIteration
+				OnToolUse: func(name string, input map[string]any) {
+					fmt.Printf("\n[tool: %s]\n", name)
+				},
+				OnError: nil, // Errors returned from RunIteration
 			})
 		}
 

@@ -213,9 +213,9 @@ var (
 				Italic(true)
 
 	styleAgentOutput = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorMuted).
-				Padding(1)
+				Border(lipgloss.ThickBorder(), false, false, false, true). // Left border only
+				BorderForeground(colorPrimary).
+				PaddingLeft(1)
 
 	// List styles
 	styleListItem = lipgloss.NewStyle().

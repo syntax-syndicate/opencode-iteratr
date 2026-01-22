@@ -22,6 +22,7 @@ type Variables struct {
 	Tasks     string // Formatted task list
 	Extra     string // Extra instructions
 	Port      string // NATS server port
+	Binary    string // Full path to iteratr binary
 }
 
 // Render replaces {{variable}} placeholders in template with actual values.
@@ -34,6 +35,7 @@ type Variables struct {
 // - {{tasks}} - Formatted task list
 // - {{extra}} - Extra instructions (empty if none)
 // - {{port}} - NATS server port
+// - {{binary}} - Full path to iteratr binary
 func Render(template string, vars Variables) string {
 	result := template
 
@@ -46,6 +48,7 @@ func Render(template string, vars Variables) string {
 		"{{tasks}}":     vars.Tasks,
 		"{{extra}}":     vars.Extra,
 		"{{port}}":      vars.Port,
+		"{{binary}}":    vars.Binary,
 	}
 
 	for placeholder, value := range replacements {
@@ -111,6 +114,14 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		logger.Debug("Spec file loaded: %d bytes", len(specContent))
 	}
 
+	// Get the full path to the running binary
+	binaryPath, err := os.Executable()
+	if err != nil {
+		logger.Warn("Failed to get executable path, using 'iteratr': %v", err)
+		binaryPath = "iteratr"
+	}
+	logger.Debug("Binary path: %s", binaryPath)
+
 	// Load template
 	if cfg.TemplatePath != "" {
 		logger.Debug("Using custom template: %s", cfg.TemplatePath)
@@ -133,6 +144,7 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Tasks:     formatTasks(state),
 		Extra:     cfg.ExtraInstructions,
 		Port:      strconv.Itoa(cfg.NATSPort),
+		Binary:    binaryPath,
 	}
 
 	logger.Debug("Formatted state: %d tasks, %d notes, %d inbox messages",

@@ -129,10 +129,10 @@ tasks:
       - echo "Dependencies updated"
 
   run:
-    desc: Build and run iteratr
+    desc: Build and run iteratr (pass flags after --)
     deps: [build]
     cmds:
-      - ./{{.BINARY_NAME}}
+      - ./{{.BINARY_NAME}} {{.CLI_ARGS}}
 
   doctor:
     desc: Run iteratr doctor to check dependencies

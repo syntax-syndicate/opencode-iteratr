@@ -121,10 +121,26 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 }
 
 // parseEvent parses a JSON event line and dispatches to appropriate callback.
+// Event format from opencode --format json:
+//
+//	{"type":"text","timestamp":...,"sessionID":"...","part":{"type":"text","text":"..."}}
+//	{"type":"tool_use","timestamp":...,"sessionID":"...","part":{"type":"tool","tool":"...","state":{...}}}
+//	{"type":"error","timestamp":...,"sessionID":"...","error":{"name":"...","data":{...}}}
 func (r *Runner) parseEvent(line string) {
 	var event struct {
-		Type    string          `json:"type"`
-		Content json.RawMessage `json:"content"`
+		Type string `json:"type"`
+		Part *struct {
+			Type  string         `json:"type"`
+			Text  string         `json:"text"`
+			Tool  string         `json:"tool"`
+			State map[string]any `json:"state"`
+		} `json:"part"`
+		Error *struct {
+			Name string `json:"name"`
+			Data *struct {
+				Message string `json:"message"`
+			} `json:"data"`
+		} `json:"error"`
 	}
 
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -134,37 +150,39 @@ func (r *Runner) parseEvent(line string) {
 
 	switch event.Type {
 	case "text":
-		var text string
-		if err := json.Unmarshal(event.Content, &text); err != nil {
-			logger.Warn("Failed to parse text content: %v", err)
-			return
-		}
-		if r.onText != nil {
-			r.onText(text)
+		if event.Part != nil && event.Part.Text != "" {
+			if r.onText != nil {
+				r.onText(event.Part.Text)
+			}
 		}
 
 	case "tool_use":
-		var tu struct {
-			Name  string         `json:"name"`
-			Input map[string]any `json:"input"`
-		}
-		if err := json.Unmarshal(event.Content, &tu); err != nil {
-			logger.Warn("Failed to parse tool_use content: %v", err)
-			return
-		}
-		if r.onToolUse != nil {
-			r.onToolUse(tu.Name, tu.Input)
+		if event.Part != nil && event.Part.Tool != "" {
+			if r.onToolUse != nil {
+				var input map[string]any
+				if event.Part.State != nil {
+					if i, ok := event.Part.State["input"].(map[string]any); ok {
+						input = i
+					}
+				}
+				r.onToolUse(event.Part.Tool, input)
+			}
 		}
 
 	case "error":
-		var errMsg string
-		if err := json.Unmarshal(event.Content, &errMsg); err != nil {
-			logger.Warn("Failed to parse error content: %v", err)
-			return
+		if event.Error != nil {
+			errMsg := event.Error.Name
+			if event.Error.Data != nil && event.Error.Data.Message != "" {
+				errMsg = event.Error.Data.Message
+			}
+			if r.onError != nil {
+				r.onError(fmt.Errorf("%s", errMsg))
+			}
 		}
-		if r.onError != nil {
-			r.onError(fmt.Errorf("%s", errMsg))
-		}
+
+	case "step_start", "step_finish":
+		// Informational events - no action needed
+		logger.Debug("Step event: %s", event.Type)
 
 	default:
 		logger.Debug("Unknown event type: %s", event.Type)

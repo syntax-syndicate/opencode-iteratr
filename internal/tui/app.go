@@ -96,7 +96,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case AgentOutputMsg:
-		return a, a.agent.Append(msg.Content)
+		return a, a.agent.AppendText(msg.Content)
+
+	case AgentToolMsg:
+		return a, a.agent.AppendTool(msg.Tool, msg.Input)
 
 	case IterationStartMsg:
 		return a, a.dashboard.SetIteration(msg.Number)
@@ -388,6 +391,11 @@ func (a *App) loadInitialState() tea.Cmd {
 // Custom message types for the TUI
 type AgentOutputMsg struct {
 	Content string
+}
+
+type AgentToolMsg struct {
+	Tool  string
+	Input map[string]any
 }
 
 type IterationStartMsg struct {

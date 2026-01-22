@@ -1,1 +1,0 @@
-Task "TUI Task List View - Highlight current task" was already completed in a previous iteration. The renderTask method in tasks.go:258-280 checks isSelected and applies styleTaskSelected (defined in styles.go:122-125) which includes bright purple foreground, background color, and bold text. The cursor highlighting works with j/k navigation.

@@ -1,1 +1,0 @@
-Always commit .ralph directory after every iteration to persist session state (not .iteratr - that's the project we're building)

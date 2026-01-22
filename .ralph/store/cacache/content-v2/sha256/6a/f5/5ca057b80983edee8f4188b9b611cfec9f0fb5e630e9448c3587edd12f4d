@@ -1,1 +1,0 @@
-Modify internal/nats/server.go to listen on localhost TCP port
