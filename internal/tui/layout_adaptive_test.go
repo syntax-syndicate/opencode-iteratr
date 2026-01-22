@@ -138,11 +138,6 @@ func TestStatusBar_AdaptToLayoutMode(t *testing.T) {
 				}
 			}
 
-			// Both modes should show task content
-			if !strings.Contains(content, "task:") {
-				t.Errorf("Both modes should contain 'task:' prefix, got: %q", content)
-			}
-
 			// Both modes should show the working indicator (spinner animation)
 			// The spinner uses braille characters like ⠋, ⠙, ⠹, etc.
 			hasSpinner := strings.ContainsAny(content, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
@@ -150,42 +145,6 @@ func TestStatusBar_AdaptToLayoutMode(t *testing.T) {
 				t.Errorf("Both modes should contain working indicator (spinner), got: %q", content)
 			}
 		})
-	}
-}
-
-// TestStatusBar_TruncateTaskInCompactMode verifies more aggressive truncation.
-func TestStatusBar_TruncateTaskInCompactMode(t *testing.T) {
-	// Create status bar in compact mode
-	s := NewStatusBar()
-	s.SetLayoutMode(LayoutCompact)
-	s.SetSize(80, 1)
-	s.SetConnectionStatus(true)
-
-	// Create state with long task name
-	longTaskName := "This is an extremely long task name that definitely exceeds the 30 character limit for compact mode"
-	state := &session.State{
-		Tasks: map[string]*session.Task{
-			"task1": {
-				ID:      "task1",
-				Status:  "in_progress",
-				Content: longTaskName,
-			},
-		},
-	}
-	s.SetState(state)
-
-	// Get current task text
-	taskText := s.getCurrentTask()
-
-	// Verify truncation occurred (should be ~33 chars: "task: " + 30 chars max)
-	// Allow some buffer for "..." suffix
-	if len(taskText) > 40 {
-		t.Errorf("Compact mode task text should be truncated to ~33 chars, got %d: %q", len(taskText), taskText)
-	}
-
-	// Verify ellipsis was added
-	if !strings.HasSuffix(taskText, "...") {
-		t.Errorf("Truncated task should end with '...', got: %q", taskText)
 	}
 }
 

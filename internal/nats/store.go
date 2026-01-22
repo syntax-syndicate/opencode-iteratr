@@ -62,3 +62,11 @@ func CreateConsumer(ctx context.Context, stream jetstream.Stream, name string) (
 		DeliverPolicy: jetstream.DeliverAllPolicy, // Start from beginning
 	})
 }
+
+// PurgeSession removes all events for a specific session from the stream.
+// This effectively resets the session to a fresh state.
+func PurgeSession(ctx context.Context, stream jetstream.Stream, session string) error {
+	subject := SubjectForSession(session)
+	logger.Info("Purging session data for '%s' (subject: %s)", session, subject)
+	return stream.Purge(ctx, jetstream.WithPurgeSubject(subject))
+}

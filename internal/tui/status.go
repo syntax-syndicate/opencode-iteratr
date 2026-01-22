@@ -28,7 +28,7 @@ func NewStatusBar() *StatusBar {
 }
 
 // Draw renders the status bar to the screen.
-// Format: [spinner] ● connected | task: Current Task Name
+// Format: [spinner] ● connected
 // When idle (not working), spinner is hidden. When working, shows animated spinner.
 func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if area.Dx() <= 0 || area.Dy() <= 0 {
@@ -46,14 +46,6 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Add connection status (condensed in compact mode)
 	connStatus := s.getConnectionStatus()
 	content += connStatus
-
-	// Add current task if available
-	if s.state != nil {
-		currentTask := s.getCurrentTask()
-		if currentTask != "" {
-			content += " │ " + currentTask
-		}
-	}
 
 	// Truncate if too long (more aggressive in compact mode)
 	maxWidth := area.Dx() - 2 // Account for padding
@@ -127,32 +119,6 @@ func (s *StatusBar) getConnectionStatus() string {
 		return lipgloss.NewStyle().Foreground(colorSuccess).Render("●") + " connected"
 	}
 	return lipgloss.NewStyle().Foreground(colorError).Render("○") + " disconnected"
-}
-
-// getCurrentTask returns the name of the current in_progress task.
-func (s *StatusBar) getCurrentTask() string {
-	if s.state == nil || s.state.Tasks == nil {
-		return ""
-	}
-
-	// Find first in_progress task
-	for _, task := range s.state.Tasks {
-		if task.Status == "in_progress" {
-			// Truncate task content based on layout mode
-			content := task.Content
-			maxLen := 50
-			if s.layoutMode == LayoutCompact {
-				maxLen = 30 // More aggressive truncation in compact mode
-			}
-
-			if len(content) > maxLen {
-				content = content[:maxLen-3] + "..."
-			}
-			return "task: " + content
-		}
-	}
-
-	return ""
 }
 
 // hasInProgressTasks checks if there are any in_progress tasks.

@@ -369,6 +369,6 @@ func resolveTaskID(state *State, idOrPrefix string) (string, error) {
 	case 1:
 		return matches[0], nil
 	default:
-		return "", fmt.Errorf("ambiguous task ID prefix: %s (matches %d tasks)", idOrPrefix, len(matches))
+		return "", fmt.Errorf("ambiguous task ID prefix: %s (matches: %s)", idOrPrefix, strings.Join(matches, ", "))
 	}
 }

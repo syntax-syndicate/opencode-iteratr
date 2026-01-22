@@ -133,7 +133,7 @@ func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 	}
 }
 
-// getTasks returns all tasks in display order (in_progress first, then remaining, blocked, completed).
+// getTasks returns all tasks in display order (completed, in_progress, remaining, blocked).
 func (s *Sidebar) getTasks() []*session.Task {
 	if s.state == nil {
 		return nil
@@ -153,12 +153,12 @@ func (s *Sidebar) getTasks() []*session.Task {
 		}
 	}
 
-	// Concatenate in order
+	// Concatenate in order: completed first, then in_progress, remaining, blocked
 	var tasks []*session.Task
+	tasks = append(tasks, completed...)
 	tasks = append(tasks, inProgress...)
 	tasks = append(tasks, remaining...)
 	tasks = append(tasks, blocked...)
-	tasks = append(tasks, completed...)
 	return tasks
 }
 

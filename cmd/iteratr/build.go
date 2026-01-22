@@ -21,6 +21,7 @@ var buildFlags struct {
 	headless          bool
 	dataDir           string
 	model             string
+	reset             bool
 }
 
 var buildCmd = &cobra.Command{
@@ -43,6 +44,7 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildFlags.headless, "headless", false, "Run without TUI (logging only)")
 	buildCmd.Flags().StringVar(&buildFlags.dataDir, "data-dir", ".iteratr", "Data directory for NATS storage")
 	buildCmd.Flags().StringVarP(&buildFlags.model, "model", "m", "anthropic/claude-sonnet-4-5", "Model to use (e.g., anthropic/claude-sonnet-4-5, openai/gpt-4)")
+	buildCmd.Flags().BoolVar(&buildFlags.reset, "reset", false, "Reset session data before starting (clears all NATS events for this session)")
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
@@ -109,6 +111,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		DataDir:           dataDir,
 		Headless:          buildFlags.headless,
 		Model:             buildFlags.model,
+		Reset:             buildFlags.reset,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create orchestrator: %w", err)

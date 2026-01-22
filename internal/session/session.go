@@ -40,6 +40,11 @@ func NewStore(js jetstream.JetStream, stream jetstream.Stream) *Store {
 	}
 }
 
+// ResetSession removes all events for a session, resetting it to a fresh state.
+func (s *Store) ResetSession(ctx context.Context, session string) error {
+	return nats.PurgeSession(ctx, s.stream, session)
+}
+
 // PublishEvent appends an event to the JetStream event log.
 // Events are published to subjects following the pattern: iteratr.{session}.{type}
 // Returns the published ACK or an error if publishing fails.

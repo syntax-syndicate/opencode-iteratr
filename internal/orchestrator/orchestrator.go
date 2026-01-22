@@ -32,6 +32,7 @@ type Config struct {
 	WorkDir           string // Working directory for agent
 	Headless          bool   // Run without TUI
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
+	Reset             bool   // Reset session data before starting
 }
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
@@ -99,6 +100,17 @@ func (o *Orchestrator) Start() error {
 		return fmt.Errorf("failed to setup JetStream: %w", err)
 	}
 	logger.Debug("JetStream setup complete")
+
+	// 3.5. Reset session data if requested
+	if o.cfg.Reset {
+		logger.Info("Resetting session data for '%s'", o.cfg.SessionName)
+		if err := o.store.ResetSession(o.ctx, o.cfg.SessionName); err != nil {
+			logger.Error("Failed to reset session: %v", err)
+			return fmt.Errorf("failed to reset session: %w", err)
+		}
+		logger.Info("Session '%s' reset successfully", o.cfg.SessionName)
+		fmt.Printf("Session '%s' reset successfully.\n", o.cfg.SessionName)
+	}
 
 	// 4. Check if session is already complete (before TUI starts)
 	logger.Debug("Checking session state")
