@@ -5,8 +5,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 )
+
+// Compile-time interface checks
+var _ Component = (*Dashboard)(nil)
 
 // FocusArea represents which part of the dashboard has keyboard focus.
 type FocusArea int
@@ -66,6 +70,23 @@ func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 	if d.agentOutput != nil && d.focus == FocusMain {
 		return d.agentOutput.Update(msg)
 	}
+	return nil
+}
+
+// Draw renders the dashboard to a screen buffer using the Screen/Draw pattern.
+func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	// Draw panel border with title
+	focusTitle := "Agent Output"
+	if d.focus == FocusMain {
+		focusTitle = "Agent Output"
+	}
+	inner := DrawPanel(scr, area, focusTitle, d.focus == FocusMain)
+
+	// Delegate to AgentOutput.Draw for content rendering
+	if d.agentOutput != nil {
+		return d.agentOutput.Draw(scr, inner)
+	}
+
 	return nil
 }
 
