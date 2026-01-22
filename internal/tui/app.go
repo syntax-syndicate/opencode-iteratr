@@ -137,43 +137,90 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
-// handleKeyPress processes keyboard input for navigation and control.
+// handleKeyPress processes keyboard input using hierarchical priority routing.
+// Priority: Global → View → Focus → Component
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	k := msg.String()
+	// 1. Global keys (highest priority)
+	if cmd := a.handleGlobalKeys(msg); cmd != nil {
+		return a, cmd
+	}
 
-	// Global navigation keys
-	switch k {
-	case "1":
-		a.activeView = ViewDashboard
-		return a, nil
-	case "2":
-		a.activeView = ViewLogs
-		return a, nil
-	case "3":
-		a.activeView = ViewNotes
-		return a, nil
-	case "4":
-		a.activeView = ViewInbox
-		return a, nil
+	// 2. View-level keys (switching views)
+	if cmd := a.handleViewKeys(msg); cmd != nil {
+		return a, cmd
+	}
+
+	// 3. Focus-specific keys (tab navigation, etc.)
+	if cmd := a.handleFocusKeys(msg); cmd != nil {
+		return a, cmd
+	}
+
+	// 4. Delegate to active component
+	return a, a.delegateToActive(msg)
+}
+
+// handleGlobalKeys processes global keyboard shortcuts (highest priority).
+// Returns tea.Quit for quit commands, nil for unhandled keys.
+func (a *App) handleGlobalKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
 	case "q", "ctrl+c":
 		a.quitting = true
-		return a, tea.Quit
+		return tea.Quit
+	case "?":
+		// TODO: Toggle help view (Phase 14+)
+		return nil
 	}
+	return nil
+}
 
-	// Forward unhandled keys to active view for scrolling etc.
-	var cmd tea.Cmd
+// handleViewKeys processes view switching shortcuts.
+// Returns non-nil cmd if key was handled, nil otherwise.
+func (a *App) handleViewKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "1":
+		a.activeView = ViewDashboard
+		return func() tea.Msg { return nil }
+	case "2":
+		a.activeView = ViewLogs
+		return func() tea.Msg { return nil }
+	case "3":
+		a.activeView = ViewNotes
+		return func() tea.Msg { return nil }
+	case "4":
+		a.activeView = ViewInbox
+		return func() tea.Msg { return nil }
+	}
+	return nil
+}
+
+// handleFocusKeys processes focus navigation shortcuts (tab, shift+tab).
+// Returns non-nil cmd if key was handled, nil otherwise.
+func (a *App) handleFocusKeys(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "tab":
+		// TODO: Cycle focus forward (Phase 14+)
+		return nil
+	case "shift+tab":
+		// TODO: Cycle focus backward (Phase 14+)
+		return nil
+	}
+	return nil
+}
+
+// delegateToActive forwards key messages to the active view component.
+// This allows components to handle their own keyboard shortcuts (scrolling, etc).
+func (a *App) delegateToActive(msg tea.KeyPressMsg) tea.Cmd {
 	switch a.activeView {
 	case ViewDashboard:
-		cmd = a.dashboard.Update(msg)
+		return a.dashboard.Update(msg)
 	case ViewLogs:
-		cmd = a.logs.Update(msg)
+		return a.logs.Update(msg)
 	case ViewNotes:
-		cmd = a.notes.Update(msg)
+		return a.notes.Update(msg)
 	case ViewInbox:
-		cmd = a.inbox.Update(msg)
+		return a.inbox.Update(msg)
 	}
-
-	return a, cmd
+	return nil
 }
 
 // View renders the current view. In Bubbletea v2, this returns tea.View
