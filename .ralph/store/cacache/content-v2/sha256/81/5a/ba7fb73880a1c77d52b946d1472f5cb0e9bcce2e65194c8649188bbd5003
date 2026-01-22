@@ -1,0 +1,1 @@
+Tool CLI commands work in production (this session uses them via ralph.nu). Cannot test standalone in same session due to NATS port conflicts. Will verify integration tests instead.
