@@ -368,3 +368,37 @@ func countReadyTasks(state *session.State) int {
 	}
 	return count
 }
+
+// countBlockedTasks returns the number of tasks that are blocked.
+// A task is blocked if it has status "blocked" OR if it has status "remaining" with unresolved dependencies.
+func countBlockedTasks(state *session.State) int {
+	count := 0
+	for _, task := range state.Tasks {
+		// Tasks explicitly marked as blocked
+		if task.Status == "blocked" {
+			count++
+			continue
+		}
+
+		// Tasks that are remaining but have unresolved dependencies
+		if task.Status == "remaining" && len(task.DependsOn) > 0 {
+			hasUnresolvedDeps := false
+			for _, depID := range task.DependsOn {
+				if depTask, exists := state.Tasks[depID]; exists {
+					if depTask.Status != "completed" {
+						hasUnresolvedDeps = true
+						break
+					}
+				} else {
+					// Dependency doesn't exist - treat as unresolved
+					hasUnresolvedDeps = true
+					break
+				}
+			}
+			if hasUnresolvedDeps {
+				count++
+			}
+		}
+	}
+	return count
+}

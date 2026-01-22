@@ -651,6 +651,151 @@ func TestCountReadyTasks(t *testing.T) {
 	}
 }
 
+func TestCountBlockedTasks(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *session.State
+		want  int
+	}{
+		{
+			name: "no tasks",
+			state: &session.State{
+				Tasks: map[string]*session.Task{},
+			},
+			want: 0,
+		},
+		{
+			name: "only remaining tasks with no dependencies",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Task 1", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Task 2", Status: "remaining", DependsOn: []string{}},
+				},
+			},
+			want: 0,
+		},
+		{
+			name: "tasks explicitly marked as blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Task 1", Status: "blocked", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Task 2", Status: "blocked", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Task 3", Status: "remaining", DependsOn: []string{}},
+				},
+			},
+			want: 2,
+		},
+		{
+			name: "task with incomplete dependency - blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 1, // task2 is blocked by task1
+		},
+		{
+			name: "task with completed dependency - not blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 0, // task2 dependency is satisfied
+		},
+		{
+			name: "task with in_progress dependency - blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base task", Status: "in_progress", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Dependent task", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 1, // task2 is blocked by in_progress task1
+		},
+		{
+			name: "task with multiple dependencies - all completed",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base 1", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Base 2", Status: "completed", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Dependent", Status: "remaining", DependsOn: []string{"task1", "task2"}},
+				},
+			},
+			want: 0, // All dependencies completed
+		},
+		{
+			name: "task with multiple dependencies - some incomplete",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base 1", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Base 2", Status: "remaining", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Dependent", Status: "remaining", DependsOn: []string{"task1", "task2"}},
+				},
+			},
+			want: 1, // task3 is blocked by incomplete task2
+		},
+		{
+			name: "task with non-existent dependency - blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Dependent", Status: "remaining", DependsOn: []string{"nonexistent"}},
+				},
+			},
+			want: 1,
+		},
+		{
+			name: "mixed statuses - count only blocked and dependency-blocked",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Remaining", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Blocked", Status: "blocked", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "In Progress", Status: "in_progress", DependsOn: []string{}},
+					"task4": {ID: "task4", Content: "Completed", Status: "completed", DependsOn: []string{}},
+					"task5": {ID: "task5", Content: "Dep-blocked", Status: "remaining", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 2, // task2 (blocked) and task5 (dependency-blocked)
+		},
+		{
+			name: "complex scenario with chains",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base", Status: "completed", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Ready", Status: "remaining", DependsOn: []string{}},
+					"task3": {ID: "task3", Content: "Blocked 1", Status: "remaining", DependsOn: []string{"task2"}},
+					"task4": {ID: "task4", Content: "Blocked 2", Status: "remaining", DependsOn: []string{"task3"}},
+					"task5": {ID: "task5", Content: "Explicitly blocked", Status: "blocked", DependsOn: []string{}},
+					"task6": {ID: "task6", Content: "Working", Status: "in_progress", DependsOn: []string{}},
+				},
+			},
+			want: 3, // task3, task4 (dependency-blocked), task5 (explicitly blocked)
+		},
+		{
+			name: "completed and in_progress tasks with dependencies - not counted",
+			state: &session.State{
+				Tasks: map[string]*session.Task{
+					"task1": {ID: "task1", Content: "Base", Status: "remaining", DependsOn: []string{}},
+					"task2": {ID: "task2", Content: "Completed with dep", Status: "completed", DependsOn: []string{"task1"}},
+					"task3": {ID: "task3", Content: "In progress with dep", Status: "in_progress", DependsOn: []string{"task1"}},
+				},
+			},
+			want: 0, // Only remaining tasks with unresolved deps are counted as blocked
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countBlockedTasks(tt.state)
+			if got != tt.want {
+				t.Errorf("countBlockedTasks() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildPrompt(t *testing.T) {
 	// This is an integration test - requires actual NATS setup
 	// For now, test the formatting functions independently above
