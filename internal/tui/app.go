@@ -21,6 +21,13 @@ type App struct {
 	notes     *NotesPanel
 	inbox     *InboxPanel
 	agent     *AgentOutput
+	header    *Header
+	footer    *Footer
+	status    *StatusBar
+
+	// Layout management
+	layout      Layout
+	layoutDirty bool
 
 	// State
 	activeView  ViewType
@@ -48,7 +55,11 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		notes:       NewNotesPanel(),
 		inbox:       NewInboxPanel(),
 		agent:       agent,
+		header:      NewHeader(sessionName),
+		footer:      NewFooter(),
+		status:      NewStatusBar(),
 		eventChan:   make(chan session.Event, 100), // Buffered channel for events
+		layoutDirty: true,                          // Calculate layout on first render
 	}
 }
 
@@ -72,17 +83,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		// Calculate content height (minus header, status bar, and footer)
-		contentHeight := msg.Height - 5 // header(1) + statusbar(1) + footer(1) + padding(2)
-		if contentHeight < 5 {
-			contentHeight = 5
-		}
-		// Propagate size to all views
-		// Note: agent output is sized by dashboard (it owns the agent component)
-		a.dashboard.UpdateSize(msg.Width, contentHeight)
-		a.logs.SetSize(msg.Width, contentHeight)
-		a.notes.UpdateSize(msg.Width, contentHeight)
-		a.inbox.UpdateSize(msg.Width, contentHeight)
+		a.layoutDirty = true
+		// Recalculate layout and propagate sizes
+		a.layout = CalculateLayout(a.width, a.height)
+		a.propagateSizes()
+		a.layoutDirty = false
 		return a, nil
 
 	case AgentOutputMsg:
@@ -98,7 +103,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case StateUpdateMsg:
-		// Propagate state updates to all views
+		// Propagate state updates to all components
+		a.header.SetState(msg.State)
+		a.status.SetState(msg.State)
 		a.dashboard.UpdateState(msg.State)
 		a.logs.SetState(msg.State)
 		a.notes.UpdateState(msg.State)
@@ -442,4 +449,20 @@ type StateUpdateMsg struct {
 
 type EventMsg struct {
 	Event session.Event
+}
+
+// propagateSizes updates component sizes based on the current layout.
+// This is called when the layout changes (on window resize or mode switch).
+func (a *App) propagateSizes() {
+	// Propagate sizes to header, footer, and status bar
+	a.header.SetSize(a.layout.Header.Dx(), a.layout.Header.Dy())
+	a.footer.SetSize(a.layout.Footer.Dx(), a.layout.Footer.Dy())
+	a.status.SetSize(a.layout.Status.Dx(), a.layout.Status.Dy())
+
+	// Propagate sizes to main content components
+	// Note: dashboard owns the agent output component, so we only size the dashboard
+	a.dashboard.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
+	a.logs.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
+	a.notes.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
+	a.inbox.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 }
