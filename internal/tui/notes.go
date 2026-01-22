@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
@@ -25,6 +26,24 @@ func NewNotesPanel() *NotesPanel {
 	return &NotesPanel{
 		viewport: vp,
 	}
+}
+
+// Draw renders the notes panel to the screen buffer.
+func (n *NotesPanel) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	// Draw panel border with title
+	inner := DrawPanel(scr, area, "Notes", n.focused)
+
+	// Draw viewport content
+	content := n.viewport.View()
+	DrawText(scr, inner, content)
+
+	// Draw scroll indicator if content overflows
+	if n.viewport.TotalLineCount() > n.viewport.Height() {
+		percent := n.viewport.ScrollPercent()
+		DrawScrollIndicator(scr, area, percent)
+	}
+
+	return nil
 }
 
 // Update handles messages for the notes panel.
