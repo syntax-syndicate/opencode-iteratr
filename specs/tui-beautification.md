@@ -617,6 +617,10 @@ func (a *App) handleViewKeys(msg tea.KeyPressMsg) tea.Cmd {
 
 ## Tasks
 
+### Phase 0: Tasks List
+
+#### 0.1 SYNC ALL TASKS FROM BELOW BEFORE DOING ANYTHING ELSE!!!! ALL OF THEM!!!
+
 ### Phase 1: Foundation
 
 #### 1.1 Create Drawable Interface

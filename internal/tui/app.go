@@ -26,6 +26,7 @@ type App struct {
 	footer    *Footer
 	status    *StatusBar
 	sidebar   *Sidebar
+	dialog    *Dialog
 
 	// Layout management
 	layout      Layout
@@ -63,6 +64,7 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		footer:         NewFooter(),
 		status:         NewStatusBar(),
 		sidebar:        NewSidebar(),
+		dialog:         NewDialog(),
 		eventChan:      make(chan session.Event, 100), // Buffered channel for events
 		layoutDirty:    true,                          // Calculate layout on first render
 	}
@@ -132,6 +134,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.status.SetConnectionStatus(msg.Connected)
 		// Reschedule health check
 		return a, a.checkConnectionHealth()
+
+	case SessionCompleteMsg:
+		// Show completion dialog instead of quitting
+		a.dialog.Show(
+			"Session Complete",
+			"All tasks have been completed successfully!",
+			func() tea.Cmd {
+				a.quitting = true
+				return tea.Quit
+			},
+		)
+		return a, nil
 	}
 
 	// Update status bar (for spinner animation) - always visible
@@ -176,8 +190,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKeyPress processes keyboard input using hierarchical priority routing.
-// Priority: Global → View → Focus → Component
+// Priority: Dialog → Global → View → Focus → Component
 func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// 0. Dialog gets priority when visible
+	if a.dialog.IsVisible() {
+		if cmd := a.dialog.Update(msg); cmd != nil {
+			return a, cmd
+		}
+		return a, nil // Consume all keys when dialog is visible
+	}
+
 	// 1. Global keys (highest priority)
 	if cmd := a.handleGlobalKeys(msg); cmd != nil {
 		return a, cmd
@@ -336,6 +358,11 @@ func (a *App) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 			a.layout.Main.Dy(),
 		)
 		a.sidebar.Draw(scr, sidebarRect)
+	}
+
+	// Draw dialog on top if visible
+	if a.dialog.IsVisible() {
+		a.dialog.Draw(scr, area)
 	}
 
 	return cursor

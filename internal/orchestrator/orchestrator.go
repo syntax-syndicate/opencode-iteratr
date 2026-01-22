@@ -337,7 +337,12 @@ func (o *Orchestrator) Run() error {
 		}
 		if state.Complete {
 			logger.Info("Session '%s' marked as complete by agent", o.cfg.SessionName)
-			fmt.Printf("Session '%s' marked as complete by agent\n", o.cfg.SessionName)
+			// Send completion message to TUI to show dialog
+			if o.tuiProgram != nil {
+				o.tuiProgram.Send(tui.SessionCompleteMsg{})
+				// Wait for TUI to quit (user dismisses dialog)
+				<-o.tuiDone
+			}
 			break
 		}
 
