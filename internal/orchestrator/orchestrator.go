@@ -215,6 +215,7 @@ func (o *Orchestrator) Run() error {
 			SpecPath:          o.cfg.SpecPath,
 			TemplatePath:      o.cfg.TemplatePath,
 			ExtraInstructions: o.cfg.ExtraInstructions,
+			NATSPort:          o.natsPort,
 		})
 		if err != nil {
 			logger.Error("Failed to build prompt: %v", err)

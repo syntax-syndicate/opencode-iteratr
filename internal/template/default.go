@@ -9,11 +9,25 @@ Spec: {{spec}}
 ## Task State
 {{tasks}}
 
-## Tools - all require session_name="{{session}}"
-- inbox_list / inbox_mark_read(id) - check/ack messages
-- task_add(content, status?) / task_status(id, status) / task_list - manage tasks
-- note_add(content, type) / note_list(type?) - record learnings/tips/blockers/decisions
-- session_complete - call when ALL tasks done
+## Tools
+
+Use Bash to call iteratr tools. All commands require --data-dir flag.
+
+### Task Management
+- iteratr tool task-add --data-dir .iteratr --name {{session}} --content "description" [--status remaining|in_progress|completed|blocked]
+- iteratr tool task-status --data-dir .iteratr --name {{session}} --id ID --status STATUS
+- iteratr tool task-list --data-dir .iteratr --name {{session}}
+
+### Notes
+- iteratr tool note-add --data-dir .iteratr --name {{session}} --content "text" --type learning|stuck|tip|decision
+- iteratr tool note-list --data-dir .iteratr --name {{session}} [--type TYPE]
+
+### Inbox
+- iteratr tool inbox-list --data-dir .iteratr --name {{session}}
+- iteratr tool inbox-mark-read --data-dir .iteratr --name {{session}} --id ID
+
+### Session Control
+- iteratr tool session-complete --data-dir .iteratr --name {{session}} - Call when ALL tasks done
 
 ## Workflow
 1. Check inbox, mark read after processing
@@ -21,7 +35,7 @@ Spec: {{spec}}
 3. Pick ONE task, mark in_progress, do work, mark completed
 4. Run tests, commit with clear message
 5. If stuck/learned something: note_add
-6. When ALL done: session_complete
+6. When ALL done: session_complete("{{session}}")
 
-Rules: ONE task/iteration. Test before commit. Call session_complete to end.
+Rules: ONE task/iteration. Test before commit. Call session_complete to end - do NOT just print a message.
 {{extra}}`

@@ -21,6 +21,7 @@ type Variables struct {
 	Notes     string // Formatted notes from previous iterations
 	Tasks     string // Formatted task list
 	Extra     string // Extra instructions
+	Port      string // NATS server port
 }
 
 // Render replaces {{variable}} placeholders in template with actual values.
@@ -32,6 +33,7 @@ type Variables struct {
 // - {{notes}} - Formatted notes (empty if none)
 // - {{tasks}} - Formatted task list
 // - {{extra}} - Extra instructions (empty if none)
+// - {{port}} - NATS server port
 func Render(template string, vars Variables) string {
 	result := template
 
@@ -43,6 +45,7 @@ func Render(template string, vars Variables) string {
 		"{{notes}}":     vars.Notes,
 		"{{tasks}}":     vars.Tasks,
 		"{{extra}}":     vars.Extra,
+		"{{port}}":      vars.Port,
 	}
 
 	for placeholder, value := range replacements {
@@ -80,6 +83,7 @@ type BuildConfig struct {
 	SpecPath          string         // Path to spec file
 	TemplatePath      string         // Path to custom template (optional)
 	ExtraInstructions string         // Extra instructions (optional)
+	NATSPort          int            // NATS server port
 }
 
 // BuildPrompt loads session state, formats it, and injects it into the template.
@@ -128,6 +132,7 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Notes:     formatNotes(state),
 		Tasks:     formatTasks(state),
 		Extra:     cfg.ExtraInstructions,
+		Port:      strconv.Itoa(cfg.NATSPort),
 	}
 
 	logger.Debug("Formatted state: %d tasks, %d notes, %d inbox messages",

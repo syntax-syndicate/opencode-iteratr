@@ -90,6 +90,7 @@ func TestRenderWithDefaultTemplate(t *testing.T) {
 		Notes:     "LEARNING:\n  - [#1] Something learned\n",
 		Tasks:     "REMAINING:\n  - [abc123] Task 1\nCOMPLETED: 5 tasks\n",
 		Extra:     "",
+		Port:      "4222",
 	}
 
 	result := Render(DefaultTemplate, vars)
@@ -110,6 +111,9 @@ func TestRenderWithDefaultTemplate(t *testing.T) {
 	if strings.Contains(result, "{{notes}}") {
 		t.Error("{{notes}} placeholder not replaced")
 	}
+	if strings.Contains(result, "{{port}}") {
+		t.Error("{{port}} placeholder not replaced")
+	}
 
 	// Check that expected content is present
 	if !strings.Contains(result, "Session: iteratr | Iteration: #20") {
@@ -124,7 +128,7 @@ func TestRenderWithDefaultTemplate(t *testing.T) {
 	if !strings.Contains(result, "REMAINING:") {
 		t.Error("Tasks not included")
 	}
-	if !strings.Contains(result, `session_name="iteratr"`) {
+	if !strings.Contains(result, `--name iteratr`) {
 		t.Error("Session name not in tools section")
 	}
 }
