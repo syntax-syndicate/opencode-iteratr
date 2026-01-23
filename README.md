@@ -4,26 +4,27 @@ AI coding agent orchestrator with embedded persistence and TUI.
 
 ## Overview
 
-iteratr is a Go CLI tool that orchestrates AI coding agents in an iterative loop. It manages session state (tasks, notes, inbox) via embedded NATS JetStream, communicates with opencode via ACP (Agent Control Protocol) over stdio, and presents a full-screen TUI using Bubbletea v2.
+iteratr is a Go CLI tool that orchestrates AI coding agents in an iterative loop. It manages session state (tasks, notes, iterations) via embedded NATS JetStream, communicates with opencode via ACP (Agent Control Protocol) over stdio, and presents a full-screen TUI using Bubbletea v2.
 
 **Spiritual successor to ralph.nu** - same concepts, modern Go implementation.
 
 ## Features
 
 - **Session Management**: Named sessions with persistent state across iterations
-- **Task System**: Track tasks with status (remaining, in_progress, completed, blocked)
+- **Task System**: Track tasks with status, priority (0-4), and dependencies
 - **Notes System**: Record learnings, tips, blockers, and decisions across iterations
-- **Inbox System**: Send messages to running sessions for human-in-the-loop interaction
-- **Full-Screen TUI**: Real-time dashboard, task list, logs, notes, inbox, and agent output
+- **Full-Screen TUI**: Real-time dashboard with agent output, task sidebar, logs, and notes
+- **User Input via TUI**: Send messages directly to the agent through the TUI interface
 - **Embedded NATS**: In-process persistence with JetStream (no external database needed)
-- **ACP Integration**: Control opencode agents via Agent Control Protocol
+- **ACP Integration**: Control opencode agents via Agent Control Protocol with persistent sessions
 - **Headless Mode**: Run without TUI for CI/CD environments
+- **Model Selection**: Choose which LLM model to use per session
 
 ## Installation
 
 ### Prerequisites
 
-- Go 1.25.5 or later
+- Go 1.25.5
 - [opencode](https://opencode.coder.com) installed and in PATH
 
 ### Build from Source
@@ -37,7 +38,13 @@ Or clone and build:
 ```bash
 git clone https://github.com/mark3labs/iteratr.git
 cd iteratr
-go build -o iteratr cmd/iteratr/*.go
+task build
+```
+
+Or without the task runner:
+
+```bash
+go build -o iteratr ./cmd/iteratr
 ```
 
 ### Verify Installation
@@ -85,16 +92,9 @@ This will:
 - Run opencode agent in iterative loops
 - Track progress and state across iterations
 
-### 3. Interact with the Session
+### 3. Interact via TUI
 
-While iteratr is running in one terminal, send messages from another:
-
-```bash
-# Send a message to the running session
-iteratr message --name myfeature "Please add logging to all functions"
-```
-
-The agent will receive the message in its next iteration and can respond.
+While iteratr is running, type messages directly in the TUI to send guidance or feedback to the agent. The agent will receive the message in its next iteration.
 
 ## Usage
 
@@ -115,7 +115,9 @@ iteratr build [flags]
 - `-t, --template <path>`: Custom prompt template file
 - `-e, --extra-instructions <text>`: Extra instructions for the prompt
 - `-i, --iterations <count>`: Max iterations, 0=infinite (default: 0)
+- `-m, --model <model>`: Model to use (default: `anthropic/claude-sonnet-4-5`)
 - `--headless`: Run without TUI (logging only)
+- `--reset`: Reset session data before starting
 - `--data-dir <path>`: Data directory for NATS storage (default: `.iteratr`)
 
 **Examples:**
@@ -133,35 +135,42 @@ iteratr build --name my-session --spec specs/myfeature.md
 # Run 5 iterations then stop
 iteratr build --iterations 5
 
+# Use a specific model
+iteratr build --model anthropic/claude-sonnet-4-5
+
 # Run in headless mode (no TUI)
 iteratr build --headless
+
+# Reset session and start fresh
+iteratr build --reset
 
 # Add extra instructions
 iteratr build --extra-instructions "Focus on error handling"
 ```
 
-#### `iteratr message`
+#### `iteratr tool`
 
-Send a message to a running session's inbox.
-
-```bash
-iteratr message --name <session> <message>
-```
-
-**Flags:**
-
-- `-n, --name <name>`: Session name (required)
-- `--data-dir <path>`: Data directory (default: `.iteratr`)
-
-**Examples:**
+Session management subcommands used by the agent during execution. These are invoked as opencode tools.
 
 ```bash
-# Send a simple message
-iteratr message --name myfeature "Please add more tests"
-
-# Multi-word messages
-iteratr message --name myfeature "Change the API endpoint from /api/v1 to /api/v2"
+iteratr tool <subcommand> [flags]
 ```
+
+**Subcommands:**
+
+| Command | Description |
+|---------|-------------|
+| `task-add` | Add a single task |
+| `task-batch-add` | Add multiple tasks at once |
+| `task-status` | Update task status |
+| `task-priority` | Set task priority (0-4) |
+| `task-depends` | Add task dependency |
+| `task-list` | List all tasks grouped by status |
+| `task-next` | Get next highest priority unblocked task |
+| `note-add` | Record a note |
+| `note-list` | List notes |
+| `iteration-summary` | Record an iteration summary |
+| `session-complete` | Signal all tasks done, end loop |
 
 #### `iteratr gen-template`
 
@@ -215,11 +224,9 @@ Displays version, commit hash, and build date.
 
 When running with the TUI (default), use these keys:
 
-- **`1`**: Dashboard view - session overview, progress, current task
-- **`2`**: Tasks view - filterable task list by status
-- **`3`**: Logs view - scrollable event history
-- **`4`**: Notes view - learnings, tips, blockers, decisions
-- **`5`**: Inbox view - messages and input field
+- **`1`**: Dashboard view - agent output with task/note sidebar
+- **`2`**: Logs view - scrollable event history
+- **`3`**: Notes view - learnings, tips, blockers, decisions
 - **`j/k`**: Navigate lists (tasks, logs, etc.)
 - **`↑/↓`**: Scroll viewports
 - **`q` or `Ctrl+C`**: Quit
@@ -235,7 +242,7 @@ iteratr maintains session state in the `.iteratr/` directory using embedded NATS
 │   └── iteratr_events/  # Event stream data
 ```
 
-All session data (tasks, notes, inbox messages, iterations) is stored as events in a NATS stream. This provides:
+All session data (tasks, notes, iterations) is stored as events in a NATS stream. This provides:
 
 - **Persistence**: State survives across runs
 - **Resume capability**: Continue from the last iteration
@@ -244,23 +251,26 @@ All session data (tasks, notes, inbox messages, iterations) is stored as events 
 
 ### Session Tools
 
-The agent has access to these tools during execution:
+The agent has access to these tools during execution (via `iteratr tool` subcommands):
 
 **Task Management:**
-- `task_add(content, status?)` - Create a task
-- `task_status(id, status)` - Update task status
-- `task_list()` - List all tasks grouped by status
+- `task-add` - Create a task with content and optional status
+- `task-batch-add` - Create multiple tasks at once
+- `task-status` - Update task status (remaining, in_progress, completed, blocked)
+- `task-priority` - Set task priority (0=lowest, 4=highest)
+- `task-depends` - Add a dependency between tasks
+- `task-list` - List all tasks grouped by status
+- `task-next` - Get next highest priority unblocked task
 
 **Notes:**
-- `note_add(content, type)` - Record a note (type: learning|stuck|tip|decision)
-- `note_list(type?)` - List notes, optionally filtered
+- `note-add` - Record a note (type: learning|stuck|tip|decision)
+- `note-list` - List notes, optionally filtered by type
 
-**Inbox:**
-- `inbox_list()` - Get unread messages
-- `inbox_mark_read(id)` - Acknowledge a message
+**Iteration:**
+- `iteration-summary` - Record a summary of what was accomplished
 
 **Session Control:**
-- `session_complete()` - Signal all tasks done, end iteration loop
+- `session-complete` - Signal all tasks done, end iteration loop
 
 ## Prompt Templates
 
@@ -271,10 +281,12 @@ iteratr uses Go template syntax with `{{variable}}` placeholders.
 - `{{session}}` - Session name
 - `{{iteration}}` - Current iteration number
 - `{{spec}}` - Spec file contents
-- `{{inbox}}` - Unread inbox messages
 - `{{notes}}` - Notes from previous iterations
 - `{{tasks}}` - Current task state
+- `{{history}}` - Iteration history/summaries
 - `{{extra}}` - Extra instructions from `--extra-instructions` flag
+- `{{port}}` - NATS server port
+- `{{binary}}` - Path to iteratr binary
 
 ### Custom Templates
 
@@ -336,10 +348,10 @@ iteratr build
 ### Key Components
 
 - **Orchestrator**: Manages iteration loop and coordinates components
-- **ACP Client**: Communicates with opencode agent via stdio
-- **Session Store**: Persists state to NATS JetStream
-- **TUI**: Full-screen Bubbletea v2 interface with multiple views
-- **Template Engine**: Renders prompts with session state
+- **ACP Client**: Communicates with opencode agent via stdio (persistent sessions)
+- **Session Store**: Event-sourced state persisted to NATS JetStream
+- **TUI**: Full-screen Bubbletea v2 interface with Ultraviolet layouts and Glamour markdown rendering
+- **Template Engine**: Renders prompts with session state variables
 
 ## Examples
 
@@ -359,9 +371,6 @@ EOF
 
 # Run the build loop
 iteratr build --spec specs/user-auth.md --iterations 10
-
-# Send feedback during execution (from another terminal)
-iteratr message --name user-auth "Make sure to use bcrypt for password hashing"
 ```
 
 ### Example 2: Resume a Session
@@ -376,22 +385,21 @@ iteratr build --spec specs/myfeature.md
 
 The session automatically resumes from where it left off.
 
-### Example 3: Headless Mode for CI/CD
+### Example 3: Fresh Start with Reset
+
+```bash
+# Reset and start over
+iteratr build --spec specs/myfeature.md --reset
+```
+
+### Example 4: Headless Mode for CI/CD
 
 ```bash
 # Run in headless mode (useful for CI/CD)
 iteratr build --headless --iterations 5 --spec specs/myfeature.md > build.log 2>&1
-
-# Check if session completed
-if grep -q "session_complete" build.log; then
-  echo "Build successful!"
-else
-  echo "Build incomplete or failed"
-  exit 1
-fi
 ```
 
-### Example 4: Custom Template with Extra Instructions
+### Example 5: Custom Template with Extra Instructions
 
 ```bash
 # Generate template
@@ -414,18 +422,19 @@ The recommended workflow with iteratr:
 1. **Create a spec** with clear requirements and tasks
 2. **Run `iteratr build`** to start the iteration loop
 3. **Monitor progress** in the TUI dashboard
-4. **Send messages** if you need to provide guidance or feedback
+4. **Send messages** via TUI if you need to provide guidance
 5. **Review notes** to see what the agent learned
-6. **Agent completes** by calling `session_complete()` when all tasks are done
+6. **Agent completes** by calling `session-complete` when all tasks are done
 
 Each iteration:
-1. Agent checks inbox for new messages
-2. Agent reviews task list and notes from previous iterations
-3. Agent picks ONE task, marks it in_progress
+1. Agent reviews task list and notes from previous iterations
+2. Agent picks next highest priority unblocked task
+3. Agent marks task in_progress
 4. Agent works on the task (writes code, runs tests)
 5. Agent commits changes if successful
 6. Agent marks task completed and records any learnings
-7. Repeat until all tasks are done
+7. Agent records an iteration summary
+8. Repeat until all tasks are done
 
 ## Troubleshooting
 
@@ -445,7 +454,10 @@ which opencode
 # Check doctor output
 iteratr doctor
 
-# Clean data directory (CAUTION: loses session state)
+# Reset session data
+iteratr build --reset
+
+# Or clean data directory manually (CAUTION: loses session state)
 rm -rf .iteratr
 ```
 
@@ -479,14 +491,23 @@ tput lines
 ### Building
 
 ```bash
-# Build binary
-go build -o iteratr cmd/iteratr/*.go
+# Using task runner (recommended)
+task build
+
+# Or directly with go
+go build -o iteratr ./cmd/iteratr
 
 # Run tests
-go test ./...
+task test
 
 # Run tests with coverage
-go test -cover ./...
+task test-coverage
+
+# Lint
+task lint
+
+# Full CI check
+task ci
 ```
 
 ### Project Structure
@@ -494,22 +515,23 @@ go test -cover ./...
 ```
 .
 ├── cmd/iteratr/          # CLI commands
-│   ├── main.go           # Entry point
+│   ├── main.go           # Entry point with Cobra root command
 │   ├── build.go          # Build command
-│   ├── message.go        # Message command
+│   ├── tool.go           # Tool subcommands (task, note, session)
 │   ├── doctor.go         # Doctor command
 │   ├── gen_template.go   # Template generation
 │   └── version.go        # Version command
 ├── internal/
-│   ├── acp/              # ACP client and tools
-│   ├── nats/             # Embedded NATS server
-│   ├── session/          # Session state management
-│   ├── template/         # Prompt templates
-│   ├── tui/              # Bubbletea TUI components
+│   ├── agent/            # ACP client and agent runner
+│   ├── nats/             # Embedded NATS server and stream management
+│   ├── session/          # Event-sourced session state
+│   ├── template/         # Prompt template engine
+│   ├── tui/              # Bubbletea v2 TUI components
 │   ├── orchestrator/     # Iteration loop orchestration
-│   ├── logger/           # Logging utilities
-│   └── errors/           # Error handling
+│   ├── logger/           # Structured logging
+│   └── errors/           # Error handling and retry
 ├── specs/                # Feature specifications
+├── Taskfile.yml          # Task runner configuration
 ├── .iteratr/             # Session data (gitignored)
 └── README.md
 ```

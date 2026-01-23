@@ -838,6 +838,26 @@ func (a *AgentOutput) SetScrollFocused(focused bool) {
 	}
 }
 
+// IsViewportArea checks if the given screen coordinates fall within the viewport area.
+func (a *AgentOutput) IsViewportArea(x, y int) bool {
+	return x >= a.viewportArea.Min.X && x < a.viewportArea.Max.X &&
+		y >= a.viewportArea.Min.Y && y < a.viewportArea.Max.Y
+}
+
+// ScrollViewport scrolls the agent output viewport by the given number of lines.
+// Positive values scroll down, negative values scroll up.
+func (a *AgentOutput) ScrollViewport(lines int) {
+	if a.scrollList == nil {
+		return
+	}
+	a.scrollList.ScrollBy(lines)
+	if lines > 0 && a.scrollList.AtBottom() {
+		a.scrollList.SetAutoScroll(true)
+	} else {
+		a.scrollList.SetAutoScroll(false)
+	}
+}
+
 // SetBusy updates the input placeholder based on whether the agent is busy.
 // When busy, shows "Agent is working..." to indicate the agent is processing.
 // When not busy, shows "Send a message..." to invite user input.

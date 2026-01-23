@@ -88,6 +88,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		return a.handleMouse(msg)
 
+	case tea.MouseWheelMsg:
+		return a.handleMouseWheel(msg)
+
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
@@ -293,6 +296,9 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
+	// Determine which pane was clicked and update focus
+	a.focusPaneAtPosition(mouse.X, mouse.Y)
+
 	// Check if a task was clicked
 	if task := a.sidebar.TaskAtPosition(mouse.X, mouse.Y); task != nil {
 		a.taskModal.SetTask(task)
@@ -320,6 +326,75 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 	// Check if agent output was clicked (expand/collapse tool output)
 	if a.agent.HandleClick(mouse.X, mouse.Y) {
+		return a, nil
+	}
+
+	return a, nil
+}
+
+// focusPaneAtPosition updates the focused pane based on click coordinates.
+// This enables mouse-based pane focus switching.
+func (a *App) focusPaneAtPosition(x, y int) {
+	prevPane := a.dashboard.focusPane
+
+	switch {
+	case a.agent.IsViewportArea(x, y):
+		a.dashboard.focusPane = FocusAgent
+		a.dashboard.inputFocused = false
+		if a.agent != nil {
+			a.agent.SetInputFocused(false)
+		}
+	case a.sidebar.IsTasksArea(x, y):
+		a.dashboard.focusPane = FocusTasks
+		a.dashboard.inputFocused = false
+		if a.agent != nil {
+			a.agent.SetInputFocused(false)
+		}
+	case a.sidebar.IsNotesArea(x, y):
+		a.dashboard.focusPane = FocusNotes
+		a.dashboard.inputFocused = false
+		if a.agent != nil {
+			a.agent.SetInputFocused(false)
+		}
+	default:
+		return
+	}
+
+	if a.dashboard.focusPane != prevPane {
+		a.dashboard.updateScrollListFocus()
+	}
+}
+
+// handleMouseWheel processes mouse wheel events for viewport scrolling.
+// Scrolls the viewport under the cursor regardless of which pane has keyboard focus.
+func (a *App) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	mouse := msg.Mouse()
+
+	const scrollLines = 3
+
+	var lines int
+	switch mouse.Button {
+	case tea.MouseWheelUp:
+		lines = -scrollLines
+	case tea.MouseWheelDown:
+		lines = scrollLines
+	default:
+		return a, nil
+	}
+
+	// Scroll the viewport under the cursor
+	if a.agent.IsViewportArea(mouse.X, mouse.Y) {
+		a.agent.ScrollViewport(lines)
+		return a, nil
+	}
+
+	if a.sidebar.IsTasksArea(mouse.X, mouse.Y) {
+		a.sidebar.ScrollTasks(lines)
+		return a, nil
+	}
+
+	if a.sidebar.IsNotesArea(mouse.X, mouse.Y) {
+		a.sidebar.ScrollNotes(lines)
 		return a, nil
 	}
 

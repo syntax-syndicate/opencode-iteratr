@@ -677,6 +677,32 @@ func (s *Sidebar) SetNotesScrollFocused(focused bool) {
 	}
 }
 
+// IsTasksArea checks if the given screen coordinates fall within the tasks content area.
+func (s *Sidebar) IsTasksArea(x, y int) bool {
+	return x >= s.tasksContentArea.Min.X && x < s.tasksContentArea.Max.X &&
+		y >= s.tasksContentArea.Min.Y && y < s.tasksContentArea.Max.Y
+}
+
+// IsNotesArea checks if the given screen coordinates fall within the notes content area.
+func (s *Sidebar) IsNotesArea(x, y int) bool {
+	return x >= s.notesContentArea.Min.X && x < s.notesContentArea.Max.X &&
+		y >= s.notesContentArea.Min.Y && y < s.notesContentArea.Max.Y
+}
+
+// ScrollTasks scrolls the tasks viewport by the given number of lines.
+func (s *Sidebar) ScrollTasks(lines int) {
+	if s.tasksScrollList != nil {
+		s.tasksScrollList.ScrollBy(lines)
+	}
+}
+
+// ScrollNotes scrolls the notes viewport by the given number of lines.
+func (s *Sidebar) ScrollNotes(lines int) {
+	if s.notesScrollList != nil {
+		s.notesScrollList.ScrollBy(lines)
+	}
+}
+
 // Compile-time interface check
 var _ FocusableComponent = (*Sidebar)(nil)
 
