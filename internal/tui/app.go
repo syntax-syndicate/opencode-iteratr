@@ -117,14 +117,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.agent.AppendThinking(msg.Content)
 
 	case AgentFinishMsg:
-		a.dashboard.SetAgentBusy(false)
-		return a, a.agent.AppendFinish(msg)
+		queueCmd := a.dashboard.SetAgentBusy(false)
+		return a, tea.Batch(a.agent.AppendFinish(msg), queueCmd)
 
 	case IterationStartMsg:
-		a.dashboard.SetAgentBusy(true)
+		busyCmd := a.dashboard.SetAgentBusy(true)
 		return a, tea.Batch(
 			a.dashboard.SetIteration(msg.Number),
 			a.agent.AddIterationDivider(msg.Number),
+			busyCmd,
 		)
 
 	case StateUpdateMsg:

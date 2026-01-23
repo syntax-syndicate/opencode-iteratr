@@ -284,11 +284,23 @@ func (d *Dashboard) IsFocused() bool {
 
 // SetAgentBusy sets whether the agent is currently processing.
 // Updates the input placeholder to show "Agent is working..." when busy.
-func (d *Dashboard) SetAgentBusy(busy bool) {
+// When the agent becomes available and there's a queued message, emits it immediately.
+func (d *Dashboard) SetAgentBusy(busy bool) tea.Cmd {
 	d.agentBusy = busy
 	if d.agentOutput != nil {
 		d.agentOutput.SetBusy(busy)
 	}
+
+	// When agent becomes available (!busy) and there's a queued message, emit it
+	if !busy && d.queuedMsg != "" {
+		msg := d.queuedMsg
+		d.queuedMsg = "" // Clear the queue
+		return func() tea.Msg {
+			return UserInputMsg{Text: msg}
+		}
+	}
+
+	return nil
 }
 
 // updateScrollListFocus sets the focused state on ScrollLists based on the active pane.
