@@ -21,7 +21,6 @@ type App struct {
 	logs      *LogViewer
 	notes     *NotesPanel
 	agent     *AgentOutput
-	header    *Header
 	footer    *Footer
 	status    *StatusBar
 	sidebar   *Sidebar
@@ -65,9 +64,8 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		logs:           NewLogViewer(),
 		notes:          NewNotesPanel(),
 		agent:          agent,
-		header:         NewHeader(sessionName),
 		footer:         NewFooter(),
-		status:         NewStatusBar(),
+		status:         NewStatusBar(sessionName),
 		sidebar:        sidebar,
 		dialog:         NewDialog(),
 		taskModal:      NewTaskModal(),
@@ -131,7 +129,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StateUpdateMsg:
 		// Propagate state updates to all components
-		a.header.SetState(msg.State)
 		a.status.SetState(msg.State)
 		a.sidebar.SetState(msg.State)
 		a.dashboard.UpdateState(msg.State)
@@ -474,7 +471,6 @@ func (a *App) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	var cursor *tea.Cursor
 
 	// Draw all regions using the calculated layout
-	a.header.Draw(scr, a.layout.Header)
 	cursor = a.drawActiveView(scr, a.layout.Main)
 	a.status.Draw(scr, a.layout.Status)
 	a.footer.Draw(scr, a.layout.Footer)
@@ -653,13 +649,11 @@ type UserInputMsg struct {
 // propagateSizes updates component sizes based on the current layout.
 // This is called when the layout changes (on window resize or mode switch).
 func (a *App) propagateSizes() {
-	// Propagate sizes to header, footer, and status bar
-	a.header.SetSize(a.layout.Header.Dx(), a.layout.Header.Dy())
+	// Propagate sizes to footer and status bar
 	a.footer.SetSize(a.layout.Footer.Dx(), a.layout.Footer.Dy())
 	a.status.SetSize(a.layout.Status.Dx(), a.layout.Status.Dy())
 
-	// Propagate layout mode to header, footer, and status bar
-	a.header.SetLayoutMode(a.layout.Mode)
+	// Propagate layout mode to footer and status bar
 	a.footer.SetLayoutMode(a.layout.Mode)
 	a.status.SetLayoutMode(a.layout.Mode)
 	a.footer.SetActiveView(a.activeView)

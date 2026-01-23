@@ -8,73 +8,6 @@ import (
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
-// TestHeader_AdaptToLayoutMode verifies Header adapts to compact mode.
-// Note: Connection status is shown in StatusBar, not Header.
-func TestHeader_AdaptToLayoutMode(t *testing.T) {
-	tests := []struct {
-		name       string
-		mode       LayoutMode
-		width      int
-		expectFull bool // Expect full "Iteration #X" text vs just "#X"
-	}{
-		{
-			name:       "desktop mode shows full text",
-			mode:       LayoutDesktop,
-			width:      120,
-			expectFull: true,
-		},
-		{
-			name:       "compact mode shows condensed text",
-			mode:       LayoutCompact,
-			width:      80,
-			expectFull: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create header
-			h := NewHeader("test-session")
-			h.SetLayoutMode(tt.mode)
-			h.SetSize(tt.width, 1)
-
-			// Create a simple state with iteration
-			state := &session.State{
-				Iterations: []*session.Iteration{
-					{Number: 5},
-				},
-			}
-			h.SetState(state)
-
-			// Create screen buffer and draw
-			canvas := uv.NewScreenBuffer(tt.width, 1)
-			area := uv.Rect(0, 0, tt.width, 1)
-			h.Draw(canvas, area)
-
-			// Get rendered content
-			content := canvas.Render()
-
-			// Verify based on mode
-			if tt.expectFull {
-				// Desktop mode should show "Iteration #"
-				if !strings.Contains(content, "Iteration") {
-					t.Errorf("Desktop mode should contain 'Iteration' text, got: %q", content)
-				}
-			} else {
-				// Compact mode should show just "#" prefix
-				if !strings.Contains(content, "#5") {
-					t.Errorf("Compact mode should contain '#5' for iteration, got: %q", content)
-				}
-			}
-
-			// Both modes should show session name
-			if !strings.Contains(content, "test-session") && !strings.Contains(content, "test-ses") {
-				t.Errorf("Both modes should contain session name, got: %q", content)
-			}
-		})
-	}
-}
-
 // TestStatusBar_AdaptToLayoutMode verifies StatusBar adapts to compact mode.
 func TestStatusBar_AdaptToLayoutMode(t *testing.T) {
 	tests := []struct {
@@ -100,7 +33,7 @@ func TestStatusBar_AdaptToLayoutMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create status bar
-			s := NewStatusBar()
+			s := NewStatusBar("test-session")
 			s.SetLayoutMode(tt.mode)
 			s.SetSize(tt.width, 1)
 			s.SetConnectionStatus(true)

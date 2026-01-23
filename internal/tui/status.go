@@ -1,63 +1,104 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
-// StatusBar displays connection status and current task information.
+// StatusBar displays session info (left) and connection status (right).
 type StatusBar struct {
-	width      int
-	height     int
-	state      *session.State
-	connected  bool
-	working    bool
-	ticking    bool // Whether the spinner tick chain has been started
-	layoutMode LayoutMode
-	spinner    Spinner
+	width       int
+	height      int
+	sessionName string
+	state       *session.State
+	connected   bool
+	working     bool
+	ticking     bool // Whether the spinner tick chain has been started
+	layoutMode  LayoutMode
+	spinner     Spinner
 }
 
 // NewStatusBar creates a new StatusBar component.
-func NewStatusBar() *StatusBar {
+func NewStatusBar(sessionName string) *StatusBar {
 	return &StatusBar{
-		connected: false,
-		working:   false,
-		spinner:   NewDefaultSpinner(),
+		sessionName: sessionName,
+		connected:   false,
+		working:     false,
+		spinner:     NewDefaultSpinner(),
 	}
 }
 
 // Draw renders the status bar to the screen.
-// Format: [spinner] ● connected
-// When idle (not working), spinner is hidden. When working, shows animated spinner.
+// Format: iteratr | session | Iteration #N     [spinner] ● connected
 func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if area.Dx() <= 0 || area.Dy() <= 0 {
 		return nil
 	}
 
-	// Build status content based on layout mode
-	var content string
+	// Build left side: session info
+	left := s.buildLeft()
 
-	// Add spinner only when working (not when idle)
-	if s.working {
-		content += s.spinner.View() + " "
+	// Build right side: spinner + connection status
+	right := s.buildRight()
+
+	// Calculate spacing to fill width
+	totalWidth := area.Dx() - 2 // Account for padding
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(right)
+
+	padding := totalWidth - leftWidth - rightWidth
+	if padding < 1 {
+		padding = 1
 	}
 
-	// Add connection status (condensed in compact mode)
-	connStatus := s.getConnectionStatus()
-	content += connStatus
-
-	// Truncate if too long (more aggressive in compact mode)
-	maxWidth := area.Dx() - 2 // Account for padding
-	if lipgloss.Width(content) > maxWidth {
-		content = truncateString(content, maxWidth)
+	spacer := ""
+	for i := 0; i < padding; i++ {
+		spacer += " "
 	}
+
+	content := left + spacer + right
 
 	// Render with style
 	DrawStyled(scr, area, styleStatusBar, content)
 
 	return nil
+}
+
+// buildLeft builds the left side of the status bar with session info.
+func (s *StatusBar) buildLeft() string {
+	title := styleHeaderTitle.Render("iteratr")
+	sep := styleHeaderSeparator.Render(" | ")
+	sessionInfo := styleHeaderInfo.Render(s.sessionName)
+
+	left := title + sep + sessionInfo
+
+	// Add iteration info if available
+	if s.state != nil && len(s.state.Iterations) > 0 {
+		currentIter := s.state.Iterations[len(s.state.Iterations)-1]
+		iterInfo := fmt.Sprintf("Iteration #%d", currentIter.Number)
+		left += sep + styleHeaderInfo.Render(iterInfo)
+	}
+
+	return left
+}
+
+// buildRight builds the right side of the status bar with connection status.
+func (s *StatusBar) buildRight() string {
+	var right string
+
+	// Add spinner only when working
+	if s.working {
+		right += s.spinner.View() + " "
+	}
+
+	// Add connection status
+	right += s.getConnectionStatus()
+
+	return right
 }
 
 // SetSize updates the component dimensions.

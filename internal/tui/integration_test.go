@@ -72,11 +72,6 @@ func TestIntegration_StatePropagation(t *testing.T) {
 	msg := StateUpdateMsg{State: testState}
 	_, _ = app.Update(msg)
 
-	// Verify header received state
-	if app.header.state != testState {
-		t.Error("Header did not receive state update")
-	}
-
 	// Verify status received state
 	if app.status.state != testState {
 		t.Error("StatusBar did not receive state update")

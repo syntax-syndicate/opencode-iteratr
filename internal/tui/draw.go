@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -25,7 +26,8 @@ func FillArea(scr uv.Screen, area uv.Rectangle, style lipgloss.Style) {
 }
 
 // DrawPanel renders a panel with a title header and returns the inner content area.
-// Focus is indicated by the header color (no borders).
+// The header shows "Title ────────" with a trailing rule line.
+// Focus is indicated by the header color.
 func DrawPanel(scr uv.Screen, area uv.Rectangle, title string, focused bool) uv.Rectangle {
 	headerHeight := 0
 
@@ -33,16 +35,26 @@ func DrawPanel(scr uv.Screen, area uv.Rectangle, title string, focused bool) uv.
 	if title != "" {
 		headerHeight = 1
 		titleStyle := stylePanelTitle
+		ruleStyle := stylePanelRule
 		if focused {
 			titleStyle = stylePanelTitleFocused
+			ruleStyle = stylePanelRuleFocused
 		}
-		titleText := titleStyle.Render(title)
+
+		// Build "Title ────────" header
+		styledTitle := titleStyle.Render(title)
+		ruleWidth := area.Dx() - lipgloss.Width(styledTitle) - 1 // -1 for space
+		if ruleWidth < 0 {
+			ruleWidth = 0
+		}
+
+		headerText := styledTitle + " " + ruleStyle.Render(strings.Repeat("─", ruleWidth))
 
 		titleArea := uv.Rectangle{
 			Min: uv.Position{X: area.Min.X, Y: area.Min.Y},
 			Max: uv.Position{X: area.Max.X, Y: area.Min.Y + 1},
 		}
-		uv.NewStyledString(titleText).Draw(scr, titleArea)
+		uv.NewStyledString(headerText).Draw(scr, titleArea)
 	}
 
 	// Return content area below the header

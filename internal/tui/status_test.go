@@ -42,7 +42,7 @@ func TestStatusBar_SpinnerAnimation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sb := NewStatusBar()
+			sb := NewStatusBar("test-session")
 			sb.SetLayoutMode(LayoutDesktop)
 			sb.SetConnectionStatus(true)
 
@@ -100,7 +100,7 @@ func TestStatusBar_SpinnerAnimation(t *testing.T) {
 }
 
 func TestStatusBar_SpinnerTicking(t *testing.T) {
-	sb := NewStatusBar()
+	sb := NewStatusBar("test-session")
 	sb.SetLayoutMode(LayoutDesktop)
 
 	// Create state with in_progress task
@@ -139,7 +139,7 @@ func TestStatusBar_SpinnerTicking(t *testing.T) {
 }
 
 func TestStatusBar_SpinnerStopsWhenDone(t *testing.T) {
-	sb := NewStatusBar()
+	sb := NewStatusBar("test-session")
 	sb.SetLayoutMode(LayoutDesktop)
 
 	// Start with in_progress task

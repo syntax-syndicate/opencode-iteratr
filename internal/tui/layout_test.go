@@ -20,11 +20,6 @@ func TestCalculateLayout_Minimum(t *testing.T) {
 			layout.Area.Dx(), layout.Area.Dy(), width, height)
 	}
 
-	// Verify header height
-	if layout.Header.Dy() != HeaderHeight {
-		t.Errorf("Header height mismatch: got %d, want %d", layout.Header.Dy(), HeaderHeight)
-	}
-
 	// Verify status height
 	if layout.Status.Dy() != StatusHeight {
 		t.Errorf("Status height mismatch: got %d, want %d", layout.Status.Dy(), StatusHeight)
@@ -48,7 +43,7 @@ func TestCalculateLayout_Minimum(t *testing.T) {
 	}
 
 	// Verify content area is properly sized
-	expectedContentHeight := height - HeaderHeight - StatusHeight - FooterHeight
+	expectedContentHeight := height - StatusHeight - FooterHeight
 	if layout.Content.Dy() != expectedContentHeight {
 		t.Errorf("Content height mismatch: got %d, want %d",
 			layout.Content.Dy(), expectedContentHeight)
@@ -71,10 +66,7 @@ func TestCalculateLayout_Standard(t *testing.T) {
 			layout.Area.Dx(), layout.Area.Dy(), width, height)
 	}
 
-	// Verify header, status, footer heights
-	if layout.Header.Dy() != HeaderHeight {
-		t.Errorf("Header height mismatch: got %d, want %d", layout.Header.Dy(), HeaderHeight)
-	}
+	// Verify status and footer heights
 	if layout.Status.Dy() != StatusHeight {
 		t.Errorf("Status height mismatch: got %d, want %d", layout.Status.Dy(), StatusHeight)
 	}
@@ -92,15 +84,15 @@ func TestCalculateLayout_Standard(t *testing.T) {
 		t.Errorf("Sidebar width %d exceeds maximum %d", layout.Sidebar.Dx(), SidebarWidthDesktop)
 	}
 
-	// Main + Sidebar should equal content width
-	totalContentWidth := layout.Main.Dx() + layout.Sidebar.Dx()
+	// Main + gap (1) + Sidebar should equal content width
+	totalContentWidth := layout.Main.Dx() + 1 + layout.Sidebar.Dx()
 	if totalContentWidth != layout.Content.Dx() {
-		t.Errorf("Main + Sidebar width (%d) doesn't equal content width (%d)",
+		t.Errorf("Main + gap + Sidebar width (%d) doesn't equal content width (%d)",
 			totalContentWidth, layout.Content.Dx())
 	}
 
 	// Verify content area is properly sized
-	expectedContentHeight := height - HeaderHeight - StatusHeight - FooterHeight
+	expectedContentHeight := height - StatusHeight - FooterHeight
 	if layout.Content.Dy() != expectedContentHeight {
 		t.Errorf("Content height mismatch: got %d, want %d",
 			layout.Content.Dy(), expectedContentHeight)
@@ -141,15 +133,15 @@ func TestCalculateLayout_Large(t *testing.T) {
 			layout.Sidebar.Dx(), maxAllowedSidebarWidth)
 	}
 
-	// Main should get remaining width
-	expectedMainWidth := layout.Content.Dx() - layout.Sidebar.Dx()
+	// Main should get remaining width minus 1-char gap
+	expectedMainWidth := layout.Content.Dx() - layout.Sidebar.Dx() - 1
 	if layout.Main.Dx() != expectedMainWidth {
 		t.Errorf("Main width mismatch: got %d, want %d",
 			layout.Main.Dx(), expectedMainWidth)
 	}
 
 	// Verify all vertical sections add up to total height
-	totalHeight := layout.Header.Dy() + layout.Content.Dy() + layout.Status.Dy() + layout.Footer.Dy()
+	totalHeight := layout.Content.Dy() + layout.Status.Dy() + layout.Footer.Dy()
 	if totalHeight != height {
 		t.Errorf("Vertical sections don't add up: got %d, want %d", totalHeight, height)
 	}
@@ -227,14 +219,9 @@ func TestCalculateLayout_NoOverlaps(t *testing.T) {
 		t.Run("no overlaps", func(t *testing.T) {
 			layout := CalculateLayout(size.width, size.height)
 
-			// Header should be at top
-			if layout.Header.Min.Y != 0 {
-				t.Errorf("Header should start at Y=0, got Y=%d", layout.Header.Min.Y)
-			}
-
-			// Content should be below header
-			if layout.Content.Min.Y != layout.Header.Max.Y {
-				t.Errorf("Content should start where header ends")
+			// Content should be at top
+			if layout.Content.Min.Y != 0 {
+				t.Errorf("Content should start at Y=0, got Y=%d", layout.Content.Min.Y)
 			}
 
 			// Status should be below content
@@ -253,13 +240,13 @@ func TestCalculateLayout_NoOverlaps(t *testing.T) {
 					size.height, layout.Footer.Max.Y)
 			}
 
-			// In desktop mode, main and sidebar should be side-by-side
+			// In desktop mode, main and sidebar should be side-by-side with 1-char gap
 			if layout.Mode == LayoutDesktop {
 				if layout.Main.Min.X != layout.Content.Min.X {
 					t.Error("Main should start at content left edge")
 				}
-				if layout.Sidebar.Min.X != layout.Main.Max.X {
-					t.Error("Sidebar should start where main ends")
+				if layout.Sidebar.Min.X != layout.Main.Max.X+1 {
+					t.Error("Sidebar should start 1 char after main ends (gap)")
 				}
 				if layout.Sidebar.Max.X != layout.Content.Max.X {
 					t.Error("Sidebar should end at content right edge")

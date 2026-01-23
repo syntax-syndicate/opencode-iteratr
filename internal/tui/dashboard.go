@@ -141,10 +141,23 @@ func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 
 // Draw renders the dashboard to a screen buffer using the Screen/Draw pattern.
 func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
-	// Draw panel border with title
-	// Show accent border when FocusAgent (unless input is focused - in which case input gets the highlight)
+	// Draw title-only header (no rule line) with focus-aware color
 	agentPanelFocused := d.focusPane == FocusAgent && d.focusPane != FocusInput
-	inner := DrawPanel(scr, area, "Agent Output", agentPanelFocused)
+	titleStyle := stylePanelTitle
+	if agentPanelFocused {
+		titleStyle = stylePanelTitleFocused
+	}
+	titleArea := uv.Rectangle{
+		Min: uv.Position{X: area.Min.X, Y: area.Min.Y},
+		Max: uv.Position{X: area.Max.X, Y: area.Min.Y + 1},
+	}
+	uv.NewStyledString(titleStyle.Render("Agent Output")).Draw(scr, titleArea)
+
+	// Content area below header
+	inner := uv.Rectangle{
+		Min: uv.Position{X: area.Min.X, Y: area.Min.Y + 1},
+		Max: area.Max,
+	}
 
 	// Delegate to AgentOutput.Draw for content rendering
 	if d.agentOutput != nil {

@@ -143,12 +143,11 @@ var (
 				Foreground(colorPrimary).
 				Bold(true)
 
-	// Status bar style (task stats above footer)
+	// Status bar style (session info + connection status)
 	styleStatusBar = lipgloss.NewStyle().
 			Foreground(colorText).
 			Background(colorBgHeader).
-			Padding(0, 1).
-			Align(lipgloss.Right)
+			Padding(0, 1)
 
 	// View status indicators
 	styleStatusRemaining  = lipgloss.NewStyle().Foreground(colorMuted)
@@ -440,6 +439,12 @@ var (
 	stylePanelTitleFocused = lipgloss.NewStyle().
 				Foreground(colorPrimary).
 				Bold(true)
+
+	stylePanelRule = lipgloss.NewStyle().
+			Foreground(colorSurface2)
+
+	stylePanelRuleFocused = lipgloss.NewStyle().
+				Foreground(colorPrimary)
 
 	// Badge styles
 	styleBadge = lipgloss.NewStyle().
