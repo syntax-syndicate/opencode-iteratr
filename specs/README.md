@@ -9,4 +9,5 @@
 | [dummy-exploration](./dummy-exploration.md) | Draft | Practice spec for testing task workflow |
 | [session-task-enhancements](./session-task-enhancements.md) | Draft | Task deps/priority, iteration history, snapshots, prompt improvements |
 | [state-snapshots](./state-snapshots.md) | Draft | KV snapshots for faster state loading (deferred from session-task-enhancements) |
+| [acp-migration](./acp-migration.md) | Draft | Migrate back to ACP protocol for opencode communication |
 | [clickable-task-modal](./clickable-task-modal.md) | Draft | Click task in sidebar to open detail modal with bubblezone |
