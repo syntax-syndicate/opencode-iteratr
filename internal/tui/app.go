@@ -113,6 +113,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AgentToolCallMsg:
 		return a, a.agent.AppendToolCall(msg)
 
+	case AgentThinkingMsg:
+		return a, a.agent.AppendThinking(msg.Content)
+
+	case AgentFinishMsg:
+		return a, a.agent.AppendFinish(msg)
+
 	case IterationStartMsg:
 		return a, tea.Batch(
 			a.dashboard.SetIteration(msg.Number),
@@ -317,6 +323,11 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	// Check if a footer button was clicked
 	if action := a.footer.ActionAtPosition(mouse.X, mouse.Y); action != "" {
 		return a, a.handleFooterAction(action)
+	}
+
+	// Check if agent output was clicked (expand/collapse tool output)
+	if a.agent.HandleClick(mouse.X, mouse.Y) {
+		return a, nil
 	}
 
 	return a, nil
@@ -603,6 +614,18 @@ type AgentToolCallMsg struct {
 	Status     string
 	Input      map[string]any
 	Output     string
+}
+
+type AgentThinkingMsg struct {
+	Content string
+}
+
+type AgentFinishMsg struct {
+	Reason   string
+	Error    string
+	Model    string
+	Provider string
+	Duration time.Duration
 }
 
 type IterationStartMsg struct {

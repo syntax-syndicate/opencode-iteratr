@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -309,6 +311,105 @@ var (
 				BorderForeground(colorPrimary).
 				PaddingLeft(1)
 
+	// Thinking block styles
+	styleThinkingBox = lipgloss.NewStyle().
+				Background(colorSurface0).
+				PaddingLeft(1).
+				MarginBottom(1)
+
+	styleThinkingContent = lipgloss.NewStyle().
+				Foreground(colorSubtext1).
+				Italic(true)
+
+	styleThinkingTruncationHint = lipgloss.NewStyle().
+					Foreground(colorSubtext0).
+					Italic(true)
+
+	styleThinkingFooter = lipgloss.NewStyle().
+				Foreground(colorSubtext0)
+
+	styleThinkingDuration = lipgloss.NewStyle().
+				Foreground(colorSecondary)
+
+	// Tool call styles
+	styleToolIconPending = lipgloss.NewStyle().
+				Foreground(colorWarning)
+
+	styleToolIconSuccess = lipgloss.NewStyle().
+				Foreground(colorSuccess)
+
+	styleToolIconError = lipgloss.NewStyle().
+				Foreground(colorError)
+
+	styleToolIconCanceled = lipgloss.NewStyle().
+				Foreground(colorMuted)
+
+	styleToolName = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true)
+
+	styleToolParams = lipgloss.NewStyle().
+			Foreground(colorSubtext0)
+
+	styleToolTruncation = lipgloss.NewStyle().
+				Foreground(colorSubtext0).
+				Italic(true).
+				MarginLeft(2)
+
+	styleToolError = lipgloss.NewStyle().
+			Foreground(colorError)
+
+	styleToolOutput = lipgloss.NewStyle().
+			Background(colorSurface0).
+			MarginLeft(2).
+			PaddingLeft(1)
+
+	// Code block styles (for file view/read tool output)
+	styleCodeLineNum = lipgloss.NewStyle().
+				Foreground(colorOverlay0).
+				Background(colorSurface0).
+				PaddingRight(1)
+
+	styleCodeContent = lipgloss.NewStyle().
+				Background(colorSurface0).
+				PaddingLeft(1)
+
+	styleCodeTruncation = lipgloss.NewStyle().
+				Foreground(colorSubtext0).
+				Background(colorSurface0).
+				Italic(true).
+				MarginLeft(2)
+
+	// Info message styles
+	styleInfoIcon = lipgloss.NewStyle().
+			Foreground(colorMuted)
+
+	styleInfoModel = lipgloss.NewStyle().
+			Foreground(colorSecondary)
+
+	styleInfoProvider = lipgloss.NewStyle().
+				Foreground(colorSubtext0)
+
+	styleInfoDuration = lipgloss.NewStyle().
+				Foreground(colorInfo)
+
+	styleInfoRule = lipgloss.NewStyle().
+			Foreground(colorSurface2)
+
+	// Finish state styles
+	styleFinishError = lipgloss.NewStyle().
+				Foreground(colorError)
+
+	styleFinishCanceled = lipgloss.NewStyle().
+				Foreground(colorMuted).
+				Italic(true)
+
+	// Assistant message border
+	styleAssistantBorder = lipgloss.NewStyle().
+				Border(lipgloss.ThickBorder(), false, false, false, true). // Left border only
+				BorderForeground(colorPrimary).
+				PaddingLeft(1)
+
 	// List styles
 	styleListItem = lipgloss.NewStyle().
 			Foreground(colorText).
@@ -411,6 +512,17 @@ var (
 			Foreground(colorSubtext0).
 			Italic(true).
 			Align(lipgloss.Center)
+
+	// Modal hint key/description styles (crush pattern)
+	styleHintKey = lipgloss.NewStyle().
+			Foreground(colorSubtext1).
+			Bold(true)
+
+	styleHintDesc = lipgloss.NewStyle().
+			Foreground(colorSubtext0)
+
+	styleHintSeparator = lipgloss.NewStyle().
+				Foreground(colorSurface2)
 )
 
 // borderStyle returns the appropriate border style based on focus state
@@ -419,4 +531,40 @@ func borderStyle(focused bool) lipgloss.Style {
 		return stylePanelFocused
 	}
 	return stylePanel
+}
+
+// renderModalTitle renders a title with diagonal hatching decoration.
+// Creates format: "Title ╱╱╱╱╱╱╱╱╱" with a gradient from primary to secondary.
+func renderModalTitle(title string, width int) string {
+	styledTitle := styleModalTitle.Render(title)
+	titleWidth := lipgloss.Width(styledTitle)
+
+	remainingWidth := width - titleWidth - 1 // -1 for space before hatching
+	if remainingWidth <= 0 {
+		return styledTitle
+	}
+
+	// Build gradient hatching in segments for performance
+	// Use ~8 color stops across the width instead of per-character
+	const maxStops = 8
+	segmentSize := remainingWidth / maxStops
+	if segmentSize < 1 {
+		segmentSize = 1
+	}
+
+	var hatching strings.Builder
+	for i := 0; i < remainingWidth; i += segmentSize {
+		pos := float64(i) / float64(remainingWidth)
+		color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+		charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+
+		// Render a segment of characters with the same color
+		end := i + segmentSize
+		if end > remainingWidth {
+			end = remainingWidth
+		}
+		hatching.WriteString(charStyle.Render(strings.Repeat("╱", end-i)))
+	}
+
+	return styledTitle + " " + hatching.String()
 }

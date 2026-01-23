@@ -286,6 +286,18 @@ func (o *Orchestrator) Run() error {
 						Output:     event.Output,
 					})
 				},
+				OnThinking: func(content string) {
+					o.tuiProgram.Send(tui.AgentThinkingMsg{Content: content})
+				},
+				OnFinish: func(event agent.FinishEvent) {
+					o.tuiProgram.Send(tui.AgentFinishMsg{
+						Reason:   event.StopReason,
+						Error:    event.Error,
+						Model:    event.Model,
+						Provider: event.Provider,
+						Duration: event.Duration,
+					})
+				},
 			})
 		} else {
 			// Print to stdout in headless mode
@@ -314,6 +326,22 @@ func (o *Orchestrator) Run() error {
 							fmt.Printf("[tool: %s] ✓\n", event.Title)
 						}
 					}
+				},
+				OnThinking: func(content string) {
+					// Print thinking content dimmed in headless mode
+					fmt.Printf("\033[2m%s\033[0m", content)
+				},
+				OnFinish: func(event agent.FinishEvent) {
+					// Print finish summary in headless mode
+					fmt.Printf("\n--- Agent finished: %s", event.StopReason)
+					if event.Error != "" {
+						fmt.Printf(" (error: %s)", event.Error)
+					}
+					fmt.Printf(" | Duration: %s", event.Duration.Round(time.Millisecond))
+					if event.Model != "" {
+						fmt.Printf(" | Model: %s", event.Model)
+					}
+					fmt.Println(" ---")
 				},
 			})
 		}

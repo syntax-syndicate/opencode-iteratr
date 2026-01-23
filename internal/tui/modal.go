@@ -109,8 +109,8 @@ func (m *TaskModal) buildContent(width int) string {
 
 	var sections []string
 
-	// === Title Section ===
-	title := styleModalTitle.Width(width - 2).Render("Task Details")
+	// === Title Section (with diagonal hatching decoration) ===
+	title := renderModalTitle("Task Details", width-2)
 	sections = append(sections, title)
 	sections = append(sections, "") // Blank line
 
@@ -160,8 +160,13 @@ func (m *TaskModal) buildContent(width int) string {
 	sections = append(sections, updatedLine)
 	sections = append(sections, "") // Blank line
 
-	// === Close Instructions ===
-	closeText := styleModalHint.Width(width - 2).Render("[ESC or click outside to close]")
+	// === Close Instructions (key/description differentiation) ===
+	closeHint := styleHintKey.Render("esc") + " " +
+		styleHintDesc.Render("close") + " " +
+		styleHintSeparator.Render("•") + " " +
+		styleHintKey.Render("click outside") + " " +
+		styleHintDesc.Render("dismiss")
+	closeText := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(closeHint)
 	sections = append(sections, closeText)
 
 	return strings.Join(sections, "\n")

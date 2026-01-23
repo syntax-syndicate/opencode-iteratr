@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
@@ -147,4 +148,108 @@ func GetPulseStyle(base lipgloss.Style, intensity float64) lipgloss.Style {
 		return base.Foreground(colorPrimary)
 	}
 	return base.Foreground(colorSecondary)
+}
+
+// GradientSpinnerMsg is sent on each gradient spinner tick
+type GradientSpinnerMsg struct{}
+
+// GradientSpinner renders an animated gradient text spinner
+type GradientSpinner struct {
+	frame  int
+	size   int
+	colorA string
+	colorB string
+	label  string
+}
+
+// NewGradientSpinner creates a gradient spinner with default size
+func NewGradientSpinner(colorA, colorB string, label string) GradientSpinner {
+	return GradientSpinner{
+		frame:  0,
+		size:   15,
+		colorA: colorA,
+		colorB: colorB,
+		label:  label,
+	}
+}
+
+// View renders the gradient spinner as an animated string
+func (g *GradientSpinner) View() string {
+	// Create the gradient string by interpolating between colorA and colorB
+	var result string
+
+	for i := 0; i < g.size; i++ {
+		// Calculate position in gradient (0.0 to 1.0), shifted by frame for animation
+		pos := float64((i+g.frame)%g.size) / float64(g.size)
+
+		// Interpolate between colorA and colorB
+		colorHex := interpolateColor(g.colorA, g.colorB, pos)
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+		result += style.Render("█")
+	}
+
+	// Prepend label if set
+	if g.label != "" {
+		labelStyle := lipgloss.NewStyle().Foreground(colorText)
+		return labelStyle.Render(g.label+" ") + result
+	}
+
+	return result
+}
+
+// interpolateColor blends between two hex colors based on position (0.0 to 1.0)
+func interpolateColor(colorA, colorB string, pos float64) string {
+	// Parse hex colors (format: #RRGGBB)
+	r1, g1, b1 := parseHexColor(colorA)
+	r2, g2, b2 := parseHexColor(colorB)
+
+	// Interpolate each channel
+	r := uint8(float64(r1)*(1-pos) + float64(r2)*pos)
+	g := uint8(float64(g1)*(1-pos) + float64(g2)*pos)
+	b := uint8(float64(b1)*(1-pos) + float64(b2)*pos)
+
+	// Return as hex color string
+	return formatHexColor(r, g, b)
+}
+
+// parseHexColor extracts RGB values from hex color string
+func parseHexColor(hex string) (uint8, uint8, uint8) {
+	// Remove # prefix if present
+	if len(hex) > 0 && hex[0] == '#' {
+		hex = hex[1:]
+	}
+
+	// Parse RGB values
+	var r, g, b uint8
+	if len(hex) == 6 {
+		fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+	}
+
+	return r, g, b
+}
+
+// formatHexColor converts RGB values to hex color string
+func formatHexColor(r, g, b uint8) string {
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+}
+
+// Tick returns a command that sends a GradientSpinnerMsg after 80ms
+func (g *GradientSpinner) Tick() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(t time.Time) tea.Msg {
+		return GradientSpinnerMsg{}
+	})
+}
+
+// Update handles gradient spinner tick messages and advances animation
+func (g *GradientSpinner) Update(msg tea.Msg) tea.Cmd {
+	switch msg.(type) {
+	case GradientSpinnerMsg:
+		g.frame++
+		// Wrap frame to prevent overflow
+		if g.frame >= g.size {
+			g.frame = 0
+		}
+		return g.Tick()
+	}
+	return nil
 }

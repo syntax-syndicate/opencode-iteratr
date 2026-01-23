@@ -99,8 +99,8 @@ func (m *NoteModal) buildContent(width int) string {
 
 	var sections []string
 
-	// Title
-	title := styleModalTitle.Width(width - 2).Render("Note Details")
+	// Title (with diagonal hatching decoration)
+	title := renderModalTitle("Note Details", width-2)
 	sections = append(sections, title)
 	sections = append(sections, "")
 
@@ -134,8 +134,13 @@ func (m *NoteModal) buildContent(width int) string {
 	sections = append(sections, createdLine)
 	sections = append(sections, "")
 
-	// Close instructions
-	closeText := styleModalHint.Width(width - 2).Render("[ESC or click outside to close]")
+	// Close instructions (key/description differentiation)
+	closeHint := styleHintKey.Render("esc") + " " +
+		styleHintDesc.Render("close") + " " +
+		styleHintSeparator.Render("•") + " " +
+		styleHintKey.Render("click outside") + " " +
+		styleHintDesc.Render("dismiss")
+	closeText := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(closeHint)
 	sections = append(sections, closeText)
 
 	return strings.Join(sections, "\n")

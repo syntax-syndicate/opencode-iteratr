@@ -235,8 +235,8 @@ func (c *acpConn) setModel(ctx context.Context, sessionID, modelID string) error
 }
 
 // prompt sends a prompt to the session and streams notifications via callbacks.
-// Returns when the prompt completes or an error occurs.
-func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText func(string), onToolCall func(ToolCallEvent)) error {
+// Returns the stop reason when the prompt completes or an error occurs.
+func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText func(string), onToolCall func(ToolCallEvent), onThinking func(string)) (string, error) {
 	params := promptParams{
 		SessionID: sessionID,
 		Prompt: []contentBlock{
@@ -249,20 +249,20 @@ func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText fun
 
 	reqID, err := c.sendRequest("session/prompt", params)
 	if err != nil {
-		return fmt.Errorf("failed to send session/prompt request: %w", err)
+		return "", fmt.Errorf("failed to send session/prompt request: %w", err)
 	}
 
 	// Read messages in loop until response with matching request ID arrives
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		default:
 		}
 
 		resp, err := c.readMessage()
 		if err != nil {
-			return fmt.Errorf("failed to read prompt response: %w", err)
+			return "", fmt.Errorf("failed to read prompt response: %w", err)
 		}
 
 		// For notifications (id==nil, method=="session/update"): parse update params
@@ -290,6 +290,17 @@ func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText fun
 				}
 				if onText != nil {
 					onText(chunk.Content.Text)
+				}
+
+			case "agent_thought_chunk":
+				// agent_thought_chunk: extract update.content.text, call onThinking
+				var chunk agentThoughtChunk
+				if err := json.Unmarshal(updateParams.Update, &chunk); err != nil {
+					logger.Warn("Failed to parse agent_thought_chunk: %v", err)
+					continue
+				}
+				if onThinking != nil {
+					onThinking(chunk.Content.Text)
 				}
 
 			case "tool_call":
@@ -325,8 +336,8 @@ func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText fun
 						Kind:       tcu.Kind,
 						RawInput:   tcu.RawInput,
 					}
-					// Extract output from completed tool calls
-					if tcu.Status == "completed" && len(tcu.Content) > 0 {
+					// Extract output from completed or error tool calls
+					if (tcu.Status == "completed" || tcu.Status == "error") && len(tcu.Content) > 0 {
 						event.Output = tcu.Content[0].Content.Text
 					}
 					onToolCall(event)
@@ -355,12 +366,24 @@ func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText fun
 
 		// Handle error response
 		if resp.Error != nil {
-			return fmt.Errorf("session/prompt failed: %s (code %d)", resp.Error.Message, resp.Error.Code)
+			return "", fmt.Errorf("session/prompt failed: %s (code %d)", resp.Error.Message, resp.Error.Code)
 		}
 
-		// Return nil on successful prompt result, wrap error on error result
-		logger.Debug("ACP prompt completed")
-		return nil
+		// Parse result to extract stop reason
+		var result promptResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			logger.Warn("Failed to parse prompt result: %v", err)
+			// Default to "end_turn" if parsing fails
+			return "end_turn", nil
+		}
+
+		// Return stop reason (e.g., "end_turn", "max_tokens", "cancelled", "refusal", "max_turn_requests")
+		stopReason := result.StopReason
+		if stopReason == "" {
+			stopReason = "end_turn" // Default if not provided
+		}
+		logger.Debug("ACP prompt completed with stop reason: %s", stopReason)
+		return stopReason, nil
 	}
 }
 
@@ -465,6 +488,12 @@ type agentMessageChunk struct {
 	Content       contentPart `json:"content"`
 }
 
+// agent_thought_chunk
+type agentThoughtChunk struct {
+	SessionUpdate string      `json:"sessionUpdate"` // "agent_thought_chunk"
+	Content       contentPart `json:"content"`
+}
+
 type contentPart struct {
 	Type string `json:"type"` // "text"
 	Text string `json:"text"`
@@ -480,15 +509,15 @@ type toolCall struct {
 	RawInput      map[string]any `json:"rawInput"` // empty on pending
 }
 
-// tool_call_update (in_progress or completed)
+// tool_call_update (in_progress, completed, error, or canceled)
 type toolCallUpdate struct {
 	SessionUpdate string            `json:"sessionUpdate"` // "tool_call_update"
 	ToolCallID    string            `json:"toolCallId"`
 	Title         string            `json:"title"`
 	Kind          string            `json:"kind"`
-	Status        string            `json:"status"`              // "in_progress" | "completed"
+	Status        string            `json:"status"`              // "in_progress" | "completed" | "error" | "canceled"
 	RawInput      map[string]any    `json:"rawInput"`            // e.g. {"command":"echo hi","description":"..."}
-	Content       []toolCallContent `json:"content,omitempty"`   // only on completed
+	Content       []toolCallContent `json:"content,omitempty"`   // only on completed/error
 	RawOutput     map[string]any    `json:"rawOutput,omitempty"` // only on completed
 }
 

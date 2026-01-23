@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/iteratr/internal/logger"
 )
@@ -17,6 +19,8 @@ type Runner struct {
 	natsPort    int
 	onText      func(text string)
 	onToolCall  func(ToolCallEvent)
+	onThinking  func(string)
+	onFinish    func(FinishEvent)
 }
 
 // RunnerConfig holds configuration for creating a new Runner.
@@ -27,6 +31,8 @@ type RunnerConfig struct {
 	NATSPort    int                 // NATS server port for tool CLI
 	OnText      func(text string)   // Callback for text output
 	OnToolCall  func(ToolCallEvent) // Callback for tool lifecycle events
+	OnThinking  func(string)        // Callback for thinking/reasoning output
+	OnFinish    func(FinishEvent)   // Callback for iteration finish events
 }
 
 // NewRunner creates a new Runner instance.
@@ -38,7 +44,24 @@ func NewRunner(cfg RunnerConfig) *Runner {
 		natsPort:    cfg.NATSPort,
 		onText:      cfg.OnText,
 		onToolCall:  cfg.OnToolCall,
+		onThinking:  cfg.OnThinking,
+		onFinish:    cfg.OnFinish,
 	}
+}
+
+// extractProvider parses provider name from model string.
+// Model format is typically "provider/model-name" (e.g., "anthropic/claude-sonnet-4-5").
+// Returns capitalized provider name (e.g., "Anthropic") or empty string if no slash.
+func extractProvider(model string) string {
+	if idx := strings.Index(model, "/"); idx >= 0 {
+		provider := model[:idx]
+		// Capitalize first letter
+		if len(provider) > 0 {
+			return strings.ToUpper(provider[:1]) + provider[1:]
+		}
+		return provider
+	}
+	return ""
 }
 
 // RunIteration executes a single iteration by spawning opencode acp subprocess.
@@ -99,9 +122,37 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 	}
 
 	// Send prompt and stream notifications to callbacks
-	// Wire both onText and onToolCall callbacks through to prompt()
-	if err := conn.prompt(ctx, sessID, prompt, r.onText, r.onToolCall); err != nil {
+	// Wire onText, onToolCall, and onThinking callbacks through to prompt()
+	startTime := time.Now()
+	stopReason, err := conn.prompt(ctx, sessID, prompt, r.onText, r.onToolCall, r.onThinking)
+	duration := time.Since(startTime)
+
+	if err != nil {
+		// Prompt failed - determine if it was cancelled or error
+		if r.onFinish != nil {
+			finalStopReason := "error"
+			if ctx.Err() == context.Canceled {
+				finalStopReason = "cancelled"
+			}
+			r.onFinish(FinishEvent{
+				StopReason: finalStopReason,
+				Error:      err.Error(),
+				Duration:   duration,
+				Model:      r.model,
+				Provider:   extractProvider(r.model),
+			})
+		}
 		return fmt.Errorf("ACP prompt failed: %w", err)
+	}
+
+	// Prompt succeeded - call onFinish with the actual stop reason from ACP
+	if r.onFinish != nil {
+		r.onFinish(FinishEvent{
+			StopReason: stopReason,
+			Duration:   duration,
+			Model:      r.model,
+			Provider:   extractProvider(r.model),
+		})
 	}
 
 	logger.Debug("opencode iteration completed successfully")

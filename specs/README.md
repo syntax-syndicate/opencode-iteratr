@@ -12,3 +12,4 @@
 | [acp-migration](./acp-migration.md) | Draft | Migrate back to ACP protocol for opencode communication |
 | [clickable-task-modal](./clickable-task-modal.md) | Draft | Click task in sidebar to open detail modal with bubblezone |
 | [agent-message-display](./agent-message-display.md) | Draft | Rich agent message rendering: thinking blocks, tool status, markdown, animations |
+| [user-input-acp](./user-input-acp.md) | Draft | Replace inbox with Bubbles textinput, send user messages via persistent ACP session |

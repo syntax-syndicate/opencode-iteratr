@@ -360,3 +360,92 @@ func TestIntegration_EventHandling(t *testing.T) {
 		t.Error("Expected command from event handling")
 	}
 }
+
+// TestIntegration_AllMessageTypes tests that all message types render correctly together
+func TestIntegration_AllMessageTypes(t *testing.T) {
+	app := NewApp(context.Background(), nil, "test-session", nil)
+	app.width = 120
+	app.height = 40
+	app.layout = CalculateLayout(120, 40)
+	app.propagateSizes()
+
+	// Test iteration divider
+	iterMsg := IterationStartMsg{Number: 1}
+	_, _ = app.Update(iterMsg)
+
+	// Test text message
+	textMsg := AgentOutputMsg{Content: "This is assistant text"}
+	_, _ = app.Update(textMsg)
+
+	// Test thinking message
+	thinkingMsg := AgentThinkingMsg{Content: "Analyzing the problem..."}
+	_, _ = app.Update(thinkingMsg)
+
+	// Test tool call messages
+	toolMsg := AgentToolCallMsg{
+		ToolCallID: "tool-1",
+		Title:      "Read",
+		Status:     "completed",
+		Input:      map[string]any{"filePath": "test.go"},
+		Output:     "file contents here",
+	}
+	_, _ = app.Update(toolMsg)
+
+	// Test finish message
+	finishMsg := AgentFinishMsg{
+		Reason:   "end_turn",
+		Model:    "claude-sonnet-4",
+		Provider: "Anthropic",
+		Duration: 1500000000, // 1.5 seconds
+	}
+	_, _ = app.Update(finishMsg)
+
+	// Verify agent has messages
+	if len(app.agent.messages) == 0 {
+		t.Error("Expected agent to have messages")
+	}
+
+	// Verify different message types are present
+	hasText := false
+	hasThinking := false
+	hasTool := false
+	hasInfo := false
+	hasDivider := false
+
+	for _, msg := range app.agent.messages {
+		switch msg.(type) {
+		case *TextMessageItem:
+			hasText = true
+		case *ThinkingMessageItem:
+			hasThinking = true
+		case *ToolMessageItem:
+			hasTool = true
+		case *InfoMessageItem:
+			hasInfo = true
+		case *DividerMessageItem:
+			hasDivider = true
+		}
+	}
+
+	if !hasText {
+		t.Error("Expected at least one TextMessageItem")
+	}
+	if !hasThinking {
+		t.Error("Expected at least one ThinkingMessageItem")
+	}
+	if !hasTool {
+		t.Error("Expected at least one ToolMessageItem")
+	}
+	if !hasInfo {
+		t.Error("Expected at least one InfoMessageItem")
+	}
+	if !hasDivider {
+		t.Error("Expected at least one DividerMessageItem")
+	}
+
+	// Verify rendering doesn't panic
+	output := app.agent.Render()
+	if output == "" {
+		t.Error("Expected non-empty agent output")
+	}
+}

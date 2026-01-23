@@ -100,7 +100,7 @@ func TestTaskModal_BuildContent(t *testing.T) {
 		t.Error("Content should include dependencies")
 	}
 
-	if !strings.Contains(content, "ESC or click outside to close") {
+	if !strings.Contains(content, "esc") || !strings.Contains(content, "close") {
 		t.Error("Content should include close instructions")
 	}
 }

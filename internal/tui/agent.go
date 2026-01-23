@@ -6,38 +6,23 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
-// MessageType indicates the type of agent message.
-type MessageType int
-
-const (
-	MessageTypeText MessageType = iota
-	MessageTypeTool
-	MessageTypeDivider
-)
-
-// AgentMessage represents a single message from the agent.
-type AgentMessage struct {
-	Type       MessageType
-	Content    string
-	Tool       string // Tool name for tool messages
-	ToolStatus string // Tool status: "pending", "in_progress", "completed"
-	ToolOutput string // Tool output (only for completed status)
-	Iteration  int    // Iteration number for dividers
-}
-
 // AgentOutput displays streaming agent output with auto-scroll.
 type AgentOutput struct {
-	viewport   viewport.Model
-	messages   []AgentMessage
-	toolIndex  map[string]int // toolCallId → message index
-	width      int
-	height     int
-	autoScroll bool // Whether to auto-scroll to bottom on new content
-	ready      bool // Whether viewport is initialized
+	viewport          viewport.Model
+	messages          []MessageItem
+	toolIndex         map[string]int // toolCallId → message index
+	width             int
+	height            int
+	autoScroll        bool // Whether to auto-scroll to bottom on new content
+	ready             bool // Whether viewport is initialized
+	spinner           *GradientSpinner
+	isStreaming       bool
+	focusedIndex      int          // Index of the message that has keyboard focus (-1 = no focus)
+	viewportArea      uv.Rectangle // Screen area where viewport is drawn (for mouse hit detection)
+	messageLineStarts []int        // Start line index in content for each message
 }
 
 // Compile-time interface checks
@@ -48,9 +33,10 @@ var _ Component = (*AgentOutput)(nil)
 // NewAgentOutput creates a new AgentOutput component.
 func NewAgentOutput() *AgentOutput {
 	return &AgentOutput{
-		messages:   make([]AgentMessage, 0),
-		toolIndex:  make(map[string]int),
-		autoScroll: true,
+		messages:     make([]MessageItem, 0),
+		toolIndex:    make(map[string]int),
+		autoScroll:   true,
+		focusedIndex: -1, // No message focused initially
 	}
 }
 
@@ -63,6 +49,39 @@ func (a *AgentOutput) Init() tea.Cmd {
 func (a *AgentOutput) Update(msg tea.Msg) tea.Cmd {
 	if !a.ready {
 		return nil
+	}
+
+	// Handle gradient spinner animation
+	if a.spinner != nil {
+		if spinnerCmd := a.spinner.Update(msg); spinnerCmd != nil {
+			// Refresh content to show updated spinner frame
+			a.refreshContent()
+			return spinnerCmd
+		}
+	}
+
+	// Handle keyboard input for expand/collapse on focused message
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch keyMsg.String() {
+		case "up":
+			// Move focus to previous expandable message
+			a.moveFocusPrevious()
+			return nil
+		case "down":
+			// Move focus to next expandable message
+			a.moveFocusNext()
+			return nil
+		case "space", "enter":
+			// Toggle expansion on focused message if it's expandable
+			if a.focusedIndex >= 0 && a.focusedIndex < len(a.messages) {
+				focusedMsg := a.messages[a.focusedIndex]
+				if expandable, ok := focusedMsg.(Expandable); ok {
+					expandable.ToggleExpanded()
+					a.refreshContent()
+					return nil
+				}
+			}
+		}
 	}
 
 	var cmd tea.Cmd
@@ -98,9 +117,11 @@ func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
-	// Render viewport content
+	// Render viewport content with 1-char left margin
 	content := a.viewport.View()
-	uv.NewStyledString(content).Draw(scr, area)
+	contentArea := uv.Rect(area.Min.X+1, area.Min.Y, area.Dx()-1, area.Dy())
+	a.viewportArea = contentArea
+	uv.NewStyledString(content).Draw(scr, contentArea)
 
 	// Draw scroll indicator if there's overflow
 	if a.viewport.TotalLineCount() > a.viewport.Height() {
@@ -146,17 +167,41 @@ func (a *AgentOutput) UpdateSize(width, height int) tea.Cmd {
 
 // AppendText adds a text message to the output.
 func (a *AgentOutput) AppendText(content string) tea.Cmd {
-	// If last message is text, append to it
-	if len(a.messages) > 0 && a.messages[len(a.messages)-1].Type == MessageTypeText {
-		a.messages[len(a.messages)-1].Content += content
-	} else {
-		a.messages = append(a.messages, AgentMessage{
-			Type:    MessageTypeText,
-			Content: content,
-		})
+	// Start spinner on first streaming content
+	var spinnerCmd tea.Cmd
+	if !a.isStreaming && content == "" {
+		a.isStreaming = true
+		// Create spinner with label "Generating..."
+		spinner := NewGradientSpinner("#cba6f7", "#89b4fa", "Generating...")
+		a.spinner = &spinner
+		spinnerCmd = a.spinner.Tick()
 	}
+
+	// Stop spinner when actual content arrives
+	if a.isStreaming && content != "" {
+		a.isStreaming = false
+		a.spinner = nil
+	}
+
+	// If last message is a TextMessageItem, append to it
+	if len(a.messages) > 0 {
+		if textMsg, ok := a.messages[len(a.messages)-1].(*TextMessageItem); ok {
+			textMsg.content += content
+			// Invalidate cache
+			textMsg.cachedWidth = 0
+			a.refreshContent()
+			return spinnerCmd
+		}
+	}
+
+	// Create new TextMessageItem
+	newMsg := &TextMessageItem{
+		id:      fmt.Sprintf("text-%d", len(a.messages)),
+		content: content,
+	}
+	a.messages = append(a.messages, newMsg)
 	a.refreshContent()
-	return nil
+	return spinnerCmd
 }
 
 // AppendToolCall handles tool lifecycle events.
@@ -165,50 +210,104 @@ func (a *AgentOutput) AppendText(content string) tea.Cmd {
 func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 	idx, exists := a.toolIndex[msg.ToolCallID]
 	if !exists {
-		// New tool call - append message
-		content := formatToolInput(msg.Input)
-		a.messages = append(a.messages, AgentMessage{
-			Type:       MessageTypeTool,
-			Tool:       msg.Title,
-			ToolStatus: msg.Status,
-			Content:    content,
-		})
+		// New tool call - create ToolMessageItem
+		// Map status strings to ToolStatus enum
+		status := mapToolStatus(msg.Status)
+
+		newMsg := &ToolMessageItem{
+			id:       msg.ToolCallID,
+			toolName: msg.Title,
+			status:   status,
+			input:    msg.Input,
+			output:   msg.Output,
+			maxLines: 10,
+		}
+		a.messages = append(a.messages, newMsg)
 		a.toolIndex[msg.ToolCallID] = len(a.messages) - 1
 	} else {
 		// Update existing tool call in-place
-		m := &a.messages[idx]
-		m.ToolStatus = msg.Status
-		if len(msg.Input) > 0 {
-			m.Content = formatToolInput(msg.Input)
-		}
-		if msg.Output != "" {
-			m.ToolOutput = msg.Output
+		if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
+			toolMsg.status = mapToolStatus(msg.Status)
+			if len(msg.Input) > 0 {
+				toolMsg.input = msg.Input
+			}
+			if msg.Output != "" {
+				toolMsg.output = msg.Output
+			}
+			// Invalidate cache
+			toolMsg.cachedWidth = 0
 		}
 	}
 	a.refreshContent()
 	return nil
+}
+
+// mapToolStatus converts status strings to ToolStatus enum.
+func mapToolStatus(status string) ToolStatus {
+	switch status {
+	case "pending":
+		return ToolStatusPending
+	case "in_progress":
+		return ToolStatusRunning
+	case "completed":
+		return ToolStatusSuccess
+	case "error":
+		return ToolStatusError
+	case "canceled", "cancelled":
+		return ToolStatusCanceled
+	default:
+		return ToolStatusPending
+	}
 }
 
 // AddIterationDivider adds a horizontal divider for a new iteration.
 func (a *AgentOutput) AddIterationDivider(iteration int) tea.Cmd {
-	a.messages = append(a.messages, AgentMessage{
-		Type:      MessageTypeDivider,
-		Iteration: iteration,
-	})
+	newMsg := &DividerMessageItem{
+		id:        fmt.Sprintf("divider-%d", iteration),
+		iteration: iteration,
+	}
+	a.messages = append(a.messages, newMsg)
 	a.refreshContent()
 	return nil
 }
 
-// formatToolInput formats the tool input for display.
-func formatToolInput(input map[string]any) string {
-	if input == nil {
-		return ""
+// HandleClick processes a mouse click at screen coordinates (x, y).
+// Returns true if the click toggled an expandable message.
+func (a *AgentOutput) HandleClick(x, y int) bool {
+	if !a.ready || len(a.messageLineStarts) == 0 {
+		return false
 	}
-	var parts []string
-	for k, v := range input {
-		parts = append(parts, fmt.Sprintf("%s: %v", k, v))
+
+	// Check if click is within the viewport area
+	if x < a.viewportArea.Min.X || x >= a.viewportArea.Max.X ||
+		y < a.viewportArea.Min.Y || y >= a.viewportArea.Max.Y {
+		return false
 	}
-	return strings.Join(parts, ", ")
+
+	// Translate screen Y to content line (accounting for scroll offset)
+	contentLine := (y - a.viewportArea.Min.Y) + a.viewport.YOffset()
+
+	// Find which message this line belongs to
+	msgIdx := -1
+	for i := len(a.messageLineStarts) - 1; i >= 0; i-- {
+		if contentLine >= a.messageLineStarts[i] {
+			msgIdx = i
+			break
+		}
+	}
+
+	if msgIdx < 0 || msgIdx >= len(a.messages) {
+		return false
+	}
+
+	// Toggle if expandable
+	if expandable, ok := a.messages[msgIdx].(Expandable); ok {
+		expandable.ToggleExpanded()
+		a.refreshContent()
+		return true
+	}
+
+	return false
 }
 
 // refreshContent rebuilds the viewport content from messages.
@@ -218,12 +317,33 @@ func (a *AgentOutput) refreshContent() {
 	}
 
 	var rendered strings.Builder
-	contentWidth := a.width - 4 // Account for border and padding
+	// Account for border, padding, and 1-char left margin
+	contentWidth := a.width - 5
+	currentLine := 0
+	a.messageLineStarts = make([]int, 0, len(a.messages))
 
-	for _, msg := range a.messages {
-		block := a.renderMessage(msg, contentWidth)
+	// If streaming and no content yet, prepend spinner view
+	if a.isStreaming && a.spinner != nil && len(a.messages) == 0 {
+		rendered.WriteString(a.spinner.View())
+		rendered.WriteString("\n")
+		currentLine++
+	}
+
+	for i, msg := range a.messages {
+		a.messageLineStarts = append(a.messageLineStarts, currentLine)
+		block := msg.Render(contentWidth)
 		rendered.WriteString(block)
 		rendered.WriteString("\n")
+		currentLine += strings.Count(block, "\n") + 1
+
+		// Add vertical spacing between message blocks
+		// Skip extra spacing after dividers (they have their own margins)
+		if i < len(a.messages)-1 {
+			if _, isDivider := msg.(*DividerMessageItem); !isDivider {
+				rendered.WriteString("\n")
+				currentLine++
+			}
+		}
 	}
 
 	a.viewport.SetContent(rendered.String())
@@ -231,109 +351,6 @@ func (a *AgentOutput) refreshContent() {
 	if a.autoScroll {
 		a.viewport.GotoBottom()
 	}
-}
-
-// renderMessage renders a single message with appropriate styling.
-func (a *AgentOutput) renderMessage(msg AgentMessage, width int) string {
-	switch msg.Type {
-	case MessageTypeTool:
-		return a.renderToolMessage(msg, width)
-	case MessageTypeDivider:
-		return a.renderDivider(msg, width)
-	default:
-		return a.renderTextMessage(msg, width)
-	}
-}
-
-// renderTextMessage renders a text message with left border.
-func (a *AgentOutput) renderTextMessage(msg AgentMessage, width int) string {
-	style := lipgloss.NewStyle().
-		Border(lipgloss.ThickBorder(), false, false, false, true).
-		BorderForeground(colorPrimary).
-		PaddingLeft(1).
-		MarginBottom(1).
-		Width(width)
-
-	// Word wrap the content
-	wrapped := wrapText(msg.Content, width-3)
-	return style.Render(wrapped)
-}
-
-// renderToolMessage renders a tool use message with lifecycle status.
-func (a *AgentOutput) renderToolMessage(msg AgentMessage, width int) string {
-	style := lipgloss.NewStyle().
-		Border(lipgloss.ThickBorder(), false, false, false, true).
-		BorderForeground(colorSecondary).
-		PaddingLeft(1).
-		MarginBottom(1).
-		Width(width)
-
-	// Choose icon and color based on status
-	var icon string
-	var iconColor lipgloss.Color
-	switch msg.ToolStatus {
-	case "pending":
-		icon = "⠋"
-		iconColor = colorWarning
-	case "in_progress":
-		icon = "⠋"
-		iconColor = colorWarning
-	case "completed":
-		icon = "✓"
-		iconColor = colorSuccess
-	default:
-		icon = "⠋"
-		iconColor = colorWarning
-	}
-
-	// Tool header with status icon
-	header := lipgloss.NewStyle().Foreground(iconColor).Render(icon) + " " +
-		lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render(msg.Tool)
-
-	content := header
-	if msg.Content != "" {
-		content += "\n" + styleDim.Render(msg.Content)
-	}
-
-	// Show tool output if completed
-	if msg.ToolStatus == "completed" && msg.ToolOutput != "" {
-		outputHeader := styleDim.Render("─── output ───")
-		// Truncate if output is long (>3 lines)
-		outputLines := strings.Split(msg.ToolOutput, "\n")
-		if len(outputLines) > 3 {
-			outputLines = append(outputLines[:3], fmt.Sprintf("[... %d more lines]", len(outputLines)-3))
-		}
-		outputText := strings.Join(outputLines, "\n")
-		content += "\n" + outputHeader + "\n" + styleDim.Render(outputText)
-	}
-
-	return style.Render(content)
-}
-
-// renderDivider renders an iteration divider with a horizontal rule.
-func (a *AgentOutput) renderDivider(msg AgentMessage, width int) string {
-	// Create the iteration label
-	label := fmt.Sprintf(" Iteration #%d ", msg.Iteration)
-	labelWidth := len(label)
-
-	// Calculate line widths on each side
-	lineWidth := (width - labelWidth) / 2
-	if lineWidth < 3 {
-		lineWidth = 3
-	}
-
-	// Build the horizontal rule with centered label
-	line := strings.Repeat("─", lineWidth)
-	divider := line + label + line
-
-	// Style the divider
-	style := lipgloss.NewStyle().
-		Foreground(colorMuted).
-		Bold(true).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return style.Render(divider)
 }
 
 // wrapText wraps text to the given width.
@@ -372,7 +389,8 @@ func wrapText(text string, width int) string {
 
 // Clear resets the agent output content.
 func (a *AgentOutput) Clear() tea.Cmd {
-	a.messages = make([]AgentMessage, 0)
+	a.messages = make([]MessageItem, 0)
+	a.toolIndex = make(map[string]int)
 	if a.ready {
 		a.viewport.SetContent("")
 		a.viewport.GotoTop()
@@ -381,7 +399,235 @@ func (a *AgentOutput) Clear() tea.Cmd {
 	return nil
 }
 
+// AppendThinking adds thinking/reasoning content to the output.
+// If last message is ThinkingMessageItem, appends to it; otherwise creates new one.
+func (a *AgentOutput) AppendThinking(content string) tea.Cmd {
+	// Start spinner on first streaming content
+	var spinnerCmd tea.Cmd
+	if !a.isStreaming && content == "" {
+		a.isStreaming = true
+		// Create spinner with label "Thinking..."
+		spinner := NewGradientSpinner("#cba6f7", "#89b4fa", "Thinking...")
+		a.spinner = &spinner
+		spinnerCmd = a.spinner.Tick()
+	}
+
+	// Stop spinner when actual content arrives
+	if a.isStreaming && content != "" {
+		a.isStreaming = false
+		a.spinner = nil
+	}
+
+	// If last message is a ThinkingMessageItem, append to it
+	if len(a.messages) > 0 {
+		if thinkingMsg, ok := a.messages[len(a.messages)-1].(*ThinkingMessageItem); ok {
+			thinkingMsg.content += content
+			// Invalidate cache
+			thinkingMsg.cachedWidth = 0
+			a.refreshContent()
+			return spinnerCmd
+		}
+	}
+
+	// Create new ThinkingMessageItem
+	newMsg := &ThinkingMessageItem{
+		id:        fmt.Sprintf("thinking-%d", len(a.messages)),
+		content:   content,
+		collapsed: true, // default true
+	}
+	a.messages = append(a.messages, newMsg)
+	a.refreshContent()
+	return spinnerCmd
+}
+
+// AppendFinish marks the iteration as finished and displays completion metadata.
+// Sets finished=true on last ThinkingMessageItem (with duration), appends InfoMessageItem
+// for model/provider/duration, and appends styled finish reason for errors/cancellations.
+func (a *AgentOutput) AppendFinish(msg AgentFinishMsg) tea.Cmd {
+	// Stop spinner when finish event received
+	if a.isStreaming {
+		a.isStreaming = false
+		a.spinner = nil
+	}
+
+	// 1. Mark last ThinkingMessageItem as finished with duration
+	if len(a.messages) > 0 {
+		if thinkingMsg, ok := a.messages[len(a.messages)-1].(*ThinkingMessageItem); ok {
+			thinkingMsg.finished = true
+			thinkingMsg.duration = msg.Duration
+			// Invalidate cache to trigger re-render with footer
+			thinkingMsg.cachedWidth = 0
+		}
+	}
+
+	// 1.5. If canceled, mark all pending/running tools as canceled
+	if msg.Reason == "cancelled" {
+		for _, message := range a.messages {
+			if toolMsg, ok := message.(*ToolMessageItem); ok {
+				if toolMsg.status == ToolStatusPending || toolMsg.status == ToolStatusRunning {
+					toolMsg.status = ToolStatusCanceled
+					// Invalidate cache
+					toolMsg.cachedWidth = 0
+				}
+			}
+		}
+	}
+
+	// 2. Append InfoMessageItem with model/provider/duration
+	infoMsg := &InfoMessageItem{
+		id:       fmt.Sprintf("info-%d", len(a.messages)),
+		model:    msg.Model,
+		provider: msg.Provider,
+		duration: msg.Duration,
+	}
+	a.messages = append(a.messages, infoMsg)
+
+	// 3. If error or canceled, append styled finish reason
+	if msg.Error != "" {
+		// Error finish
+		errorText := styleFinishError.Render(fmt.Sprintf("Error: %s", msg.Error))
+		errorItem := &TextMessageItem{
+			id:      fmt.Sprintf("finish-error-%d", len(a.messages)),
+			content: errorText,
+		}
+		a.messages = append(a.messages, errorItem)
+	} else if msg.Reason == "cancelled" {
+		// Canceled finish
+		cancelText := styleFinishCanceled.Render("Iteration canceled")
+		cancelItem := &TextMessageItem{
+			id:      fmt.Sprintf("finish-cancel-%d", len(a.messages)),
+			content: cancelText,
+		}
+		a.messages = append(a.messages, cancelItem)
+	}
+
+	a.refreshContent()
+	return nil
+}
+
+// MarkToolError marks a tool call as failed with an error message.
+// Finds the tool by ID, sets status to ToolStatusError, and updates output with error message.
+func (a *AgentOutput) MarkToolError(toolCallID, errMsg string) tea.Cmd {
+	idx, exists := a.toolIndex[toolCallID]
+	if !exists {
+		return nil
+	}
+
+	if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
+		toolMsg.status = ToolStatusError
+		toolMsg.output = errMsg
+		// Invalidate cache
+		toolMsg.cachedWidth = 0
+		a.refreshContent()
+	}
+
+	return nil
+}
+
+// MarkToolCanceled marks a tool call as canceled.
+// Finds the tool by ID and sets status to ToolStatusCanceled.
+func (a *AgentOutput) MarkToolCanceled(toolCallID string) tea.Cmd {
+	idx, exists := a.toolIndex[toolCallID]
+	if !exists {
+		return nil
+	}
+
+	if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
+		toolMsg.status = ToolStatusCanceled
+		// Invalidate cache
+		toolMsg.cachedWidth = 0
+		a.refreshContent()
+	}
+
+	return nil
+}
+
 // Append adds content to the agent output stream (legacy - calls AppendText).
 func (a *AgentOutput) Append(content string) tea.Cmd {
 	return a.AppendText(content)
+}
+
+// moveFocusPrevious moves focus to the previous expandable message.
+// Wraps around to the last expandable message if at the beginning.
+func (a *AgentOutput) moveFocusPrevious() {
+	if len(a.messages) == 0 {
+		return
+	}
+
+	// Find expandable messages
+	expandableIndices := a.findExpandableIndices()
+	if len(expandableIndices) == 0 {
+		return
+	}
+
+	// If no message is focused, focus the last expandable message
+	if a.focusedIndex < 0 {
+		a.focusedIndex = expandableIndices[len(expandableIndices)-1]
+		return
+	}
+
+	// Find current position in expandable list
+	currentPos := -1
+	for i, idx := range expandableIndices {
+		if idx == a.focusedIndex {
+			currentPos = i
+			break
+		}
+	}
+
+	// Move to previous expandable message (wrap around if needed)
+	if currentPos > 0 {
+		a.focusedIndex = expandableIndices[currentPos-1]
+	} else {
+		// Wrap to last expandable message
+		a.focusedIndex = expandableIndices[len(expandableIndices)-1]
+	}
+}
+
+// moveFocusNext moves focus to the next expandable message.
+// Wraps around to the first expandable message if at the end.
+func (a *AgentOutput) moveFocusNext() {
+	if len(a.messages) == 0 {
+		return
+	}
+
+	// Find expandable messages
+	expandableIndices := a.findExpandableIndices()
+	if len(expandableIndices) == 0 {
+		return
+	}
+
+	// If no message is focused, focus the first expandable message
+	if a.focusedIndex < 0 {
+		a.focusedIndex = expandableIndices[0]
+		return
+	}
+
+	// Find current position in expandable list
+	currentPos := -1
+	for i, idx := range expandableIndices {
+		if idx == a.focusedIndex {
+			currentPos = i
+			break
+		}
+	}
+
+	// Move to next expandable message (wrap around if needed)
+	if currentPos >= 0 && currentPos < len(expandableIndices)-1 {
+		a.focusedIndex = expandableIndices[currentPos+1]
+	} else {
+		// Wrap to first expandable message
+		a.focusedIndex = expandableIndices[0]
+	}
+}
+
+// findExpandableIndices returns the indices of all messages that implement Expandable.
+func (a *AgentOutput) findExpandableIndices() []int {
+	var indices []int
+	for i, msg := range a.messages {
+		if _, ok := msg.(Expandable); ok {
+			indices = append(indices, i)
+		}
+	}
+	return indices
 }
