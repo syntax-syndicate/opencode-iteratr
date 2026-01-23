@@ -23,7 +23,6 @@ func TestIntegration_KeyboardNavigation(t *testing.T) {
 		{"switch to dashboard", "1", ViewDashboard},
 		{"switch to logs", "2", ViewLogs},
 		{"switch to notes", "3", ViewNotes},
-		{"switch to inbox", "4", ViewInbox},
 	}
 
 	for _, tt := range tests {

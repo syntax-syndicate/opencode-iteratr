@@ -56,11 +56,6 @@ func TestApp_HandleKeyPress_ViewSwitching(t *testing.T) {
 			key:          "3",
 			expectedView: ViewNotes,
 		},
-		{
-			name:         "switch to inbox",
-			key:          "4",
-			expectedView: ViewInbox,
-		},
 	}
 
 	for _, tt := range tests {
@@ -214,7 +209,6 @@ func TestViewType_Constants(t *testing.T) {
 		ViewDashboard,
 		ViewLogs,
 		ViewNotes,
-		ViewInbox,
 	}
 
 	seen := make(map[ViewType]bool)
@@ -225,8 +219,8 @@ func TestViewType_Constants(t *testing.T) {
 		seen[view] = true
 	}
 
-	if len(seen) != 4 {
-		t.Errorf("expected 4 distinct view types, got %d", len(seen))
+	if len(seen) != 3 {
+		t.Errorf("expected 3 distinct view types, got %d", len(seen))
 	}
 }
 
