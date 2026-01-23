@@ -48,6 +48,7 @@ type Dashboard struct {
 	focused      bool         // Whether the dashboard has focus
 	inputFocused bool         // Whether the input field is focused
 	agentBusy    bool         // Whether the agent is currently processing
+	queuedMsg    string       // Message queued while agent is busy
 }
 
 // NewDashboard creates a new Dashboard component.
@@ -77,16 +78,27 @@ func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 		if d.inputFocused {
 			switch msg.String() {
 			case "enter":
-				// Emit UserInputMsg with the input value, then return to FocusAgent
+				// Handle user input submission
 				if d.agentOutput != nil {
 					text := d.agentOutput.InputValue()
 					if text != "" {
-						d.agentOutput.ResetInput()
-						d.inputFocused = false
-						d.agentOutput.SetInputFocused(false)
-						d.focusPane = FocusAgent
-						return func() tea.Msg {
-							return UserInputMsg{Text: text}
+						if d.agentBusy {
+							// Agent is busy - queue the message for later
+							d.queuedMsg = text
+							d.agentOutput.ResetInput()
+							d.inputFocused = false
+							d.agentOutput.SetInputFocused(false)
+							d.focusPane = FocusAgent
+							// TODO: Show "(queued)" indicator (TAS-78)
+						} else {
+							// Agent is not busy - emit message immediately
+							d.agentOutput.ResetInput()
+							d.inputFocused = false
+							d.agentOutput.SetInputFocused(false)
+							d.focusPane = FocusAgent
+							return func() tea.Msg {
+								return UserInputMsg{Text: text}
+							}
 						}
 					}
 				}
