@@ -62,6 +62,9 @@ func NewAgentOutput() *AgentOutput {
 	// Disable virtual cursor (cursor handled by Dashboard Draw)
 	input.SetVirtualCursor(false)
 
+	// Set a safe default width to avoid panics if Draw is called before UpdateSize
+	input.SetWidth(40)
+
 	return &AgentOutput{
 		messages:     make([]MessageItem, 0),
 		toolIndex:    make(map[string]int),
@@ -143,6 +146,10 @@ func (a *AgentOutput) Render() string {
 
 // Draw renders the agent output to a screen buffer.
 func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	if area.Dx() < 2 || area.Dy() < 2 {
+		return nil
+	}
+
 	if !a.ready {
 		// Show waiting message
 		waitMsg := styleDim.Render("Waiting for agent output...")
@@ -150,8 +157,12 @@ func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
-	// Split layout vertically: viewport (flex) + input area (3 lines)
-	viewportArea, inputArea := uv.SplitVertical(area, uv.Fixed(3))
+	// Split layout vertically: viewport gets remaining space, input area gets 3 lines at bottom
+	viewportHeight := area.Dy() - 3
+	if viewportHeight < 1 {
+		viewportHeight = 1
+	}
+	viewportArea, inputArea := uv.SplitVertical(area, uv.Fixed(viewportHeight))
 
 	// Store input area for mouse hit detection
 	a.inputArea = inputArea
@@ -182,20 +193,22 @@ func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		uv.NewStyledString(styledIndicator).Draw(scr, indicatorArea)
 	}
 
-	// Draw separator line between viewport and input
-	separatorY := inputArea.Min.Y
-	separatorLine := strings.Repeat("─", inputArea.Dx())
-	separatorArea := uv.Rect(inputArea.Min.X, separatorY, inputArea.Dx(), 1)
-	uv.NewStyledString(separatorLine).Draw(scr, separatorArea)
+	// Draw separator line and input only if input area has valid dimensions
+	if inputArea.Dx() > 0 && inputArea.Dy() > 1 {
+		separatorY := inputArea.Min.Y
+		separatorLine := strings.Repeat("─", inputArea.Dx())
+		separatorArea := uv.Rect(inputArea.Min.X, separatorY, inputArea.Dx(), 1)
+		uv.NewStyledString(separatorLine).Draw(scr, separatorArea)
 
-	// Draw input field below separator
-	inputView := a.input.View()
-	inputContentArea := uv.Rect(inputArea.Min.X, separatorY+1, inputArea.Dx(), inputArea.Dy()-1)
-	uv.NewStyledString(inputView).Draw(scr, inputContentArea)
+		// Draw input field below separator
+		inputView := a.input.View()
+		inputContentArea := uv.Rect(inputArea.Min.X, separatorY+1, inputArea.Dx(), inputArea.Dy()-1)
+		uv.NewStyledString(inputView).Draw(scr, inputContentArea)
 
-	// Return cursor position if input is focused
-	if a.input.Focused() {
-		return a.input.Cursor()
+		// Return cursor position if input is focused
+		if a.input.Focused() {
+			return a.input.Cursor()
+		}
 	}
 
 	return nil
@@ -224,7 +237,11 @@ func (a *AgentOutput) UpdateSize(width, height int) tea.Cmd {
 	}
 
 	// Set input width (accounting for borders and padding)
-	a.input.SetWidth(width - 4)
+	inputWidth := width - 4
+	if inputWidth < 1 {
+		inputWidth = 1
+	}
+	a.input.SetWidth(inputWidth)
 
 	a.refreshContent()
 	return nil
