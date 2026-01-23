@@ -207,7 +207,7 @@ func (s *Sidebar) Update(msg tea.Msg) tea.Cmd {
 		// Handle pulse animation (even when not focused)
 		return s.pulse.Update(msg)
 	case tea.KeyPressMsg:
-		if !s.focused {
+		if !s.tasksFocused && !s.notesFocused {
 			return nil
 		}
 		return s.handleKeyPress(msg)
