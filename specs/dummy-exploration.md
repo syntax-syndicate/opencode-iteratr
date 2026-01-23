@@ -33,6 +33,11 @@ N/A - read-only exploration tasks
 ### 3. Code Analysis
 - [ ] Read a few .go files and display your favorite function
 
+### 4. Edit
+- [ ] Create a random .go file
+- [ ] Edit the random file
+- [ ] Delete the file
+
 ## UI Mockup
 
 N/A
@@ -41,6 +46,7 @@ N/A
 
 - Any file modifications
 - Actual feature work
+- Git commits
 
 ## Open Questions
 
