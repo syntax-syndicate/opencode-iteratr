@@ -368,7 +368,7 @@ func (a *App) handleFooterAction(action FooterAction) tea.Cmd {
 // Returns tea.Quit for quit commands, nil for unhandled keys.
 func (a *App) handleGlobalKeys(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q", "Q", "ctrl+c":
 		a.quitting = true
 		return tea.Quit
 	case "?":
