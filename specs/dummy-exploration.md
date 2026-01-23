@@ -30,6 +30,9 @@ N/A - read-only exploration tasks
 - [ ] Search for "func main" across the codebase
 - [ ] Count total lines in README files
 
+### 3. Code Analysis
+- [ ] Read a few .go files and display your favorite function
+
 ## UI Mockup
 
 N/A

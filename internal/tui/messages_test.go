@@ -1349,3 +1349,290 @@ func TestWidthCaching_AllMessageTypes(t *testing.T) {
 		}
 	})
 }
+
+func TestRenderDiffBlock(t *testing.T) {
+	tests := []struct {
+		name     string
+		oldStr   string
+		newStr   string
+		width    int
+		wantRows int // expected number of rows (max of old/new line counts)
+	}{
+		{
+			name:     "single line change",
+			oldStr:   "old line",
+			newStr:   "new line",
+			width:    80,
+			wantRows: 1,
+		},
+		{
+			name:     "multi-line old to single new",
+			oldStr:   "line1\nline2\nline3",
+			newStr:   "replacement",
+			width:    80,
+			wantRows: 3, // max(3, 1)
+		},
+		{
+			name:     "single old to multi-line new",
+			oldStr:   "original",
+			newStr:   "new1\nnew2\nnew3\nnew4",
+			width:    80,
+			wantRows: 4, // max(1, 4)
+		},
+		{
+			name:     "equal line counts",
+			oldStr:   "a\nb\nc",
+			newStr:   "x\ny\nz",
+			width:    120,
+			wantRows: 3,
+		},
+		{
+			name:     "narrow width",
+			oldStr:   "short",
+			newStr:   "also short",
+			width:    50,
+			wantRows: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := renderDiffBlock(tt.oldStr, tt.newStr, tt.width)
+			if result == "" {
+				t.Error("renderDiffBlock returned empty string")
+			}
+
+			// Count rows by newlines
+			lines := strings.Split(result, "\n")
+			if len(lines) != tt.wantRows {
+				t.Errorf("expected %d rows, got %d", tt.wantRows, len(lines))
+			}
+
+			// Verify divider character is present in each row
+			for i, line := range lines {
+				if !strings.Contains(line, "│") {
+					t.Errorf("row %d missing divider: %q", i, line)
+				}
+			}
+		})
+	}
+}
+
+func TestRenderDiagnostics(t *testing.T) {
+	tests := []struct {
+		name       string
+		output     string
+		width      int
+		wantEmpty  bool
+		wantErrors int // number of diagnostic lines expected
+	}{
+		{
+			name: "single error",
+			output: `<diagnostics file="/path/to/file.go">
+ERROR [153:21] undefined: conn
+</diagnostics>`,
+			width:      100,
+			wantEmpty:  false,
+			wantErrors: 1,
+		},
+		{
+			name: "multiple errors",
+			output: `<diagnostics file="/path/to/file.go">
+ERROR [153:21] undefined: conn
+ERROR [153:38] undefined: sessID
+</diagnostics>`,
+			width:      100,
+			wantEmpty:  false,
+			wantErrors: 2,
+		},
+		{
+			name: "mixed errors and warnings",
+			output: `<diagnostics file="main.go">
+ERROR [10:5] undeclared name: foo
+WARNING [20:10] unused variable: bar
+</diagnostics>`,
+			width:      100,
+			wantEmpty:  false,
+			wantErrors: 2,
+		},
+		{
+			name:      "no diagnostics tag",
+			output:    "just some text",
+			width:     100,
+			wantEmpty: true,
+		},
+		{
+			name: "empty diagnostics",
+			output: `<diagnostics file="test.go">
+</diagnostics>`,
+			width:     100,
+			wantEmpty: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := renderDiagnostics(tt.output, tt.width)
+
+			if tt.wantEmpty {
+				if result != "" {
+					t.Errorf("expected empty result, got %q", result)
+				}
+				return
+			}
+
+			if result == "" {
+				t.Error("expected non-empty result")
+				return
+			}
+
+			// Check that the file path is present in output
+			if strings.Contains(tt.output, `file="`) {
+				// Extract file path from input
+				start := strings.Index(tt.output, `file="`) + 6
+				end := strings.Index(tt.output[start:], `"`)
+				filePath := tt.output[start : start+end]
+				if !strings.Contains(result, filePath) {
+					t.Errorf("result should contain file path %q", filePath)
+				}
+			}
+		})
+	}
+}
+
+func TestToolMessageEditDiffRendering(t *testing.T) {
+	// Edit tool with oldString/newString should render a diff
+	item := ToolMessageItem{
+		id:       "edit-1",
+		toolName: "Edit",
+		status:   ToolStatusSuccess,
+		input: map[string]any{
+			"filePath":  "/path/to/file.go",
+			"oldString": "func old() {}",
+			"newString": "func new() {\n\treturn nil\n}",
+		},
+		output:   "Edit applied successfully.",
+		maxLines: 10,
+	}
+
+	result := item.Render(100)
+	if result == "" {
+		t.Fatal("Edit tool render returned empty")
+	}
+
+	// Should contain the divider character (side-by-side diff)
+	if !strings.Contains(result, "│") {
+		t.Error("Edit diff should contain side-by-side divider")
+	}
+
+	// Should NOT render the plain output text since diff takes precedence
+	// (the output "Edit applied successfully" is suppressed)
+	if strings.Contains(result, "Edit applied successfully") {
+		t.Error("Edit diff should suppress plain output text")
+	}
+
+	// Should show the tool name in header
+	if !strings.Contains(result, "Edit") {
+		t.Error("should show tool name in header")
+	}
+}
+
+func TestToolMessageDiagnosticsRendering(t *testing.T) {
+	// Tool with diagnostics in output should render them nicely
+	item := ToolMessageItem{
+		id:       "bash-1",
+		toolName: "Bash",
+		status:   ToolStatusSuccess,
+		input: map[string]any{
+			"command": "go build ./...",
+		},
+		output: `<diagnostics file="/home/user/project/main.go">
+ERROR [10:5] undefined: myVar
+ERROR [15:12] cannot use string as int
+</diagnostics>`,
+		maxLines: 10,
+	}
+
+	result := item.Render(100)
+	if result == "" {
+		t.Fatal("Diagnostics render returned empty")
+	}
+
+	// Should contain file path
+	if !strings.Contains(result, "main.go") {
+		t.Error("should contain file path")
+	}
+
+	// Should contain ERROR markers
+	if !strings.Contains(result, "ERROR") {
+		t.Error("should contain ERROR text")
+	}
+
+	// Should contain error icon
+	if !strings.Contains(result, "×") {
+		t.Error("should contain error icon")
+	}
+}
+
+func TestToolMessageEditWithDiagnostics(t *testing.T) {
+	// Edit tool that has both diff data AND diagnostics in output
+	item := ToolMessageItem{
+		id:       "edit-diag",
+		toolName: "Edit",
+		status:   ToolStatusSuccess,
+		input: map[string]any{
+			"filePath":  "/path/to/file.go",
+			"oldString": "old code",
+			"newString": "new code",
+		},
+		output: `Edit applied successfully.
+<diagnostics file="/path/to/file.go">
+ERROR [10:5] undefined: newVar
+</diagnostics>`,
+		maxLines: 10,
+	}
+
+	result := item.Render(120)
+	if result == "" {
+		t.Fatal("Edit+diagnostics render returned empty")
+	}
+
+	// Should have diff (divider)
+	if !strings.Contains(result, "│") {
+		t.Error("should contain diff divider")
+	}
+
+	// Should have diagnostics
+	if !strings.Contains(result, "ERROR") {
+		t.Error("should contain diagnostics")
+	}
+
+	// Should have file path from diagnostics
+	if !strings.Contains(result, "file.go") {
+		t.Error("should contain file path from diagnostics")
+	}
+}
+
+func TestTruncateLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		maxWidth int
+		want     string
+	}{
+		{"short line", "hello", 10, "hello"},
+		{"exact width", "hello", 5, "hello"},
+		{"needs truncation", "hello world", 8, "hello w…"},
+		{"very narrow", "hello", 3, "hel"},
+		{"empty", "", 10, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateLine(tt.line, tt.maxWidth)
+			if got != tt.want {
+				t.Errorf("truncateLine(%q, %d) = %q, want %q", tt.line, tt.maxWidth, got, tt.want)
+			}
+		})
+	}
+}

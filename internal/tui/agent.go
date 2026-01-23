@@ -4,24 +4,26 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/viewport"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	lipglossv2 "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // AgentOutput displays streaming agent output with auto-scroll.
 type AgentOutput struct {
-	viewport          viewport.Model
+	scrollList        *ScrollList
+	input             textinput.Model // User input field below viewport
 	messages          []MessageItem
 	toolIndex         map[string]int // toolCallId → message index
 	width             int
 	height            int
-	autoScroll        bool // Whether to auto-scroll to bottom on new content
-	ready             bool // Whether viewport is initialized
+	ready             bool // Whether scrollList is initialized
 	spinner           *GradientSpinner
 	isStreaming       bool
 	focusedIndex      int          // Index of the message that has keyboard focus (-1 = no focus)
 	viewportArea      uv.Rectangle // Screen area where viewport is drawn (for mouse hit detection)
+	inputArea         uv.Rectangle // Screen area where input field is drawn (for mouse hit detection)
 	messageLineStarts []int        // Start line index in content for each message
 }
 
@@ -32,11 +34,39 @@ var _ Component = (*AgentOutput)(nil)
 
 // NewAgentOutput creates a new AgentOutput component.
 func NewAgentOutput() *AgentOutput {
+	// Initialize textinput with dark theme styling
+	input := textinput.New()
+	input.Placeholder = "Send a message..."
+	input.Prompt = "> "
+
+	// Configure styles for textinput (using lipgloss v2)
+	styles := textinput.Styles{
+		Focused: textinput.StyleState{
+			Text:        lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorText))),     // Base text color when typing
+			Placeholder: lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorTextDim))),  // Placeholder text (dim/subtle)
+			Prompt:      lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorTertiary))), // Prompt color (lavender accent)
+		},
+		Blurred: textinput.StyleState{
+			Text:        lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorSubtext0))), // Dimmer when unfocused
+			Placeholder: lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorSubtext0))), // Dim placeholder
+			Prompt:      lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(colorMuted))),    // Muted prompt
+		},
+		Cursor: textinput.CursorStyle{
+			Color: lipglossv2.Color(string(colorPrimary)), // Cursor color (mauve accent)
+			Shape: tea.CursorBar,                          // Bar shape
+			Blink: true,                                   // Enable blinking
+		},
+	}
+	input.SetStyles(styles)
+
+	// Disable virtual cursor (cursor handled by Dashboard Draw)
+	input.SetVirtualCursor(false)
+
 	return &AgentOutput{
 		messages:     make([]MessageItem, 0),
 		toolIndex:    make(map[string]int),
-		autoScroll:   true,
 		focusedIndex: -1, // No message focused initially
+		input:        input,
 	}
 }
 
@@ -49,6 +79,13 @@ func (a *AgentOutput) Init() tea.Cmd {
 func (a *AgentOutput) Update(msg tea.Msg) tea.Cmd {
 	if !a.ready {
 		return nil
+	}
+
+	// If input is focused, forward messages to the input field
+	if a.input.Focused() {
+		var cmd tea.Cmd
+		a.input, cmd = a.input.Update(msg)
+		return cmd
 	}
 
 	// Handle gradient spinner animation
@@ -84,17 +121,10 @@ func (a *AgentOutput) Update(msg tea.Msg) tea.Cmd {
 		}
 	}
 
+	// Forward to scroll list for scroll handling (pgup/pgdn/home/end)
 	var cmd tea.Cmd
-	a.viewport, cmd = a.viewport.Update(msg)
-
-	// Check if user manually scrolled - disable auto-scroll
-	switch msg.(type) {
-	case tea.KeyPressMsg, tea.MouseMsg:
-		if !a.viewport.AtBottom() {
-			a.autoScroll = false
-		} else {
-			a.autoScroll = true
-		}
+	if a.scrollList != nil {
+		cmd = a.scrollList.Update(msg)
 	}
 
 	return cmd
@@ -105,7 +135,10 @@ func (a *AgentOutput) Render() string {
 	if !a.ready {
 		return styleDim.Render("Waiting for agent output...")
 	}
-	return a.viewport.View()
+	if a.scrollList == nil {
+		return ""
+	}
+	return a.scrollList.View()
 }
 
 // Draw renders the agent output to a screen buffer.
@@ -117,27 +150,52 @@ func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return nil
 	}
 
-	// Render viewport content with 1-char left margin
-	content := a.viewport.View()
-	contentArea := uv.Rect(area.Min.X+1, area.Min.Y, area.Dx()-1, area.Dy())
+	// Split layout vertically: viewport (flex) + input area (3 lines)
+	viewportArea, inputArea := uv.SplitVertical(area, uv.Fixed(3))
+
+	// Store input area for mouse hit detection
+	a.inputArea = inputArea
+
+	// Render scroll list content with 1-char left margin
+	var content string
+	if a.scrollList != nil {
+		content = a.scrollList.View()
+	}
+	contentArea := uv.Rect(viewportArea.Min.X+1, viewportArea.Min.Y, viewportArea.Dx()-1, viewportArea.Dy())
 	a.viewportArea = contentArea
 	uv.NewStyledString(content).Draw(scr, contentArea)
 
 	// Draw scroll indicator if there's overflow
-	if a.viewport.TotalLineCount() > a.viewport.Height() {
-		pct := a.viewport.ScrollPercent()
+	if a.scrollList != nil && a.scrollList.TotalLineCount() > a.scrollList.height {
+		pct := a.scrollList.ScrollPercent()
 		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
 
-		// Position indicator at bottom-right of area
+		// Position indicator at bottom-right of viewport area
 		indicatorArea := uv.Rect(
-			area.Max.X-len(indicator),
-			area.Max.Y-1,
+			viewportArea.Max.X-len(indicator),
+			viewportArea.Max.Y-1,
 			len(indicator),
 			1,
 		)
 
 		styledIndicator := styleScrollIndicator.Render(indicator)
 		uv.NewStyledString(styledIndicator).Draw(scr, indicatorArea)
+	}
+
+	// Draw separator line between viewport and input
+	separatorY := inputArea.Min.Y
+	separatorLine := strings.Repeat("─", inputArea.Dx())
+	separatorArea := uv.Rect(inputArea.Min.X, separatorY, inputArea.Dx(), 1)
+	uv.NewStyledString(separatorLine).Draw(scr, separatorArea)
+
+	// Draw input field below separator
+	inputView := a.input.View()
+	inputContentArea := uv.Rect(inputArea.Min.X, separatorY+1, inputArea.Dx(), inputArea.Dy()-1)
+	uv.NewStyledString(inputView).Draw(scr, inputContentArea)
+
+	// Return cursor position if input is focused
+	if a.input.Focused() {
+		return a.input.Cursor()
 	}
 
 	return nil
@@ -148,18 +206,25 @@ func (a *AgentOutput) UpdateSize(width, height int) tea.Cmd {
 	a.width = width
 	a.height = height
 
-	if !a.ready {
-		a.viewport = viewport.New(
-			viewport.WithWidth(width),
-			viewport.WithHeight(height),
-		)
-		a.viewport.MouseWheelEnabled = true
-		a.viewport.MouseWheelDelta = 3
+	// Split height: scrollList gets (height - 3), input area gets 3 lines
+	scrollListHeight := height - 3
+	if scrollListHeight < 1 {
+		scrollListHeight = 1
+	}
+
+	// Content width accounts for border, padding, and 1-char left margin
+	contentWidth := width - 5
+
+	if a.scrollList == nil {
+		a.scrollList = NewScrollList(contentWidth, scrollListHeight)
 		a.ready = true
 	} else {
-		a.viewport.SetWidth(width)
-		a.viewport.SetHeight(height)
+		a.scrollList.SetWidth(contentWidth)
+		a.scrollList.SetHeight(scrollListHeight)
 	}
+
+	// Set input width (accounting for borders and padding)
+	a.input.SetWidth(width - 4)
 
 	a.refreshContent()
 	return nil
@@ -187,9 +252,12 @@ func (a *AgentOutput) AppendText(content string) tea.Cmd {
 	if len(a.messages) > 0 {
 		if textMsg, ok := a.messages[len(a.messages)-1].(*TextMessageItem); ok {
 			textMsg.content += content
-			// Invalidate cache
+			// Invalidate cache - ScrollList will re-render on next View() call
 			textMsg.cachedWidth = 0
-			a.refreshContent()
+			// Only adjust scroll position if needed, no full refresh
+			if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
+				a.scrollList.GotoBottom()
+			}
 			return spinnerCmd
 		}
 	}
@@ -224,6 +292,7 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 		}
 		a.messages = append(a.messages, newMsg)
 		a.toolIndex[msg.ToolCallID] = len(a.messages) - 1
+		a.refreshContent()
 	} else {
 		// Update existing tool call in-place
 		if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
@@ -234,11 +303,14 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 			if msg.Output != "" {
 				toolMsg.output = msg.Output
 			}
-			// Invalidate cache
+			// Invalidate cache - ScrollList will re-render on next View() call
 			toolMsg.cachedWidth = 0
+			// Only adjust scroll position if needed, no full refresh
+			if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
+				a.scrollList.GotoBottom()
+			}
 		}
 	}
-	a.refreshContent()
 	return nil
 }
 
@@ -285,7 +357,7 @@ func (a *AgentOutput) HandleClick(x, y int) bool {
 	}
 
 	// Translate screen Y to content line (accounting for scroll offset)
-	contentLine := (y - a.viewportArea.Min.Y) + a.viewport.YOffset()
+	contentLine := (y - a.viewportArea.Min.Y) + a.scrollList.currentOffsetInLines()
 
 	// Find which message this line belongs to
 	msgIdx := -1
@@ -310,46 +382,27 @@ func (a *AgentOutput) HandleClick(x, y int) bool {
 	return false
 }
 
-// refreshContent rebuilds the viewport content from messages.
+// refreshContent updates the scroll list with current messages.
+// ScrollList lazily renders only visible items on View() call, so this method
+// only needs to update the items and optionally adjust scroll position.
 func (a *AgentOutput) refreshContent() {
-	if !a.ready {
+	if !a.ready || a.scrollList == nil {
 		return
 	}
 
-	var rendered strings.Builder
-	// Account for border, padding, and 1-char left margin
-	contentWidth := a.width - 5
-	currentLine := 0
-	a.messageLineStarts = make([]int, 0, len(a.messages))
-
-	// If streaming and no content yet, prepend spinner view
-	if a.isStreaming && a.spinner != nil && len(a.messages) == 0 {
-		rendered.WriteString(a.spinner.View())
-		rendered.WriteString("\n")
-		currentLine++
-	}
-
+	// Convert messages to ScrollItems
+	// MessageItem already implements ScrollItem interface (ID, Render, Height)
+	items := make([]ScrollItem, len(a.messages))
 	for i, msg := range a.messages {
-		a.messageLineStarts = append(a.messageLineStarts, currentLine)
-		block := msg.Render(contentWidth)
-		rendered.WriteString(block)
-		rendered.WriteString("\n")
-		currentLine += strings.Count(block, "\n") + 1
-
-		// Add vertical spacing between message blocks
-		// Skip extra spacing after dividers (they have their own margins)
-		if i < len(a.messages)-1 {
-			if _, isDivider := msg.(*DividerMessageItem); !isDivider {
-				rendered.WriteString("\n")
-				currentLine++
-			}
-		}
+		items[i] = msg
 	}
 
-	a.viewport.SetContent(rendered.String())
+	a.scrollList.SetItems(items)
 
-	if a.autoScroll {
-		a.viewport.GotoBottom()
+	// Only adjust scroll position if auto-scroll is enabled
+	// No full re-render needed - ScrollList renders lazily on next View() call
+	if a.scrollList.autoScroll {
+		a.scrollList.GotoBottom()
 	}
 }
 
@@ -391,11 +444,11 @@ func wrapText(text string, width int) string {
 func (a *AgentOutput) Clear() tea.Cmd {
 	a.messages = make([]MessageItem, 0)
 	a.toolIndex = make(map[string]int)
-	if a.ready {
-		a.viewport.SetContent("")
-		a.viewport.GotoTop()
+	if a.ready && a.scrollList != nil {
+		a.scrollList.SetItems([]ScrollItem{})
+		a.scrollList.GotoTop()
+		a.scrollList.SetAutoScroll(true)
 	}
-	a.autoScroll = true
 	return nil
 }
 
@@ -422,9 +475,12 @@ func (a *AgentOutput) AppendThinking(content string) tea.Cmd {
 	if len(a.messages) > 0 {
 		if thinkingMsg, ok := a.messages[len(a.messages)-1].(*ThinkingMessageItem); ok {
 			thinkingMsg.content += content
-			// Invalidate cache
+			// Invalidate cache - ScrollList will re-render on next View() call
 			thinkingMsg.cachedWidth = 0
-			a.refreshContent()
+			// Only adjust scroll position if needed, no full refresh
+			if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
+				a.scrollList.GotoBottom()
+			}
 			return spinnerCmd
 		}
 	}
@@ -516,9 +572,12 @@ func (a *AgentOutput) MarkToolError(toolCallID, errMsg string) tea.Cmd {
 	if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
 		toolMsg.status = ToolStatusError
 		toolMsg.output = errMsg
-		// Invalidate cache
+		// Invalidate cache - ScrollList will re-render on next View() call
 		toolMsg.cachedWidth = 0
-		a.refreshContent()
+		// Only adjust scroll position if needed, no full refresh
+		if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
+			a.scrollList.GotoBottom()
+		}
 	}
 
 	return nil
@@ -534,9 +593,12 @@ func (a *AgentOutput) MarkToolCanceled(toolCallID string) tea.Cmd {
 
 	if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
 		toolMsg.status = ToolStatusCanceled
-		// Invalidate cache
+		// Invalidate cache - ScrollList will re-render on next View() call
 		toolMsg.cachedWidth = 0
-		a.refreshContent()
+		// Only adjust scroll position if needed, no full refresh
+		if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
+			a.scrollList.GotoBottom()
+		}
 	}
 
 	return nil
@@ -630,4 +692,41 @@ func (a *AgentOutput) findExpandableIndices() []int {
 		}
 	}
 	return indices
+}
+
+// InputValue returns the current text in the input field.
+func (a *AgentOutput) InputValue() string {
+	return a.input.Value()
+}
+
+// ResetInput clears the input field.
+func (a *AgentOutput) ResetInput() {
+	a.input.SetValue("")
+}
+
+// SetInputFocused sets the focus state of the input field.
+// When focused=true, the input field will be active and ready for typing.
+// When focused=false, the input field will be blurred.
+func (a *AgentOutput) SetInputFocused(focused bool) {
+	if focused {
+		a.input.Focus()
+	} else {
+		a.input.Blur()
+	}
+}
+
+// IsInputAreaClick checks if the given screen coordinates fall within the input area.
+// Returns true if the click is on the input field.
+func (a *AgentOutput) IsInputAreaClick(x, y int) bool {
+	// Check if click is within the input area bounds
+	return x >= a.inputArea.Min.X && x < a.inputArea.Max.X &&
+		y >= a.inputArea.Min.Y && y < a.inputArea.Max.Y
+}
+
+// SetScrollFocused sets the focus state of the underlying ScrollList.
+// When focused, the ScrollList will handle keyboard scroll events (pgup/pgdn/home/end).
+func (a *AgentOutput) SetScrollFocused(focused bool) {
+	if a.scrollList != nil {
+		a.scrollList.SetFocused(focused)
+	}
 }

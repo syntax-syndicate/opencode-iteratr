@@ -59,6 +59,7 @@ var (
 	colorBase     = lipgloss.Color("#1e1e2e") // Base background (darkest)
 	colorMantle   = lipgloss.Color("#181825") // Slightly darker than base
 	colorCrust    = lipgloss.Color("#11111b") // Darkest shade for deep backgrounds
+	colorGutterBg = lipgloss.Color("#282839") // Gutter well background (between base and surface0)
 	colorSurface0 = lipgloss.Color("#313244") // Surface overlay (light)
 	colorSurface1 = lipgloss.Color("#45475a") // Surface overlay (medium)
 	colorSurface2 = lipgloss.Color("#585b70") // Surface overlay (dark)
@@ -235,9 +236,6 @@ var (
 	styleLogNote = lipgloss.NewStyle().
 			Foreground(colorWarning)
 
-	styleLogInbox = lipgloss.NewStyle().
-			Foreground(colorPrimary)
-
 	styleLogIteration = lipgloss.NewStyle().
 				Foreground(colorSuccess)
 
@@ -272,18 +270,6 @@ var (
 				Foreground(colorText).
 				PaddingLeft(2)
 
-	// Inbox styles
-	styleMessageUnread = lipgloss.NewStyle().
-				Foreground(colorPrimary).
-				Bold(true)
-
-	styleMessageRead = lipgloss.NewStyle().
-				Foreground(colorTextDim)
-
-	styleMessageTimestamp = lipgloss.NewStyle().
-				Foreground(colorTextDim).
-				Bold(false)
-
 	styleInputField = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(colorSecondary).
@@ -293,6 +279,9 @@ var (
 	styleInputPrompt = lipgloss.NewStyle().
 				Foreground(colorSecondary).
 				Bold(true)
+
+	styleInputSeparator = lipgloss.NewStyle().
+				Foreground(colorMuted)
 
 	// Agent output styles
 	styleAgentText = lipgloss.NewStyle().
@@ -353,6 +342,7 @@ var (
 
 	styleToolTruncation = lipgloss.NewStyle().
 				Foreground(colorSubtext0).
+				Background(colorSurface0).
 				Italic(true).
 				MarginLeft(2)
 
@@ -367,8 +357,12 @@ var (
 	// Code block styles (for file view/read tool output)
 	styleCodeLineNum = lipgloss.NewStyle().
 				Foreground(colorOverlay0).
-				Background(colorSurface0).
+				Background(colorGutterBg).
 				PaddingRight(1)
+
+	styleCodeLineNumZero = lipgloss.NewStyle().
+				Foreground(colorGutterBg).
+				Background(colorGutterBg)
 
 	styleCodeContent = lipgloss.NewStyle().
 				Background(colorSurface0).
@@ -379,6 +373,48 @@ var (
 				Background(colorSurface0).
 				Italic(true).
 				MarginLeft(2)
+
+	// Diff view styles (for Edit tool output)
+	colorDiffInsertBg = lipgloss.Color("#303a30") // Green-tinted background for insertions
+	colorDiffDeleteBg = lipgloss.Color("#3a3030") // Red-tinted background for deletions
+
+	styleDiffLineNumInsert = lipgloss.NewStyle().
+				Foreground(colorOverlay0).
+				Background(colorDiffInsertBg)
+
+	styleDiffLineNumDelete = lipgloss.NewStyle().
+				Foreground(colorOverlay0).
+				Background(colorDiffDeleteBg)
+
+	styleDiffContentInsert = lipgloss.NewStyle().
+				Background(colorDiffInsertBg)
+
+	styleDiffContentDelete = lipgloss.NewStyle().
+				Background(colorDiffDeleteBg).
+				Strikethrough(true)
+
+	styleDiffDivider = lipgloss.NewStyle().
+				Foreground(colorSurface2)
+
+	// Diagnostic styles (for compiler errors/warnings)
+	styleDiagFile = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true).
+			MarginLeft(2)
+
+	styleDiagError = lipgloss.NewStyle().
+			Foreground(colorError).
+			Bold(true)
+
+	styleDiagWarning = lipgloss.NewStyle().
+				Foreground(colorWarning).
+				Bold(true)
+
+	styleDiagPosition = lipgloss.NewStyle().
+				Foreground(colorSubtext0)
+
+	styleDiagMessage = lipgloss.NewStyle().
+				Foreground(colorText)
 
 	// Info message styles
 	styleInfoIcon = lipgloss.NewStyle().

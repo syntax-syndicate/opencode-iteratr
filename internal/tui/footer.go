@@ -16,7 +16,6 @@ const (
 	FooterActionDashboard FooterAction = "dashboard"
 	FooterActionLogs      FooterAction = "logs"
 	FooterActionNotes     FooterAction = "notes"
-	FooterActionInbox     FooterAction = "inbox"
 	FooterActionSidebar   FooterAction = "sidebar"
 	FooterActionHelp      FooterAction = "help"
 	FooterActionQuit      FooterAction = "quit"
@@ -81,7 +80,6 @@ func (f *Footer) buildFooterContent(availableWidth int) string {
 		{"1", "Dashboard", ViewDashboard, FooterActionDashboard},
 		{"2", "Logs", ViewLogs, FooterActionLogs},
 		{"3", "Notes", ViewNotes, FooterActionNotes},
-		{"4", "Inbox", ViewInbox, FooterActionInbox},
 	}
 
 	var leftButtons []buttonPart

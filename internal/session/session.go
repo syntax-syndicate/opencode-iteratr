@@ -85,7 +85,6 @@ type State struct {
 	TaskCounter int              `json:"task_counter"` // Incrementing counter for TAS-N IDs
 	Notes       []*Note          `json:"notes"`        // Chronological list of notes
 	NoteCounter int              `json:"note_counter"` // Incrementing counter for NOT-N IDs
-	Inbox       []*Message       `json:"inbox"`        // Inbox messages
 	Iterations  []*Iteration     `json:"iterations"`   // Iteration history
 	Complete    bool             `json:"complete"`     // Session marked complete
 }
@@ -111,14 +110,6 @@ type Note struct {
 	Iteration int       `json:"iteration"` // Iteration that created this note
 }
 
-// Message represents an inbox message.
-type Message struct {
-	ID        string    `json:"id"`
-	Content   string    `json:"content"`
-	Read      bool      `json:"read"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 // Iteration represents a single iteration execution.
 type Iteration struct {
 	Number      int       `json:"number"`
@@ -137,8 +128,6 @@ func (st *State) Apply(event Event) {
 		st.applyTaskEvent(event)
 	case nats.EventTypeNote:
 		st.applyNoteEvent(event)
-	case nats.EventTypeInbox:
-		st.applyInboxEvent(event)
 	case nats.EventTypeIteration:
 		st.applyIterationEvent(event)
 	case nats.EventTypeControl:
@@ -274,36 +263,6 @@ func (st *State) applyNoteEvent(event Event) {
 		}
 		st.Notes = append(st.Notes, note)
 		st.NoteCounter++
-	}
-}
-
-// applyInboxEvent handles inbox-related events.
-func (st *State) applyInboxEvent(event Event) {
-	switch event.Action {
-	case "add":
-		// Create new message
-		msg := &Message{
-			ID:        event.ID,
-			Content:   event.Data,
-			Read:      false,
-			CreatedAt: event.Timestamp,
-		}
-		st.Inbox = append(st.Inbox, msg)
-
-	case "mark_read":
-		// Parse metadata for message ID
-		var meta struct {
-			MessageID string `json:"message_id"`
-		}
-		json.Unmarshal(event.Meta, &meta)
-
-		// Mark message as read
-		for _, msg := range st.Inbox {
-			if msg.ID == meta.MessageID {
-				msg.Read = true
-				break
-			}
-		}
 	}
 }
 

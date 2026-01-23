@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -17,16 +16,160 @@ type OpenTaskModalMsg struct {
 	Task *session.Task
 }
 
+// taskScrollItem wraps a task for use in ScrollList.
+type taskScrollItem struct {
+	task       *session.Task
+	isSelected bool
+	width      int
+	rendered   string
+	height     int
+}
+
+func (t *taskScrollItem) ID() string {
+	return t.task.ID
+}
+
+func (t *taskScrollItem) Render(width int) string {
+	if t.width != width || t.rendered == "" {
+		t.width = width
+		t.rendered = t.renderTask()
+		t.height = strings.Count(t.rendered, "\n") + 1
+	}
+	return t.rendered
+}
+
+func (t *taskScrollItem) Height() int {
+	if t.height == 0 {
+		t.Render(t.width)
+	}
+	return t.height
+}
+
+func (t *taskScrollItem) renderTask() string {
+	task := t.task
+	// Status indicator
+	var indicator string
+	var indicatorStyle lipgloss.Style
+
+	switch task.Status {
+	case "in_progress":
+		indicator = "►"
+		indicatorStyle = styleStatusInProgress
+	case "remaining":
+		indicator = "○"
+		indicatorStyle = styleStatusRemaining
+	case "completed":
+		indicator = "✓"
+		indicatorStyle = styleStatusCompleted
+	case "blocked":
+		indicator = "⊘"
+		indicatorStyle = styleStatusBlocked
+	default:
+		indicator = "○"
+		indicatorStyle = styleStatusRemaining
+	}
+
+	// Truncate content to fit width (leave room for indicator and padding)
+	maxContentWidth := t.width - 6 // 2 for indicator+space, 2 padding, 2 for selection arrow
+	if maxContentWidth < 10 {
+		maxContentWidth = 10
+	}
+
+	content := task.Content
+	if len(content) > maxContentWidth {
+		content = content[:maxContentWidth-3] + "..."
+	}
+
+	// Build line (selection arrow handled by ScrollList)
+	styledIndicator := indicatorStyle.Render(indicator)
+	line := fmt.Sprintf(" %s %s", styledIndicator, content)
+
+	return line
+}
+
+// noteScrollItem wraps a note for use in ScrollList.
+type noteScrollItem struct {
+	note       *session.Note
+	isSelected bool
+	width      int
+	rendered   string
+	height     int
+}
+
+func (n *noteScrollItem) ID() string {
+	return n.note.ID
+}
+
+func (n *noteScrollItem) Render(width int) string {
+	if n.width != width || n.rendered == "" {
+		n.width = width
+		n.rendered = n.renderNote()
+		n.height = strings.Count(n.rendered, "\n") + 1
+	}
+	return n.rendered
+}
+
+func (n *noteScrollItem) Height() int {
+	if n.height == 0 {
+		n.Render(n.width)
+	}
+	return n.height
+}
+
+func (n *noteScrollItem) renderNote() string {
+	note := n.note
+	// Type indicator
+	var indicator string
+	var indicatorStyle lipgloss.Style
+
+	switch note.Type {
+	case "learning":
+		indicator = "💡"
+		indicatorStyle = styleStatusCompleted // Green-ish
+	case "stuck":
+		indicator = "🚫"
+		indicatorStyle = styleStatusBlocked // Red
+	case "tip":
+		indicator = "💬"
+		indicatorStyle = styleStatusInProgress // Yellow
+	case "decision":
+		indicator = "⚡"
+		indicatorStyle = styleStatusRemaining // Blue
+	default:
+		indicator = "📝"
+		indicatorStyle = styleDim
+	}
+
+	// Truncate content to fit width
+	maxContentWidth := n.width - 8
+	if maxContentWidth < 10 {
+		maxContentWidth = 10
+	}
+
+	content := note.Content
+	if len(content) > maxContentWidth {
+		content = content[:maxContentWidth-3] + "..."
+	}
+
+	// Build line (selection arrow handled by ScrollList)
+	styledIndicator := indicatorStyle.Render(indicator)
+	line := fmt.Sprintf(" %s %s", styledIndicator, content)
+
+	return line
+}
+
 // Sidebar displays tasks and notes in two sections.
 type Sidebar struct {
 	state            *session.State
 	width            int
 	height           int
-	tasksViewport    viewport.Model
-	notesViewport    viewport.Model
-	cursor           int    // Selected task index (for keyboard navigation)
-	activeTaskID     string // Currently active task (shown in modal)
-	focused          bool
+	tasksScrollList  *ScrollList
+	notesScrollList  *ScrollList
+	cursor           int            // Selected task index (for keyboard navigation)
+	activeTaskID     string         // Currently active task (shown in modal)
+	focused          bool           // Deprecated: use tasksFocused/notesFocused instead
+	tasksFocused     bool           // Whether the tasks panel has focus (accent border)
+	notesFocused     bool           // Whether the notes panel has focus (accent border)
 	taskIndex        map[string]int // O(1) lookup: task ID -> index in ordered task list
 	noteIndex        map[string]int // O(1) lookup: note ID -> index in state.Notes
 	pulse            Pulse
@@ -40,14 +183,14 @@ type Sidebar struct {
 // NewSidebar creates a new Sidebar component.
 func NewSidebar() *Sidebar {
 	return &Sidebar{
-		tasksViewport: viewport.New(),
-		notesViewport: viewport.New(),
-		cursor:        0,
-		focused:       false,
-		taskIndex:     make(map[string]int),
-		noteIndex:     make(map[string]int),
-		pulse:         NewPulse(),
-		pulsedTaskIDs: make(map[string]string),
+		tasksScrollList: NewScrollList(0, 0),
+		notesScrollList: NewScrollList(0, 0),
+		cursor:          0,
+		focused:         false,
+		taskIndex:       make(map[string]int),
+		noteIndex:       make(map[string]int),
+		pulse:           NewPulse(),
+		pulsedTaskIDs:   make(map[string]string),
 	}
 }
 
@@ -101,14 +244,14 @@ func (s *Sidebar) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	// Delegate to viewports for scrolling (pgup/pgdown, etc.)
+	// Delegate to ScrollLists for scrolling (pgup/pgdown, etc.)
 	var cmds []tea.Cmd
 
 	var cmd tea.Cmd
-	s.tasksViewport, cmd = s.tasksViewport.Update(msg)
+	cmd = s.tasksScrollList.Update(msg)
 	cmds = append(cmds, cmd)
 
-	s.notesViewport, cmd = s.notesViewport.Update(msg)
+	cmd = s.notesScrollList.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return tea.Batch(cmds...)
@@ -127,18 +270,18 @@ func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
 	}
 
 	// Draw panel with "Tasks" title
-	inner := DrawPanel(scr, area, title, s.focused)
+	inner := DrawPanel(scr, area, title, s.tasksFocused)
 
 	// Store the inner content area for coordinate-based mouse hit detection
 	s.tasksContentArea = inner
 
-	// Render viewport content
-	content := s.tasksViewport.View()
+	// Render ScrollList content
+	content := s.tasksScrollList.View()
 	DrawText(scr, inner, content)
 
 	// Draw scroll indicator if needed
-	if s.tasksViewport.TotalLineCount() > s.tasksViewport.Height() {
-		pct := s.tasksViewport.ScrollPercent()
+	if s.tasksScrollList.TotalLineCount() > s.tasksScrollList.height {
+		pct := s.tasksScrollList.ScrollPercent()
 		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
 		indicatorArea := uv.Rect(
 			area.Max.X-len(indicator)-1,
@@ -153,18 +296,18 @@ func (s *Sidebar) drawTasksSection(scr uv.Screen, area uv.Rectangle) {
 // drawNotesSection renders the notes section with header and viewport content.
 func (s *Sidebar) drawNotesSection(scr uv.Screen, area uv.Rectangle) {
 	// Draw panel with "Notes" title
-	inner := DrawPanel(scr, area, "Notes", false) // Notes section never focused
+	inner := DrawPanel(scr, area, "Notes", s.notesFocused)
 
 	// Store the inner content area for coordinate-based mouse hit detection
 	s.notesContentArea = inner
 
-	// Render viewport content
-	content := s.notesViewport.View()
+	// Render ScrollList content
+	content := s.notesScrollList.View()
 	DrawText(scr, inner, content)
 
 	// Draw scroll indicator if needed
-	if s.notesViewport.TotalLineCount() > s.notesViewport.Height() {
-		pct := s.notesViewport.ScrollPercent()
+	if s.notesScrollList.TotalLineCount() > s.notesScrollList.height {
+		pct := s.notesScrollList.ScrollPercent()
 		indicator := fmt.Sprintf(" %d%% ", int(pct*100))
 		indicatorArea := uv.Rect(
 			area.Max.X-len(indicator)-1,
@@ -218,69 +361,6 @@ func (s *Sidebar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	return nil
 }
 
-// buildTasksContent builds the content string for the tasks viewport.
-func (s *Sidebar) buildTasksContent() string {
-	tasks := s.getTasks()
-	if len(tasks) == 0 {
-		return styleDim.Render("  No tasks")
-	}
-
-	var lines []string
-	for idx, task := range tasks {
-		isSelected := (s.focused && idx == s.cursor) || task.ID == s.activeTaskID
-		line := s.renderTask(task, isSelected)
-		lines = append(lines, line)
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-// renderTask renders a single task line with optional highlight for selected task.
-func (s *Sidebar) renderTask(task *session.Task, isSelected bool) string {
-	// Status indicator
-	var indicator string
-	var indicatorStyle lipgloss.Style
-
-	switch task.Status {
-	case "in_progress":
-		indicator = "►"
-		indicatorStyle = styleStatusInProgress
-	case "remaining":
-		indicator = "○"
-		indicatorStyle = styleStatusRemaining
-	case "completed":
-		indicator = "✓"
-		indicatorStyle = styleStatusCompleted
-	case "blocked":
-		indicator = "⊘"
-		indicatorStyle = styleStatusBlocked
-	default:
-		indicator = "○"
-		indicatorStyle = styleStatusRemaining
-	}
-
-	// Truncate content to fit width (leave room for indicator and padding)
-	maxContentWidth := s.width - 6 // 2 for border, 2 for indicator+space, 2 padding
-	if maxContentWidth < 10 {
-		maxContentWidth = 10
-	}
-
-	content := task.Content
-	if len(content) > maxContentWidth {
-		content = content[:maxContentWidth-3] + "..."
-	}
-
-	// Build line with selection arrow or placeholder space
-	styledIndicator := indicatorStyle.Render(indicator)
-	prefix := " "
-	if isSelected {
-		prefix = "▸"
-	}
-	line := fmt.Sprintf("%s %s %s", prefix, styledIndicator, content)
-
-	return line
-}
-
 // TaskAtPosition returns the task at the given screen coordinates, or nil if none.
 // Uses coordinate-based hit detection against the tasks content area.
 func (s *Sidebar) TaskAtPosition(x, y int) *session.Task {
@@ -290,8 +370,9 @@ func (s *Sidebar) TaskAtPosition(x, y int) *session.Task {
 		return nil
 	}
 
-	// Calculate which task line was clicked, accounting for viewport scroll
-	lineIndex := (y - area.Min.Y) + s.tasksViewport.YOffset()
+	// Calculate which task line was clicked, accounting for scroll offset
+	// For now, use simple line index since tasks are one line each
+	lineIndex := (y - area.Min.Y) + s.tasksScrollList.offsetIdx
 
 	tasks := s.getTasks()
 	if lineIndex < 0 || lineIndex >= len(tasks) {
@@ -310,8 +391,9 @@ func (s *Sidebar) NoteAtPosition(x, y int) *session.Note {
 		return nil
 	}
 
-	// Calculate which note line was clicked, accounting for viewport scroll
-	lineIndex := (y - area.Min.Y) + s.notesViewport.YOffset()
+	// Calculate which note line was clicked, accounting for scroll offset
+	// For now, use simple line index since notes are one line each
+	lineIndex := (y - area.Min.Y) + s.notesScrollList.offsetIdx
 
 	// Notes display the last 10 notes
 	if s.state == nil || len(s.state.Notes) == 0 {
@@ -381,10 +463,10 @@ func (s *Sidebar) SetSize(width, height int) {
 	}
 
 	// Account for borders and headers (2 chars each side, 2 lines for header/border)
-	s.tasksViewport.SetWidth(width - 4)
-	s.tasksViewport.SetHeight(tasksHeight - 4)
-	s.notesViewport.SetWidth(width - 4)
-	s.notesViewport.SetHeight(notesHeight - 4)
+	s.tasksScrollList.SetWidth(width - 4)
+	s.tasksScrollList.SetHeight(tasksHeight - 4)
+	s.notesScrollList.SetWidth(width - 4)
+	s.notesScrollList.SetHeight(notesHeight - 4)
 }
 
 // SetState updates the sidebar with new session state.
@@ -451,7 +533,7 @@ func (s *Sidebar) rebuildIndex() {
 	}
 }
 
-// updateContent rebuilds viewport content from state.
+// updateContent rebuilds ScrollList content from state.
 func (s *Sidebar) updateContent() {
 	if s.state == nil {
 		return
@@ -460,79 +542,48 @@ func (s *Sidebar) updateContent() {
 	// Rebuild indices for O(1) lookups
 	s.rebuildIndex()
 
-	// Update tasks viewport
-	s.tasksViewport.SetContent(s.buildTasksContent())
-
-	// Update notes viewport
-	s.notesViewport.SetContent(s.buildNotesContent())
-}
-
-// buildNotesContent builds the content string for the notes viewport.
-func (s *Sidebar) buildNotesContent() string {
-	if len(s.state.Notes) == 0 {
-		return styleDim.Render("  No notes")
+	// Update tasks ScrollList
+	tasks := s.getTasks()
+	taskItems := make([]ScrollItem, 0, len(tasks))
+	for idx, task := range tasks {
+		isSelected := (s.focused && idx == s.cursor) || task.ID == s.activeTaskID
+		taskItems = append(taskItems, &taskScrollItem{
+			task:       task,
+			isSelected: isSelected,
+			width:      s.tasksScrollList.width,
+		})
+	}
+	s.tasksScrollList.SetItems(taskItems)
+	// Set selected index for cursor highlighting
+	if s.focused && s.cursor >= 0 && s.cursor < len(tasks) {
+		s.tasksScrollList.SetSelected(s.cursor)
+	} else {
+		s.tasksScrollList.SetSelected(-1)
 	}
 
-	var lines []string
+	// Update notes ScrollList
+	if len(s.state.Notes) == 0 {
+		s.notesScrollList.SetItems([]ScrollItem{})
+		return
+	}
+
 	// Show recent notes (last 10)
 	startIdx := 0
 	if len(s.state.Notes) > 10 {
 		startIdx = len(s.state.Notes) - 10
 	}
+	notes := s.state.Notes[startIdx:]
 
-	for _, note := range s.state.Notes[startIdx:] {
+	noteItems := make([]ScrollItem, 0, len(notes))
+	for _, note := range notes {
 		isSelected := note.ID == s.activeNoteID
-		line := s.renderNote(note, isSelected)
-		lines = append(lines, line)
+		noteItems = append(noteItems, &noteScrollItem{
+			note:       note,
+			isSelected: isSelected,
+			width:      s.notesScrollList.width,
+		})
 	}
-
-	return strings.Join(lines, "\n")
-}
-
-// renderNote renders a single note line with type indicator and optional selection highlight.
-func (s *Sidebar) renderNote(note *session.Note, isSelected bool) string {
-	// Type indicator
-	var indicator string
-	var indicatorStyle lipgloss.Style
-
-	switch note.Type {
-	case "learning":
-		indicator = "💡"
-		indicatorStyle = styleStatusCompleted // Green-ish
-	case "stuck":
-		indicator = "🚫"
-		indicatorStyle = styleStatusBlocked // Red
-	case "tip":
-		indicator = "💬"
-		indicatorStyle = styleStatusInProgress // Yellow
-	case "decision":
-		indicator = "⚡"
-		indicatorStyle = styleStatusRemaining // Blue
-	default:
-		indicator = "📝"
-		indicatorStyle = styleDim
-	}
-
-	// Truncate content to fit width
-	maxContentWidth := s.width - 8
-	if maxContentWidth < 10 {
-		maxContentWidth = 10
-	}
-
-	content := note.Content
-	if len(content) > maxContentWidth {
-		content = content[:maxContentWidth-3] + "..."
-	}
-
-	// Build line with selection arrow or placeholder space
-	styledIndicator := indicatorStyle.Render(indicator)
-	prefix := " "
-	if isSelected {
-		prefix = "▸"
-	}
-	line := fmt.Sprintf("%s %s %s", prefix, styledIndicator, content)
-
-	return line
+	s.notesScrollList.SetItems(noteItems)
 }
 
 // Render provides legacy string-based rendering for backward compatibility.
@@ -556,13 +607,13 @@ func (s *Sidebar) Render() string {
 
 	// Render tasks section
 	tasksHeader := styleSidebarHeader.Width(s.width - 2).Render("Tasks")
-	tasksContent := s.tasksViewport.View()
+	tasksContent := s.tasksScrollList.View()
 	tasksSection := lipgloss.JoinVertical(lipgloss.Left, tasksHeader, tasksContent)
 	tasksBox := styleSidebarBorder.Width(s.width).Height(tasksHeight).Render(tasksSection)
 
 	// Render notes section
 	notesHeader := styleSidebarHeader.Width(s.width - 2).Render("Notes")
-	notesContent := s.notesViewport.View()
+	notesContent := s.notesScrollList.View()
 	notesSection := lipgloss.JoinVertical(lipgloss.Left, notesHeader, notesContent)
 	notesBox := styleSidebarBorder.Width(s.width).Height(notesHeight).Render(notesSection)
 
@@ -604,6 +655,24 @@ func (s *Sidebar) GetNoteByID(id string) *session.Note {
 		return nil
 	}
 	return s.state.Notes[idx]
+}
+
+// SetTasksScrollFocused sets the focus state of the tasks ScrollList and panel border.
+// When focused, the tasks ScrollList will handle keyboard scroll events and the panel will show an accent border.
+func (s *Sidebar) SetTasksScrollFocused(focused bool) {
+	s.tasksFocused = focused
+	if s.tasksScrollList != nil {
+		s.tasksScrollList.SetFocused(focused)
+	}
+}
+
+// SetNotesScrollFocused sets the focus state of the notes ScrollList and panel border.
+// When focused, the notes ScrollList will handle keyboard scroll events and the panel will show an accent border.
+func (s *Sidebar) SetNotesScrollFocused(focused bool) {
+	s.notesFocused = focused
+	if s.notesScrollList != nil {
+		s.notesScrollList.SetFocused(focused)
+	}
 }
 
 // Compile-time interface check

@@ -12,9 +12,7 @@ func TestNewAgentOutput(t *testing.T) {
 	if ao == nil {
 		t.Fatal("expected non-nil agent output")
 	}
-	if ao.autoScroll != true {
-		t.Error("expected autoScroll to be true by default")
-	}
+	// Note: autoScroll is now managed by ScrollList after UpdateSize is called
 }
 
 func TestAgentOutput_Append(t *testing.T) {
@@ -59,7 +57,7 @@ func TestAgentOutput_Render(t *testing.T) {
 
 func TestAgentOutput_ToggleInvalidatesCacheAndRefreshes(t *testing.T) {
 	ao := NewAgentOutput()
-	ao.ready = true
+	// Don't set ready manually - UpdateSize will initialize scrollList and set ready
 	ao.UpdateSize(80, 20)
 
 	// Add a tool message with long output (more than maxLines)
@@ -103,8 +101,16 @@ func TestAgentOutput_ToggleInvalidatesCacheAndRefreshes(t *testing.T) {
 		t.Error("expected tool message to be expanded after toggle")
 	}
 
-	// Cache should have been invalidated and then refreshed by refreshContent()
-	// So cachedWidth should be repopulated (not 0)
+	// With ScrollList, items are rendered lazily when View() is called
+	// So we need to call View() to trigger rendering and populate the cache
+	scrollListContent := ao.scrollList.View()
+
+	// The scroll list should have content (not empty)
+	if scrollListContent == "" {
+		t.Error("expected scroll list content to be non-empty after refresh")
+	}
+
+	// After View() is called, cache should be populated
 	// contentWidth = width(80) - 5 (border, padding, left margin)
 	if toolItem.cachedWidth != 75 {
 		t.Errorf("expected cachedWidth to be refreshed to 75, got %d", toolItem.cachedWidth)
@@ -114,14 +120,6 @@ func TestAgentOutput_ToggleInvalidatesCacheAndRefreshes(t *testing.T) {
 	newCachedRender := toolItem.cachedRender
 	if newCachedRender == initialCachedRender {
 		t.Error("expected cachedRender to change after toggle (different expansion state)")
-	}
-
-	// Get viewport content to verify refresh happened
-	viewportContent := ao.viewport.View()
-
-	// The viewport should have content (not empty)
-	if viewportContent == "" {
-		t.Error("expected viewport content to be non-empty after refresh")
 	}
 
 	// The new cached render should contain more lines (expanded shows all output)

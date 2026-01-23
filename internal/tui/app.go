@@ -20,7 +20,6 @@ type App struct {
 	dashboard *Dashboard
 	logs      *LogViewer
 	notes     *NotesPanel
-	inbox     *InboxPanel
 	agent     *AgentOutput
 	header    *Header
 	footer    *Footer
@@ -47,22 +46,23 @@ type App struct {
 	height         int
 	quitting       bool
 	eventChan      chan session.Event // Channel for receiving NATS events
+	sendChan       chan string        // Channel for sending user messages to orchestrator
 }
 
 // NewApp creates a new TUI application with the given session store and NATS connection.
-func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *nats.Conn) *App {
+func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *nats.Conn, sendChan chan string) *App {
 	agent := NewAgentOutput()
 	return &App{
 		store:          store,
 		sessionName:    sessionName,
 		nc:             nc,
 		ctx:            ctx,
+		sendChan:       sendChan,
 		activeView:     ViewDashboard,
 		sidebarVisible: false, // Sidebar hidden by default in compact mode
 		dashboard:      NewDashboard(agent),
 		logs:           NewLogViewer(),
 		notes:          NewNotesPanel(),
-		inbox:          NewInboxPanel(),
 		agent:          agent,
 		header:         NewHeader(sessionName),
 		footer:         NewFooter(),
@@ -117,9 +117,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.agent.AppendThinking(msg.Content)
 
 	case AgentFinishMsg:
+		a.dashboard.SetAgentBusy(false)
 		return a, a.agent.AppendFinish(msg)
 
 	case IterationStartMsg:
+		a.dashboard.SetAgentBusy(true)
 		return a, tea.Batch(
 			a.dashboard.SetIteration(msg.Number),
 			a.agent.AddIterationDivider(msg.Number),
@@ -133,7 +135,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.dashboard.UpdateState(msg.State)
 		a.logs.SetState(msg.State)
 		a.notes.UpdateState(msg.State)
-		a.inbox.UpdateState(msg.State)
 		return a, nil
 
 	case EventMsg:
@@ -162,6 +163,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 		return a, nil
 
+	case UserInputMsg:
+		// Handle user input from the text field
+		// TODO: Wire to orchestrator via sendChan to call runner.SendMessage()
+		// For now, this is a placeholder that will be completed when sendChan is added
+		// Non-blocking send to avoid UI freeze if orchestrator isn't ready
+		if a.sendChan != nil {
+			select {
+			case a.sendChan <- msg.Text:
+				// Message sent successfully
+			default:
+				// Channel full or not ready, drop message
+				// TODO: Add visual feedback for dropped messages
+			}
+		}
+		return a, nil
+
 	case OpenTaskModalMsg:
 		// Open task modal with the selected task
 		a.taskModal.SetTask(msg.Task)
@@ -177,21 +194,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		sidebarCmd = a.sidebar.Update(msg)
 	}
 
-	// Update inbox for pulse animation only if:
-	// 1. It's the active view (needs full updates), OR
-	// 2. Pulse is active (animation needs to complete even when not visible)
-	var inboxCmd tea.Cmd
-	if a.activeView == ViewInbox {
-		// Inbox is active - full update
-		inboxCmd = a.inbox.Update(msg)
-	} else {
-		// Inbox not active - only update for pulse animation if active
-		switch msg.(type) {
-		case PulseMsg:
-			inboxCmd = a.inbox.Update(msg)
-		}
-	}
-
 	// Delegate to active view component
 	var cmd tea.Cmd
 	switch a.activeView {
@@ -201,12 +203,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = a.logs.Update(msg)
 	case ViewNotes:
 		cmd = a.notes.Update(msg)
-	case ViewInbox:
-		// Inbox already updated above, don't update twice
-		cmd = nil
 	}
 
-	return a, tea.Batch(statusCmd, sidebarCmd, inboxCmd, cmd)
+	return a, tea.Batch(statusCmd, sidebarCmd, cmd)
 }
 
 // handleKeyPress processes keyboard input using hierarchical priority routing.
@@ -325,6 +324,16 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return a, a.handleFooterAction(action)
 	}
 
+	// Check if input area was clicked (focus text input)
+	if a.activeView == ViewDashboard && a.agent.IsInputAreaClick(mouse.X, mouse.Y) {
+		// Set input focus via dashboard
+		a.dashboard.inputFocused = true
+		if a.agent != nil {
+			a.agent.SetInputFocused(true)
+		}
+		return a, nil
+	}
+
 	// Check if agent output was clicked (expand/collapse tool output)
 	if a.agent.HandleClick(mouse.X, mouse.Y) {
 		return a, nil
@@ -345,9 +354,6 @@ func (a *App) handleFooterAction(action FooterAction) tea.Cmd {
 	case FooterActionNotes:
 		a.activeView = ViewNotes
 		a.footer.SetActiveView(ViewNotes)
-	case FooterActionInbox:
-		a.activeView = ViewInbox
-		a.footer.SetActiveView(ViewInbox)
 	case FooterActionSidebar:
 		a.sidebarVisible = !a.sidebarVisible
 	case FooterActionQuit:
@@ -387,10 +393,6 @@ func (a *App) handleViewKeys(msg tea.KeyPressMsg) tea.Cmd {
 		a.activeView = ViewNotes
 		a.footer.SetActiveView(ViewNotes)
 		return func() tea.Msg { return nil }
-	case "4":
-		a.activeView = ViewInbox
-		a.footer.SetActiveView(ViewInbox)
-		return func() tea.Msg { return nil }
 	case "s":
 		// Toggle sidebar visibility (only relevant in compact mode)
 		a.sidebarVisible = !a.sidebarVisible
@@ -423,8 +425,6 @@ func (a *App) delegateToActive(msg tea.KeyPressMsg) tea.Cmd {
 		return a.logs.Update(msg)
 	case ViewNotes:
 		return a.notes.Update(msg)
-	case ViewInbox:
-		return a.inbox.Update(msg)
 	}
 	return nil
 }
@@ -523,8 +523,6 @@ func (a *App) drawActiveView(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		return a.logs.Draw(scr, area)
 	case ViewNotes:
 		return a.notes.Draw(scr, area)
-	case ViewInbox:
-		return a.inbox.Draw(scr, area)
 	}
 	return nil
 }
@@ -645,6 +643,11 @@ type ConnectionStatusMsg struct {
 	Connected bool
 }
 
+// UserInputMsg is sent when the user types a message in the input field.
+type UserInputMsg struct {
+	Text string
+}
+
 // propagateSizes updates component sizes based on the current layout.
 // This is called when the layout changes (on window resize or mode switch).
 func (a *App) propagateSizes() {
@@ -664,7 +667,6 @@ func (a *App) propagateSizes() {
 	a.dashboard.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 	a.logs.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 	a.notes.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
-	a.inbox.SetSize(a.layout.Main.Dx(), a.layout.Main.Dy())
 
 	// Propagate sidebar size based on layout mode
 	if a.layout.Mode == LayoutDesktop {

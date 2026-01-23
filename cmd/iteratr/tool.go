@@ -40,8 +40,6 @@ func init() {
 	toolCmd.AddCommand(taskNextCmd)
 	toolCmd.AddCommand(noteAddCmd)
 	toolCmd.AddCommand(noteListCmd)
-	toolCmd.AddCommand(inboxListCmd)
-	toolCmd.AddCommand(inboxMarkReadCmd)
 	toolCmd.AddCommand(iterationSummaryCmd)
 	toolCmd.AddCommand(sessionCompleteCmd)
 
@@ -475,84 +473,6 @@ var noteListCmd = &cobra.Command{
 
 func init() {
 	noteListCmd.Flags().String("type", "", "Filter by type")
-}
-
-// inbox-list command
-var inboxListCmd = &cobra.Command{
-	Use:   "inbox-list",
-	Short: "List inbox messages",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if toolFlags.name == "" {
-			return fmt.Errorf("session name is required (--name)")
-		}
-
-		store, cleanup, err := connectToSession()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
-		ctx := context.Background()
-		messages, err := store.InboxList(ctx, toolFlags.name)
-		if err != nil {
-			return err
-		}
-
-		// Filter to unread only
-		var unread []*session.Message
-		for _, msg := range messages {
-			if !msg.Read {
-				unread = append(unread, msg)
-			}
-		}
-
-		if len(unread) == 0 {
-			fmt.Println("No unread messages")
-			return nil
-		}
-
-		for _, msg := range unread {
-			fmt.Printf("[%s] %s\n", msg.ID[:8], msg.Content)
-		}
-		return nil
-	},
-}
-
-// inbox-mark-read command
-var inboxMarkReadCmd = &cobra.Command{
-	Use:   "inbox-mark-read",
-	Short: "Mark inbox message as read",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if toolFlags.name == "" {
-			return fmt.Errorf("session name is required (--name)")
-		}
-
-		id, _ := cmd.Flags().GetString("id")
-		if id == "" {
-			return fmt.Errorf("message ID is required")
-		}
-
-		store, cleanup, err := connectToSession()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-
-		ctx := context.Background()
-		err = store.InboxMarkRead(ctx, toolFlags.name, session.InboxMarkReadParams{
-			ID: id,
-		})
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("OK")
-		return nil
-	},
-}
-
-func init() {
-	inboxMarkReadCmd.Flags().String("id", "", "Message ID (required)")
 }
 
 // task-next command

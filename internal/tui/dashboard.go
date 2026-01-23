@@ -12,7 +12,18 @@ import (
 // Compile-time interface checks
 var _ FocusableComponent = (*Dashboard)(nil)
 
+// FocusPane represents which pane of the dashboard has keyboard focus.
+type FocusPane int
+
+const (
+	FocusAgent FocusPane = iota
+	FocusTasks
+	FocusNotes
+	FocusInput
+)
+
 // FocusArea represents which part of the dashboard has keyboard focus.
+// Deprecated: Use FocusPane instead.
 type FocusArea int
 
 const (
@@ -25,15 +36,18 @@ const SidebarWidth = 45
 
 // Dashboard displays session overview, progress, and current task.
 type Dashboard struct {
-	sessionName string
-	iteration   int
-	state       *session.State
-	width       int
-	height      int
-	agentOutput *AgentOutput // Reference to agent output for rendering
-	sidebar     *Sidebar     // Sidebar on the right (tasks + notes)
-	focus       FocusArea    // Which area has keyboard focus
-	focused     bool         // Whether the dashboard has focus
+	sessionName  string
+	iteration    int
+	state        *session.State
+	width        int
+	height       int
+	agentOutput  *AgentOutput // Reference to agent output for rendering
+	sidebar      *Sidebar     // Sidebar on the right (tasks + notes)
+	focus        FocusArea    // Which area has keyboard focus (deprecated: use focusPane)
+	focusPane    FocusPane    // Which pane has keyboard focus
+	focused      bool         // Whether the dashboard has focus
+	inputFocused bool         // Whether the input field is focused
+	agentBusy    bool         // Whether the agent is currently processing
 }
 
 // NewDashboard creates a new Dashboard component.
@@ -42,6 +56,7 @@ func NewDashboard(agentOutput *AgentOutput) *Dashboard {
 		agentOutput: agentOutput,
 		sidebar:     NewSidebar(),
 		focus:       FocusMain,
+		focusPane:   FocusAgent,
 	}
 }
 
@@ -49,39 +64,86 @@ func NewDashboard(agentOutput *AgentOutput) *Dashboard {
 func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		// Tab switches focus between main and sidebar
-		if msg.String() == "tab" {
-			if d.focus == FocusMain {
-				d.focus = FocusSidebar
-				d.sidebar.SetFocused(true)
-			} else {
-				d.focus = FocusMain
-				d.sidebar.SetFocused(false)
+		// Global 'i' key: focus input from any state
+		if msg.String() == "i" && !d.inputFocused {
+			d.inputFocused = true
+			if d.agentOutput != nil {
+				d.agentOutput.SetInputFocused(true)
 			}
 			return nil
 		}
 
-		// Forward keys based on focus
-		if d.focus == FocusSidebar {
+		// When input is focused, handle Enter and Escape
+		if d.inputFocused {
+			switch msg.String() {
+			case "enter":
+				// Emit UserInputMsg with the input value, then return to FocusAgent
+				if d.agentOutput != nil {
+					text := d.agentOutput.InputValue()
+					if text != "" {
+						d.agentOutput.ResetInput()
+						d.inputFocused = false
+						d.agentOutput.SetInputFocused(false)
+						d.focusPane = FocusAgent
+						return func() tea.Msg {
+							return UserInputMsg{Text: text}
+						}
+					}
+				}
+				return nil
+			case "esc":
+				// Exit input and return to FocusAgent
+				d.inputFocused = false
+				if d.agentOutput != nil {
+					d.agentOutput.SetInputFocused(false)
+				}
+				d.focusPane = FocusAgent
+				return nil
+			default:
+				// Forward all other keys to the input field
+				if d.agentOutput != nil {
+					return d.agentOutput.Update(msg)
+				}
+			}
+			return nil
+		}
+
+		// Tab: cycle through panes (Agent → Tasks → Notes → Agent)
+		if msg.String() == "tab" {
+			switch d.focusPane {
+			case FocusAgent:
+				d.focusPane = FocusTasks
+			case FocusTasks:
+				d.focusPane = FocusNotes
+			case FocusNotes:
+				d.focusPane = FocusAgent
+			}
+			return nil
+		}
+
+		// Update ScrollList focus states based on active pane
+		d.updateScrollListFocus()
+
+		// Forward keys based on focusPane
+		switch d.focusPane {
+		case FocusTasks, FocusNotes:
 			return d.sidebar.Update(msg)
+		case FocusAgent:
+			if d.agentOutput != nil {
+				return d.agentOutput.Update(msg)
+			}
 		}
 	}
 
-	// Forward scroll events to agent output viewport when main is focused
-	if d.agentOutput != nil && d.focus == FocusMain {
-		return d.agentOutput.Update(msg)
-	}
 	return nil
 }
 
 // Draw renders the dashboard to a screen buffer using the Screen/Draw pattern.
 func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Draw panel border with title
-	focusTitle := "Agent Output"
-	if d.focus == FocusMain {
-		focusTitle = "Agent Output"
-	}
-	inner := DrawPanel(scr, area, focusTitle, d.focus == FocusMain)
+	// Show accent border when FocusAgent (unless input is focused - in which case input gets the highlight)
+	agentPanelFocused := d.focusPane == FocusAgent && !d.inputFocused
+	inner := DrawPanel(scr, area, "Agent Output", agentPanelFocused)
 
 	// Delegate to AgentOutput.Draw for content rendering
 	if d.agentOutput != nil {
@@ -206,6 +268,26 @@ func (d *Dashboard) SetFocus(focused bool) {
 // IsFocused returns whether the dashboard has focus (implements Focusable interface).
 func (d *Dashboard) IsFocused() bool {
 	return d.focused
+}
+
+// SetAgentBusy sets whether the agent is currently processing.
+func (d *Dashboard) SetAgentBusy(busy bool) {
+	d.agentBusy = busy
+}
+
+// updateScrollListFocus sets the focused state on ScrollLists based on the active pane.
+// Only the active pane's ScrollList should have focused=true to receive keyboard events.
+func (d *Dashboard) updateScrollListFocus() {
+	// Agent output ScrollList (only focused when FocusAgent and input not focused)
+	if d.agentOutput != nil {
+		d.agentOutput.SetScrollFocused(d.focusPane == FocusAgent && !d.inputFocused)
+	}
+
+	// Sidebar ScrollLists
+	if d.sidebar != nil {
+		d.sidebar.SetTasksScrollFocused(d.focusPane == FocusTasks && !d.inputFocused)
+		d.sidebar.SetNotesScrollFocused(d.focusPane == FocusNotes && !d.inputFocused)
+	}
 }
 
 // renderProgressIndicator renders a progress bar showing task completion.

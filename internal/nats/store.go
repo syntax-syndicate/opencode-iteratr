@@ -17,7 +17,6 @@ const (
 	// Event types
 	EventTypeTask      = "task"
 	EventTypeNote      = "note"
-	EventTypeInbox     = "inbox"
 	EventTypeIteration = "iteration"
 	EventTypeControl   = "control"
 )

@@ -21,6 +21,11 @@ type Runner struct {
 	onToolCall  func(ToolCallEvent)
 	onThinking  func(string)
 	onFinish    func(FinishEvent)
+
+	// Persistent ACP session fields
+	conn      *acpConn
+	sessionID string
+	cmd       *exec.Cmd
 }
 
 // RunnerConfig holds configuration for creating a new Runner.
@@ -64,12 +69,13 @@ func extractProvider(model string) string {
 	return ""
 }
 
-// RunIteration executes a single iteration by spawning opencode acp subprocess.
-// It establishes an ACP connection and sends the prompt via JSON-RPC.
-func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
-	logger.Debug("Starting opencode acp iteration")
+// Start initializes the persistent ACP session by spawning opencode acp subprocess
+// and performing the initialize → newSession → setModel sequence.
+// Must be called before RunIteration.
+func (r *Runner) Start(ctx context.Context) error {
+	logger.Debug("Starting persistent ACP session")
 
-	// Create command - spawn opencode acp instead of opencode run --format json
+	// Create command - spawn opencode acp
 	cmd := exec.CommandContext(ctx, "opencode", "acp")
 	cmd.Dir = r.workDir
 	cmd.Env = os.Environ()
@@ -95,21 +101,20 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 
 	// Create acpConn from stdin/stdout pipes
 	conn := newACPConn(stdin, stdout)
-	defer func() {
-		conn.close()
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		cmd.Wait()
-	}()
 
-	// Call initialize → newSession → setModel → prompt sequence
+	// Call initialize → newSession → setModel sequence
 	if err := conn.initialize(ctx); err != nil {
+		conn.close()
+		cmd.Process.Kill()
+		cmd.Wait()
 		return fmt.Errorf("ACP initialize failed: %w", err)
 	}
 
 	sessID, err := conn.newSession(ctx, r.workDir)
 	if err != nil {
+		conn.close()
+		cmd.Process.Kill()
+		cmd.Wait()
 		return fmt.Errorf("ACP new session failed: %w", err)
 	}
 
@@ -117,14 +122,35 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 	if r.model != "" {
 		logger.Debug("Setting model: %s", r.model)
 		if err := conn.setModel(ctx, sessID, r.model); err != nil {
+			conn.close()
+			cmd.Process.Kill()
+			cmd.Wait()
 			return fmt.Errorf("ACP set model failed: %w", err)
 		}
 	}
 
+	// Store persistent session state
+	r.conn = conn
+	r.sessionID = sessID
+	r.cmd = cmd
+
+	logger.Debug("Persistent ACP session ready: sessionID=%s", sessID)
+	return nil
+}
+
+// RunIteration executes a single iteration by sending a prompt to the persistent ACP session.
+// Start() must be called first to initialize the session.
+func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
+	if r.conn == nil {
+		return fmt.Errorf("ACP session not started - call Start() first")
+	}
+
+	logger.Debug("Running iteration on existing ACP session")
+
 	// Send prompt and stream notifications to callbacks
 	// Wire onText, onToolCall, and onThinking callbacks through to prompt()
 	startTime := time.Now()
-	stopReason, err := conn.prompt(ctx, sessID, prompt, r.onText, r.onToolCall, r.onThinking)
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, prompt, r.onText, r.onToolCall, r.onThinking)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -157,4 +183,69 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 
 	logger.Debug("opencode iteration completed successfully")
 	return nil
+}
+
+// SendMessage sends a user message to the persistent ACP session as a follow-up prompt.
+// This allows user input to be delivered to the agent mid-session.
+// Start() must be called first to initialize the session.
+func (r *Runner) SendMessage(ctx context.Context, text string) error {
+	if r.conn == nil {
+		return fmt.Errorf("ACP session not started - call Start() first")
+	}
+
+	logger.Debug("Sending user message to ACP session")
+
+	// Send prompt with user message, streaming responses to callbacks
+	startTime := time.Now()
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, text, r.onText, r.onToolCall, r.onThinking)
+	duration := time.Since(startTime)
+
+	if err != nil {
+		// Prompt failed - determine if it was cancelled or error
+		if r.onFinish != nil {
+			finalStopReason := "error"
+			if ctx.Err() == context.Canceled {
+				finalStopReason = "cancelled"
+			}
+			r.onFinish(FinishEvent{
+				StopReason: finalStopReason,
+				Error:      err.Error(),
+				Duration:   duration,
+				Model:      r.model,
+				Provider:   extractProvider(r.model),
+			})
+		}
+		return fmt.Errorf("ACP user message failed: %w", err)
+	}
+
+	// Prompt succeeded - call onFinish with the actual stop reason from ACP
+	if r.onFinish != nil {
+		r.onFinish(FinishEvent{
+			StopReason: stopReason,
+			Duration:   duration,
+			Model:      r.model,
+			Provider:   extractProvider(r.model),
+		})
+	}
+
+	logger.Debug("User message processed successfully")
+	return nil
+}
+
+// Stop terminates the persistent ACP session and cleans up resources.
+// Should be called when done with the runner (e.g., on orchestrator exit).
+func (r *Runner) Stop() {
+	if r.conn != nil {
+		logger.Debug("Closing ACP connection")
+		r.conn.close()
+		r.conn = nil
+	}
+	if r.cmd != nil && r.cmd.Process != nil {
+		logger.Debug("Terminating opencode subprocess")
+		r.cmd.Process.Kill()
+		r.cmd.Wait()
+		r.cmd = nil
+	}
+	r.sessionID = ""
+	logger.Debug("ACP session stopped")
 }

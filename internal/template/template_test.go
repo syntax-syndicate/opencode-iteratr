@@ -28,38 +28,35 @@ func TestRender(t *testing.T) {
 		},
 		{
 			name:     "all variables",
-			template: "{{session}}|{{iteration}}|{{spec}}|{{inbox}}|{{notes}}|{{tasks}}|{{extra}}",
+			template: "{{session}}|{{iteration}}|{{spec}}|{{notes}}|{{tasks}}|{{extra}}",
 			vars: Variables{
 				Session:   "s1",
 				Iteration: "1",
 				Spec:      "spec content",
-				Inbox:     "inbox",
 				Notes:     "notes",
 				Tasks:     "tasks",
 				Extra:     "extra",
 			},
-			want: "s1|1|spec content|inbox|notes|tasks|extra",
+			want: "s1|1|spec content|notes|tasks|extra",
 		},
 		{
 			name:     "empty values",
-			template: "Session: {{session}}{{inbox}}{{extra}}",
+			template: "Session: {{session}}{{extra}}",
 			vars: Variables{
 				Session: "test",
-				Inbox:   "",
 				Extra:   "",
 			},
 			want: "Session: test",
 		},
 		{
 			name:     "multiline template",
-			template: "## Context\nSession: {{session}} | Iteration: #{{iteration}}\n{{inbox}}{{notes}}",
+			template: "## Context\nSession: {{session}} | Iteration: #{{iteration}}\n{{notes}}",
 			vars: Variables{
 				Session:   "my-session",
 				Iteration: "3",
-				Inbox:     "## Inbox\n- Message 1\n",
 				Notes:     "## Notes\n- Note 1\n",
 			},
-			want: "## Context\nSession: my-session | Iteration: #3\n## Inbox\n- Message 1\n## Notes\n- Note 1\n",
+			want: "## Context\nSession: my-session | Iteration: #3\n## Notes\n- Note 1\n",
 		},
 		{
 			name:     "placeholder not replaced if variable missing",
@@ -86,7 +83,6 @@ func TestRenderWithDefaultTemplate(t *testing.T) {
 		Session:   "iteratr",
 		Iteration: "20",
 		Spec:      "# Test Spec\nThis is a test spec.",
-		Inbox:     "",
 		Notes:     "LEARNING:\n  - [#1] Something learned\n",
 		Tasks:     "REMAINING:\n  - [abc123] Task 1\nCOMPLETED: 5 tasks\n",
 		Extra:     "",
@@ -250,55 +246,6 @@ func TestGetTemplate(t *testing.T) {
 			}
 			if !tt.wantErr && tt.checkFunc != nil {
 				tt.checkFunc(t, got)
-			}
-		})
-	}
-}
-
-func TestFormatInbox(t *testing.T) {
-	tests := []struct {
-		name  string
-		state *session.State
-		want  string
-	}{
-		{
-			name: "no messages",
-			state: &session.State{
-				Inbox: []*session.Message{},
-			},
-			want: "", // Empty sections return empty string to omit header
-		},
-		{
-			name: "all messages read",
-			state: &session.State{
-				Inbox: []*session.Message{
-					{ID: "msg001", Content: "Test", Read: true, CreatedAt: time.Now()},
-				},
-			},
-			want: "", // Empty sections return empty string to omit header
-		},
-		{
-			name: "unread messages",
-			state: &session.State{
-				Inbox: []*session.Message{
-					{ID: "msg001abc", Content: "Message 1", Read: false, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
-					{ID: "msg002xyz", Content: "Message 2", Read: false, CreatedAt: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)},
-					{ID: "msg003def", Content: "Read message", Read: true, CreatedAt: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)},
-				},
-			},
-			want: "2 unread message(s):",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatInbox(tt.state)
-			if tt.want == "" {
-				if got != "" {
-					t.Errorf("formatInbox() = %q, want empty string", got)
-				}
-			} else if !strings.Contains(got, tt.want) {
-				t.Errorf("formatInbox() = %q, want to contain %q", got, tt.want)
 			}
 		})
 	}

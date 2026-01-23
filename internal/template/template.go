@@ -25,7 +25,6 @@ type Variables struct {
 	Session   string // Session name
 	Iteration string // Current iteration number
 	Spec      string // Spec file content
-	Inbox     string // Formatted inbox messages
 	Notes     string // Formatted notes from previous iterations
 	Tasks     string // Formatted task list
 	History   string // Formatted iteration history
@@ -39,7 +38,6 @@ type Variables struct {
 // - {{session}} - Session name
 // - {{iteration}} - Current iteration number
 // - {{spec}} - Spec file content
-// - {{inbox}} - Formatted inbox messages (empty if none)
 // - {{notes}} - Formatted notes (empty if none)
 // - {{tasks}} - Formatted task list
 // - {{history}} - Formatted iteration history
@@ -53,7 +51,6 @@ func Render(template string, vars Variables) string {
 		"{{session}}":   vars.Session,
 		"{{iteration}}": vars.Iteration,
 		"{{spec}}":      vars.Spec,
-		"{{inbox}}":     vars.Inbox,
 		"{{notes}}":     vars.Notes,
 		"{{tasks}}":     vars.Tasks,
 		"{{history}}":   vars.History,
@@ -150,7 +147,6 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Session:   cfg.SessionName,
 		Iteration: strconv.Itoa(cfg.IterationNumber),
 		Spec:      specContent,
-		Inbox:     formatInbox(state),
 		Notes:     formatNotes(state),
 		Tasks:     formatTasks(state),
 		History:   formatIterationHistory(state),
@@ -159,43 +155,13 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Binary:    binaryPath,
 	}
 
-	logger.Debug("Formatted state: %d tasks, %d notes, %d inbox messages",
-		len(state.Tasks), len(state.Notes), len(state.Inbox))
+	logger.Debug("Formatted state: %d tasks, %d notes",
+		len(state.Tasks), len(state.Notes))
 
 	// Render template with variables
 	result := Render(templateContent, vars)
 	logger.Debug("Prompt rendered: %d characters", len(result))
 	return result, nil
-}
-
-// formatInbox formats unread inbox messages for template injection.
-// Returns empty string if no unread messages (section header will be omitted).
-func formatInbox(state *session.State) string {
-	if len(state.Inbox) == 0 {
-		return ""
-	}
-
-	unread := []*session.Message{}
-	for _, msg := range state.Inbox {
-		if !msg.Read {
-			unread = append(unread, msg)
-		}
-	}
-
-	if len(unread) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("## Inbox\n%d unread message(s):\n", len(unread)))
-	for _, msg := range unread {
-		sb.WriteString(fmt.Sprintf("- [%s] %s (%s)\n",
-			shortID(msg.ID),
-			msg.Content,
-			msg.CreatedAt.Format(time.RFC3339),
-		))
-	}
-	return sb.String()
 }
 
 // formatNotes formats notes grouped by type for template injection.

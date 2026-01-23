@@ -46,6 +46,7 @@ type Orchestrator struct {
 	tuiApp     *tui.App           // TUI application (nil if headless)
 	tuiProgram *tea.Program       // Bubbletea program
 	tuiDone    chan struct{}      // TUI completion signal
+	sendChan   chan string        // Channel for user input messages from TUI to orchestrator
 	ctx        context.Context    // Context for cancellation
 	cancel     context.CancelFunc // Cancel function
 	stopped    bool               // Track if Stop() was already called
@@ -70,10 +71,11 @@ func New(cfg Config) (*Orchestrator, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
-		cfg:     cfg,
-		ctx:     ctx,
-		cancel:  cancel,
-		tuiDone: make(chan struct{}),
+		cfg:      cfg,
+		ctx:      ctx,
+		cancel:   cancel,
+		tuiDone:  make(chan struct{}),
+		sendChan: make(chan string, 10), // Buffered channel for user input messages
 	}, nil
 }
 
@@ -142,16 +144,9 @@ func (o *Orchestrator) Start() error {
 		fmt.Println("Session restarted.")
 	}
 
-	// 5. Create agent runner
+	// 5. Create agent runner (don't start yet - will start in Run())
 	logger.Debug("Creating agent runner")
-	o.runner = agent.NewRunner(agent.RunnerConfig{
-		Model:       o.cfg.Model,
-		WorkDir:     o.cfg.WorkDir,
-		SessionName: o.cfg.SessionName,
-		NATSPort:    o.natsPort,
-		OnText:      nil, // Set later based on headless mode
-		OnToolCall:  nil, // Set later based on headless mode
-	})
+	// Runner will be initialized in Run() with proper callbacks after TUI is ready
 
 	// 6. Start TUI if not headless
 	if !o.cfg.Headless {
@@ -216,6 +211,97 @@ func (o *Orchestrator) Run() error {
 		fmt.Printf("Tasks: %d remaining, %d completed\n\n", remainingCount, completedCount)
 	}
 
+	// Setup runner with callbacks based on headless mode
+	logger.Debug("Setting up agent runner with callbacks")
+	if o.tuiProgram != nil {
+		// TUI mode - send output to TUI
+		o.runner = agent.NewRunner(agent.RunnerConfig{
+			Model:       o.cfg.Model,
+			WorkDir:     o.cfg.WorkDir,
+			SessionName: o.cfg.SessionName,
+			NATSPort:    o.natsPort,
+			OnText: func(content string) {
+				o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
+			},
+			OnToolCall: func(event agent.ToolCallEvent) {
+				o.tuiProgram.Send(tui.AgentToolCallMsg{
+					ToolCallID: event.ToolCallID,
+					Title:      event.Title,
+					Status:     event.Status,
+					Input:      event.RawInput,
+					Output:     event.Output,
+				})
+			},
+			OnThinking: func(content string) {
+				o.tuiProgram.Send(tui.AgentThinkingMsg{Content: content})
+			},
+			OnFinish: func(event agent.FinishEvent) {
+				o.tuiProgram.Send(tui.AgentFinishMsg{
+					Reason:   event.StopReason,
+					Error:    event.Error,
+					Model:    event.Model,
+					Provider: event.Provider,
+					Duration: event.Duration,
+				})
+			},
+		})
+	} else {
+		// Headless mode - print to stdout
+		o.runner = agent.NewRunner(agent.RunnerConfig{
+			Model:       o.cfg.Model,
+			WorkDir:     o.cfg.WorkDir,
+			SessionName: o.cfg.SessionName,
+			NATSPort:    o.natsPort,
+			OnText: func(content string) {
+				fmt.Print(content)
+			},
+			OnToolCall: func(event agent.ToolCallEvent) {
+				// Simple tool lifecycle output for headless mode
+				switch event.Status {
+				case "pending":
+					fmt.Printf("\n[tool: %s] ...\n", event.Title)
+				case "in_progress":
+					if cmd, ok := event.RawInput["command"].(string); ok {
+						fmt.Printf("[tool: %s] command: %s\n", event.Title, cmd)
+					}
+				case "completed":
+					outputLines := len(event.Output)
+					if outputLines > 0 {
+						fmt.Printf("[tool: %s] ✓ (output: %d bytes)\n", event.Title, len(event.Output))
+					} else {
+						fmt.Printf("[tool: %s] ✓\n", event.Title)
+					}
+				}
+			},
+			OnThinking: func(content string) {
+				// Print thinking content dimmed in headless mode
+				fmt.Printf("\033[2m%s\033[0m", content)
+			},
+			OnFinish: func(event agent.FinishEvent) {
+				// Print finish summary in headless mode
+				fmt.Printf("\n--- Agent finished: %s", event.StopReason)
+				if event.Error != "" {
+					fmt.Printf(" (error: %s)", event.Error)
+				}
+				fmt.Printf(" | Duration: %s", event.Duration.Round(time.Millisecond))
+				if event.Model != "" {
+					fmt.Printf(" | Model: %s", event.Model)
+				}
+				fmt.Println(" ---")
+			},
+		})
+	}
+
+	// Start the persistent ACP session
+	logger.Debug("Starting persistent ACP session")
+	if err := o.runner.Start(o.ctx); err != nil {
+		logger.Error("Failed to start ACP session: %v", err)
+		return fmt.Errorf("failed to start ACP session: %w", err)
+	}
+	logger.Debug("ACP session started successfully")
+	// Ensure runner is stopped on exit
+	defer o.runner.Stop()
+
 	// Run iteration loop
 	iterationCount := 0
 	for {
@@ -266,87 +352,7 @@ func (o *Orchestrator) Run() error {
 		}
 		logger.Debug("Prompt built, length: %d characters", len(prompt))
 
-		// Setup output callback for runner
-		if o.tuiProgram != nil {
-			// Send to TUI
-			o.runner = agent.NewRunner(agent.RunnerConfig{
-				Model:       o.cfg.Model,
-				WorkDir:     o.cfg.WorkDir,
-				SessionName: o.cfg.SessionName,
-				NATSPort:    o.natsPort,
-				OnText: func(content string) {
-					o.tuiProgram.Send(tui.AgentOutputMsg{Content: content})
-				},
-				OnToolCall: func(event agent.ToolCallEvent) {
-					o.tuiProgram.Send(tui.AgentToolCallMsg{
-						ToolCallID: event.ToolCallID,
-						Title:      event.Title,
-						Status:     event.Status,
-						Input:      event.RawInput,
-						Output:     event.Output,
-					})
-				},
-				OnThinking: func(content string) {
-					o.tuiProgram.Send(tui.AgentThinkingMsg{Content: content})
-				},
-				OnFinish: func(event agent.FinishEvent) {
-					o.tuiProgram.Send(tui.AgentFinishMsg{
-						Reason:   event.StopReason,
-						Error:    event.Error,
-						Model:    event.Model,
-						Provider: event.Provider,
-						Duration: event.Duration,
-					})
-				},
-			})
-		} else {
-			// Print to stdout in headless mode
-			o.runner = agent.NewRunner(agent.RunnerConfig{
-				Model:       o.cfg.Model,
-				WorkDir:     o.cfg.WorkDir,
-				SessionName: o.cfg.SessionName,
-				NATSPort:    o.natsPort,
-				OnText: func(content string) {
-					fmt.Print(content)
-				},
-				OnToolCall: func(event agent.ToolCallEvent) {
-					// Simple tool lifecycle output for headless mode
-					switch event.Status {
-					case "pending":
-						fmt.Printf("\n[tool: %s] ...\n", event.Title)
-					case "in_progress":
-						if cmd, ok := event.RawInput["command"].(string); ok {
-							fmt.Printf("[tool: %s] command: %s\n", event.Title, cmd)
-						}
-					case "completed":
-						outputLines := len(event.Output)
-						if outputLines > 0 {
-							fmt.Printf("[tool: %s] ✓ (output: %d bytes)\n", event.Title, len(event.Output))
-						} else {
-							fmt.Printf("[tool: %s] ✓\n", event.Title)
-						}
-					}
-				},
-				OnThinking: func(content string) {
-					// Print thinking content dimmed in headless mode
-					fmt.Printf("\033[2m%s\033[0m", content)
-				},
-				OnFinish: func(event agent.FinishEvent) {
-					// Print finish summary in headless mode
-					fmt.Printf("\n--- Agent finished: %s", event.StopReason)
-					if event.Error != "" {
-						fmt.Printf(" (error: %s)", event.Error)
-					}
-					fmt.Printf(" | Duration: %s", event.Duration.Round(time.Millisecond))
-					if event.Model != "" {
-						fmt.Printf(" | Model: %s", event.Model)
-					}
-					fmt.Println(" ---")
-				},
-			})
-		}
-
-		// Run agent iteration with panic recovery
+		// Run agent iteration with panic recovery (reusing persistent ACP session)
 		logger.Info("Running agent for iteration #%d", currentIteration)
 		err = ierr.Recover(func() error {
 			return o.runner.RunIteration(o.ctx, prompt)
@@ -404,6 +410,28 @@ func (o *Orchestrator) Run() error {
 			break
 		}
 
+		// After iteration completes, check for user input before continuing
+		// User messages take priority over auto-iterations
+		select {
+		case <-o.ctx.Done():
+			logger.Info("Context cancelled, stopping iteration loop")
+			return nil
+		case userMsg := <-o.sendChan:
+			// User sent a message - send it as a follow-up prompt to the ACP session
+			logger.Info("Received user message, sending to agent: %s", userMsg)
+			if err := o.runner.SendMessage(o.ctx, userMsg); err != nil {
+				logger.Error("Failed to send user message: %v", err)
+				// Don't fail the whole session, just log and continue
+				if o.tuiProgram != nil {
+					o.tuiProgram.Send(tui.AgentOutputMsg{Content: fmt.Sprintf("\n[Error sending message: %v]\n", err)})
+				}
+			}
+			// After sending user message, continue to next iteration
+			// (don't increment iterationCount - user message doesn't count as an iteration)
+		default:
+			// No user input, continue to next auto-iteration
+		}
+
 		iterationCount++
 	}
 
@@ -447,8 +475,12 @@ func (o *Orchestrator) Stop() error {
 		o.tuiProgram = nil
 	}
 
-	// Agent runner cleanup is automatic - context cancellation will stop any running subprocess
-	logger.Debug("Agent runner will be cleaned up via context cancellation")
+	// Stop agent runner (closes ACP connection and subprocess)
+	if o.runner != nil {
+		logger.Debug("Stopping agent runner")
+		o.runner.Stop()
+		o.runner = nil
+	}
 
 	// Close NATS connection (and server if primary)
 	if o.isPrimary {
@@ -540,7 +572,7 @@ func (o *Orchestrator) setupJetStream() error {
 // startTUI initializes and starts the Bubbletea TUI.
 func (o *Orchestrator) startTUI() error {
 	// Create TUI app
-	o.tuiApp = tui.NewApp(o.ctx, o.store, o.cfg.SessionName, o.nc)
+	o.tuiApp = tui.NewApp(o.ctx, o.store, o.cfg.SessionName, o.nc, o.sendChan)
 
 	// Create Bubbletea program
 	o.tuiProgram = tea.NewProgram(o.tuiApp)

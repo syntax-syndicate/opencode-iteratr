@@ -82,9 +82,6 @@ func (l *LogViewer) renderEvent(event session.Event) string {
 	case "note":
 		typeStyle = styleLogNote
 		typeLabel = "NOTE"
-	case "inbox":
-		typeStyle = styleLogInbox
-		typeLabel = "INBOX"
 	case "iteration":
 		typeStyle = styleLogIteration
 		typeLabel = "ITER"

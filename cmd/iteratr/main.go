@@ -39,7 +39,6 @@ Spiritual successor to ralph.nu - same concepts, modern Go implementation.`,
 
 func init() {
 	rootCmd.AddCommand(buildCmd)
-	rootCmd.AddCommand(messageCmd)
 	rootCmd.AddCommand(genTemplateCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(versionCmd)

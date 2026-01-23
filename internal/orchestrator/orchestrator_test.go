@@ -454,9 +454,10 @@ Model configuration test.
 			}
 			defer orch.Stop()
 
-			// Verify runner was created with the correct model
-			if orch.runner == nil {
-				t.Fatal("runner was not initialized")
+			// Note: runner is now created in Run(), not Start()
+			// Verify that the model is stored correctly in the config for later runner creation
+			if orch.cfg.Model != tt.model {
+				t.Errorf("expected model %q to be stored in config, got %q", tt.model, orch.cfg.Model)
 			}
 		})
 	}

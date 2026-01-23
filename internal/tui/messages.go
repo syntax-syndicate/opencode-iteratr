@@ -275,7 +275,54 @@ func (t *ToolMessageItem) Render(width int) string {
 	result.WriteString(header)
 
 	// --- BODY: output with truncation ---
-	if t.output != "" {
+
+	// Calculate output width (available width minus indent margin)
+	outputWidth := width - 2 // account for MarginLeft(2) on output styles
+	if outputWidth < 1 {
+		outputWidth = 1
+	}
+
+	// Check for Edit tool with diff data (oldString/newString in input)
+	isEditDiff := false
+	if t.toolName == "Edit" && t.status == ToolStatusSuccess {
+		oldStr, hasOld := t.input["oldString"]
+		newStr, hasNew := t.input["newString"]
+		if hasOld && hasNew {
+			isEditDiff = true
+			result.WriteString("\n\n")
+			diffRendered := renderDiffBlock(
+				fmt.Sprintf("%v", oldStr),
+				fmt.Sprintf("%v", newStr),
+				outputWidth,
+			)
+			result.WriteString(diffRendered)
+			result.WriteString("\n")
+		}
+	}
+
+	// Check for diagnostics in output
+	hasDiagnostics := false
+	if t.output != "" && strings.Contains(t.output, "<diagnostics") {
+		diagStart := strings.Index(t.output, "<diagnostics")
+		diagEnd := strings.Index(t.output, "</diagnostics>")
+		if diagStart != -1 && diagEnd != -1 {
+			hasDiagnostics = true
+			diagContent := t.output[diagStart : diagEnd+len("</diagnostics>")]
+			rendered := renderDiagnostics(diagContent, outputWidth)
+			if rendered != "" {
+				if !isEditDiff {
+					result.WriteString("\n\n")
+				} else {
+					result.WriteString("\n")
+				}
+				result.WriteString(rendered)
+				result.WriteString("\n")
+			}
+		}
+	}
+
+	// Render remaining output if not fully handled by diff/diagnostics
+	if t.output != "" && !isEditDiff && !hasDiagnostics {
 		result.WriteString("\n\n") // blank line between header and output
 
 		// Split output into lines
@@ -303,12 +350,6 @@ func (t *ToolMessageItem) Render(width int) string {
 		if fp, ok := t.input["filePath"]; ok {
 			isCodeOutput = true
 			fileName = fmt.Sprintf("%v", fp)
-		}
-
-		// Calculate output width (available width minus indent margin)
-		outputWidth := width - 2 // account for MarginLeft(2) on output styles
-		if outputWidth < 1 {
-			outputWidth = 1
 		}
 
 		// Render visible lines
@@ -340,7 +381,7 @@ func (t *ToolMessageItem) Render(width int) string {
 				hint := styleCodeTruncation.Width(outputWidth).Render(truncMsg)
 				result.WriteString(hint)
 			} else {
-				hint := styleToolTruncation.Render(truncMsg)
+				hint := styleToolTruncation.Width(outputWidth).Render(truncMsg)
 				result.WriteString(hint)
 			}
 			result.WriteString("\n")
@@ -669,10 +710,23 @@ func renderCodeBlock(content, fileName string, width int) string {
 	const codeIndent = "  " // 2-char indent to align with tool header
 	var result []string
 	for i, p := range parsed {
-		// Style the line number gutter
+		// Style the line number gutter, with leading zeros hidden
+		var gutterContent string
+		if p.lineNum != "" {
+			trimmed := strings.TrimLeft(p.lineNum, "0")
+			if trimmed == "" {
+				trimmed = "0"
+			}
+			leadingZeros := p.lineNum[:len(p.lineNum)-len(trimmed)]
+			if leadingZeros != "" {
+				gutterContent = styleCodeLineNumZero.Render(leadingZeros) + trimmed
+			} else {
+				gutterContent = trimmed
+			}
+		}
 		gutter := styleCodeLineNum.
 			Width(gutterWidth).
-			Render(p.lineNum)
+			Render(gutterContent)
 
 		// Get the highlighted code line (or fallback to raw)
 		var codePart string
@@ -691,6 +745,196 @@ func renderCodeBlock(content, fileName string, width int) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+// renderDiffBlock renders a side-by-side diff of oldString vs newString from
+// an Edit tool call. Shows deleted lines on the left (red) and inserted lines
+// on the right (green), with line numbers on each side.
+func renderDiffBlock(oldStr, newStr string, width int) string {
+	oldLines := strings.Split(oldStr, "\n")
+	newLines := strings.Split(newStr, "\n")
+
+	// Calculate panel widths: each side gets half the available width minus divider
+	const indent = "  " // 2-char indent to match tool header
+	divider := "│"
+	availableWidth := width - 2            // subtract indent
+	panelWidth := (availableWidth - 3) / 2 // -3 for " │ " divider
+	if panelWidth < 20 {
+		panelWidth = 20
+	}
+
+	// Calculate gutter width based on max line count
+	maxLines := len(oldLines)
+	if len(newLines) > maxLines {
+		maxLines = len(newLines)
+	}
+	gutterWidth := len(fmt.Sprintf("%d", maxLines))
+	if gutterWidth < 2 {
+		gutterWidth = 2
+	}
+	codeWidth := panelWidth - gutterWidth - 2 // -2 for gutter padding + code padding
+	if codeWidth < 10 {
+		codeWidth = 10
+	}
+
+	// Render rows: pair old and new lines side by side
+	var result []string
+
+	for i := 0; i < maxLines; i++ {
+		// Left side (deletions)
+		var leftGutter, leftCode string
+		if i < len(oldLines) {
+			leftGutter = fmt.Sprintf("%*d", gutterWidth, i+1)
+			leftCode = padRight(truncateLine(oldLines[i], codeWidth), codeWidth)
+		} else {
+			leftGutter = padRight("", gutterWidth)
+			leftCode = padRight("", codeWidth)
+		}
+
+		// Right side (insertions)
+		var rightGutter, rightCode string
+		if i < len(newLines) {
+			rightGutter = fmt.Sprintf("%*d", gutterWidth, i+1)
+			rightCode = padRight(truncateLine(newLines[i], codeWidth), codeWidth)
+		} else {
+			rightGutter = padRight("", gutterWidth)
+			rightCode = padRight("", codeWidth)
+		}
+
+		// Style each part inline (no Width to avoid multi-line wrapping)
+		left := styleDiffLineNumDelete.Render(leftGutter+" ") +
+			styleDiffContentDelete.Render(" "+leftCode)
+		right := styleDiffLineNumInsert.Render(rightGutter+" ") +
+			styleDiffContentInsert.Render(" "+rightCode)
+
+		row := indent + left + " " + styleDiffDivider.Render(divider) + " " + right
+		result = append(result, row)
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// padRight pads a string with spaces to reach the target width.
+func padRight(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(s))
+}
+
+// renderDiagnostics parses <diagnostics> tagged output and renders it as
+// a nicely formatted list of errors/warnings with file path, position, and message.
+//
+// Expected format:
+//
+//	<diagnostics file="/path/to/file.go">
+//	ERROR [line:col] message
+//	WARNING [line:col] message
+//	</diagnostics>
+func renderDiagnostics(output string, width int) string {
+	var result strings.Builder
+
+	// Parse file path from the opening tag
+	fileStart := strings.Index(output, `file="`)
+	filePath := ""
+	if fileStart != -1 {
+		fileStart += len(`file="`)
+		fileEnd := strings.Index(output[fileStart:], `"`)
+		if fileEnd != -1 {
+			filePath = output[fileStart : fileStart+fileEnd]
+		}
+	}
+
+	// Extract content between tags
+	contentStart := strings.Index(output, ">")
+	contentEnd := strings.Index(output, "</diagnostics>")
+	if contentStart == -1 || contentEnd == -1 {
+		return ""
+	}
+	content := strings.TrimSpace(output[contentStart+1 : contentEnd])
+	if content == "" {
+		return ""
+	}
+
+	// Render file path header
+	if filePath != "" {
+		result.WriteString(styleDiagFile.Render(filePath))
+		result.WriteString("\n")
+	}
+
+	// Parse and render each diagnostic line
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Parse: "ERROR [line:col] message" or "WARNING [line:col] message"
+		var severity, position, message string
+
+		if strings.HasPrefix(line, "ERROR") {
+			severity = "ERROR"
+			line = strings.TrimPrefix(line, "ERROR")
+		} else if strings.HasPrefix(line, "WARNING") {
+			severity = "WARNING"
+			line = strings.TrimPrefix(line, "WARNING")
+		} else {
+			// Unknown format, render as-is
+			result.WriteString("    " + styleDiagMessage.Render(line) + "\n")
+			continue
+		}
+
+		line = strings.TrimSpace(line)
+
+		// Extract [line:col]
+		if strings.HasPrefix(line, "[") {
+			end := strings.Index(line, "]")
+			if end != -1 {
+				position = line[1:end]
+				message = strings.TrimSpace(line[end+1:])
+			} else {
+				message = line
+			}
+		} else {
+			message = line
+		}
+
+		// Render: "    icon SEVERITY [pos] message"
+		var icon string
+		var sevStyle lipgloss.Style
+		if severity == "ERROR" {
+			icon = "×"
+			sevStyle = styleDiagError
+		} else {
+			icon = "!"
+			sevStyle = styleDiagWarning
+		}
+
+		diagLine := "    " + sevStyle.Render(icon+" "+severity)
+		if position != "" {
+			diagLine += " " + styleDiagPosition.Render("["+position+"]")
+		}
+		if message != "" {
+			diagLine += " " + styleDiagMessage.Render(message)
+		}
+
+		result.WriteString(diagLine + "\n")
+	}
+
+	return strings.TrimRight(result.String(), "\n")
+}
+
+// truncateLine truncates a line to fit within maxWidth, adding ellipsis if needed.
+func truncateLine(line string, maxWidth int) string {
+	if len(line) <= maxWidth {
+		return line
+	}
+	if maxWidth > 3 {
+		return line[:maxWidth-1] + "…"
+	}
+	return line[:maxWidth]
 }
 
 // syntaxHighlight applies syntax highlighting to source code and returns
