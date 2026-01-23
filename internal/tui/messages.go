@@ -790,6 +790,10 @@ type splitLine struct {
 // renderDiffBlock renders a side-by-side diff using go-udiff.
 // Shows context lines around changes with proper file line numbers.
 func renderDiffBlock(before, after, filePath string, width int) string {
+	// Replace tabs with spaces before diff computation for consistent visual width
+	before = strings.ReplaceAll(before, "\t", "    ")
+	after = strings.ReplaceAll(after, "\t", "    ")
+
 	// Ensure trailing newlines for proper diff computation
 	if before != "" && !strings.HasSuffix(before, "\n") {
 		before += "\n"
@@ -908,9 +912,10 @@ func renderDiffBlock(before, after, filePath string, width int) string {
 	if gutterWidth < 3 {
 		gutterWidth = 3
 	}
-	codeWidth := panelWidth - gutterWidth - 3 // gutter + " - " or " + " prefix
-	if codeWidth < 10 {
-		codeWidth = 10
+	// contentWidth is the space after the gutter and symbol (e.g. " 14 - ")
+	contentWidth := panelWidth - gutterWidth - 4 // " NN" (gutter+1) + " - " (3) = gutterWidth+4
+	if contentWidth < 10 {
+		contentWidth = 10
 	}
 
 	// Render each line
@@ -925,42 +930,43 @@ func renderDiffBlock(before, after, filePath string, width int) string {
 			continue
 		}
 
+		beforeText := strings.TrimRight(sl.beforeText, "\n")
+		afterText := strings.TrimRight(sl.afterText, "\n")
+
 		// Left panel (before)
 		var left string
-		beforeText := strings.TrimRight(sl.beforeText, "\n")
 		switch {
 		case sl.beforeNum > 0 && sl.beforeKind == udiff.Delete:
-			gutter := fmt.Sprintf("%*d", gutterWidth, sl.beforeNum)
-			code := padRight(truncateLine(beforeText, codeWidth), codeWidth)
+			gutter := fmt.Sprintf(" %*d", gutterWidth, sl.beforeNum)
+			code := padRight(truncateLine(beforeText, contentWidth), contentWidth)
 			left = styleDiffLineNumDelete.Render(gutter) +
 				styleDiffContentDelete.Render(" - "+code)
 		case sl.beforeNum > 0 && sl.beforeKind == udiff.Equal:
-			gutter := fmt.Sprintf("%*d", gutterWidth, sl.beforeNum)
-			code := padRight(truncateLine(beforeText, codeWidth), codeWidth)
+			gutter := fmt.Sprintf(" %*d", gutterWidth, sl.beforeNum)
+			code := padRight(truncateLine(beforeText, contentWidth), contentWidth)
 			left = styleDiffLineNumEqual.Render(gutter) +
 				styleDiffContentEqual.Render("   "+code)
 		default:
-			// Empty left side
-			left = styleDiffContentMissing.Render(padRight("", panelWidth))
+			left = styleDiffLineNumMissing.Render(padRight("", gutterWidth+1)) +
+				styleDiffContentMissing.Render(padRight("", contentWidth+3))
 		}
 
 		// Right panel (after)
 		var right string
-		afterText := strings.TrimRight(sl.afterText, "\n")
 		switch {
 		case sl.afterNum > 0 && sl.afterKind == udiff.Insert:
-			gutter := fmt.Sprintf("%*d", gutterWidth, sl.afterNum)
-			code := padRight(truncateLine(afterText, codeWidth), codeWidth)
+			gutter := fmt.Sprintf(" %*d", gutterWidth, sl.afterNum)
+			code := padRight(truncateLine(afterText, contentWidth), contentWidth)
 			right = styleDiffLineNumInsert.Render(gutter) +
 				styleDiffContentInsert.Render(" + "+code)
 		case sl.afterNum > 0 && sl.afterKind == udiff.Equal:
-			gutter := fmt.Sprintf("%*d", gutterWidth, sl.afterNum)
-			code := padRight(truncateLine(afterText, codeWidth), codeWidth)
+			gutter := fmt.Sprintf(" %*d", gutterWidth, sl.afterNum)
+			code := padRight(truncateLine(afterText, contentWidth), contentWidth)
 			right = styleDiffLineNumEqual.Render(gutter) +
 				styleDiffContentEqual.Render("   "+code)
 		default:
-			// Empty right side
-			right = styleDiffContentMissing.Render(padRight("", panelWidth))
+			right = styleDiffLineNumMissing.Render(padRight("", gutterWidth+1)) +
+				styleDiffContentMissing.Render(padRight("", contentWidth+3))
 		}
 
 		row := indent + left + " " + styleDiffDivider.Render("│") + " " + right

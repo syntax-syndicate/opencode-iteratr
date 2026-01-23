@@ -373,6 +373,9 @@ var (
 				Foreground(colorSubtext0).
 				Background(colorDiffEqualBg)
 
+	styleDiffLineNumMissing = lipgloss.NewStyle().
+				Background(colorDiffMissingBg)
+
 	styleDiffContentMissing = lipgloss.NewStyle().
 				Background(colorDiffMissingBg)
 
