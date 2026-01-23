@@ -200,10 +200,19 @@ func (a *AgentOutput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		separatorArea := uv.Rect(inputArea.Min.X, separatorY, inputArea.Dx(), 1)
 		uv.NewStyledString(separatorLine).Draw(scr, separatorArea)
 
-		// Draw input field below separator
+		// Draw input field below separator (line 2 of input area)
 		inputView := a.input.View()
-		inputContentArea := uv.Rect(inputArea.Min.X, separatorY+1, inputArea.Dx(), inputArea.Dy()-1)
+		inputY := separatorY + 1
+		inputContentArea := uv.Rect(inputArea.Min.X, inputY, inputArea.Dx(), 1)
 		uv.NewStyledString(inputView).Draw(scr, inputContentArea)
+
+		// Draw help text below input when focused (line 3 of input area)
+		if a.input.Focused() && inputArea.Dy() >= 3 {
+			helpText := styleDim.Render("Enter to send · Esc to cancel")
+			helpY := inputY + 1
+			helpArea := uv.Rect(inputArea.Min.X, helpY, inputArea.Dx(), 1)
+			uv.NewStyledString(helpText).Draw(scr, helpArea)
+		}
 
 		// Return cursor position if input is focused
 		if a.input.Focused() {
