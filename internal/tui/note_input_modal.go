@@ -84,6 +84,32 @@ func (m *NoteInputModal) reset() {
 	m.textarea.Blur()
 }
 
+// cycleFocusForward moves focus to the next element in the cycle:
+// type selector → textarea → submit button → type selector (wraps)
+func (m *NoteInputModal) cycleFocusForward() {
+	switch m.focus {
+	case focusTypeSelector:
+		m.focus = focusTextarea
+	case focusTextarea:
+		m.focus = focusSubmitButton
+	case focusSubmitButton:
+		m.focus = focusTypeSelector
+	}
+}
+
+// cycleFocusBackward moves focus to the previous element in the cycle:
+// button → textarea → type selector → button (wraps)
+func (m *NoteInputModal) cycleFocusBackward() {
+	switch m.focus {
+	case focusTypeSelector:
+		m.focus = focusSubmitButton
+	case focusTextarea:
+		m.focus = focusTypeSelector
+	case focusSubmitButton:
+		m.focus = focusTextarea
+	}
+}
+
 // Update handles keyboard input for the modal.
 // For now, this is a minimal implementation that will be expanded in later tasks.
 func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
@@ -111,13 +137,26 @@ func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
 			// Return a function that creates the CreateNoteMsg
 			// The iteration will be set by App when it receives this
 			return m.submit(content)
+		case "tab":
+			// Tab cycles focus forward: type selector → textarea → button
+			m.cycleFocusForward()
+			return nil
+		case "shift+tab":
+			// Shift+Tab cycles focus backward: button → textarea → type selector
+			m.cycleFocusBackward()
+			return nil
 		}
 	}
 
-	// Forward all other messages to textarea
-	var cmd tea.Cmd
-	m.textarea, cmd = m.textarea.Update(msg)
-	return cmd
+	// Forward messages to textarea only when it's focused
+	// This ensures other focus zones don't accidentally trigger textarea input
+	if m.focus == focusTextarea {
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		return cmd
+	}
+
+	return nil
 }
 
 // submit returns a command that creates a CreateNoteMsg.
