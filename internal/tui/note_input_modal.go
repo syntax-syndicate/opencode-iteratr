@@ -9,12 +9,22 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+// focusZone represents which UI element has keyboard focus within the modal.
+type focusZone int
+
+const (
+	focusTypeSelector focusZone = iota // Type selector (learning/stuck/tip/decision badges)
+	focusTextarea                      // Multi-line textarea for note content
+	focusSubmitButton                  // Submit button
+)
+
 // NoteInputModal is an interactive modal for creating new notes.
 // It displays a textarea for content input and allows the user to submit notes.
 type NoteInputModal struct {
 	visible  bool
 	textarea textarea.Model
-	noteType string // Current selected type (hardcoded to "learning" for now)
+	noteType string    // Current selected type (hardcoded to "learning" for now)
+	focus    focusZone // Which UI element currently has keyboard focus
 	width    int
 	height   int
 }
@@ -33,7 +43,8 @@ func NewNoteInputModal() *NoteInputModal {
 	return &NoteInputModal{
 		visible:  false,
 		textarea: ta,
-		noteType: "learning", // Hardcoded for tracer bullet
+		noteType: "learning",    // Hardcoded for tracer bullet
+		focus:    focusTextarea, // Start with textarea focused
 		width:    60,
 		height:   16,
 	}
@@ -65,6 +76,9 @@ func (m *NoteInputModal) reset() {
 	// Reset noteType to default
 	// (When type selector is implemented, this will reset typeIndex to 0)
 	m.noteType = "learning"
+
+	// Reset focus to textarea (default starting position)
+	m.focus = focusTextarea
 
 	// Blur the textarea to reset its internal state
 	m.textarea.Blur()
