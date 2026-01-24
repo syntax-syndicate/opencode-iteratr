@@ -170,6 +170,18 @@ func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
 		case "shift+tab":
 			// Shift+Tab cycles focus backward: button → textarea → type selector
 			return m.cycleFocusBackward()
+		case "enter", " ":
+			// Enter or Space when button is focused submits the note
+			if m.focus == focusSubmitButton {
+				content := strings.TrimSpace(m.textarea.Value())
+
+				// Don't submit if empty (validation)
+				if content == "" {
+					return nil
+				}
+
+				return m.submit(content)
+			}
 		}
 	}
 
