@@ -48,7 +48,7 @@ func init() {
 	toolCmd.PersistentFlags().StringVar(&toolFlags.dataDir, "data-dir", "", "Data directory (default: from ITERATR_DATA_DIR or .iteratr)")
 }
 
-// connectToSession connects to a running iteratr session's NATS server
+// connectToSession connects to a running iteratr session's server
 func connectToSession() (*session.Store, func(), error) {
 	// Determine data directory
 	dataDir := toolFlags.dataDir
@@ -60,8 +60,8 @@ func connectToSession() (*session.Store, func(), error) {
 	}
 
 	// Read port from port file
-	natsDataDir := dataDir + "/nats"
-	port, err := nats.ReadPort(natsDataDir)
+	serverDataDir := dataDir + "/data"
+	port, err := nats.ReadPort(serverDataDir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to session (is iteratr build running?): %w", err)
 	}

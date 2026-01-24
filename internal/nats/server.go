@@ -15,8 +15,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-// PortFileName is the name of the file that stores the NATS port number
-const PortFileName = "nats.port"
+// PortFileName is the name of the file that stores the server port number
+const PortFileName = "server.port"
 
 // StartEmbeddedNATS starts an embedded NATS server with JetStream enabled
 // using the specified data directory for file-based storage.

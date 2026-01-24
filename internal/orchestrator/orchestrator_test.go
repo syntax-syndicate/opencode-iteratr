@@ -65,10 +65,10 @@ This is a test spec.
 		t.Fatal("Stop() timed out - graceful shutdown failed")
 	}
 
-	// Verify NATS data was written (proves it was running)
-	natsDir := filepath.Join(dataDir, "nats")
-	if _, err := os.Stat(natsDir); os.IsNotExist(err) {
-		t.Error("NATS data directory was not created")
+	// Verify data directory was written (proves server was running)
+	storeDir := filepath.Join(dataDir, "data")
+	if _, err := os.Stat(storeDir); os.IsNotExist(err) {
+		t.Error("Data directory was not created")
 	}
 }
 

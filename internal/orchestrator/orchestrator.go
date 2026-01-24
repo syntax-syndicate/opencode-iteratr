@@ -28,7 +28,7 @@ type Config struct {
 	TemplatePath      string // Path to custom template (optional)
 	ExtraInstructions string // Extra instructions (optional)
 	Iterations        int    // Max iterations (0 = infinite)
-	DataDir           string // Data directory for NATS storage
+	DataDir           string // Data directory for persistent storage
 	WorkDir           string // Working directory for agent
 	Headless          bool   // Run without TUI
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
@@ -527,9 +527,9 @@ func (o *Orchestrator) Stop() error {
 // Otherwise, it starts a new embedded server and runs in "primary mode".
 func (o *Orchestrator) ensureNATS() error {
 	// Ensure data directory exists
-	dataDir := filepath.Join(o.cfg.DataDir, "nats")
+	dataDir := filepath.Join(o.cfg.DataDir, "data")
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return fmt.Errorf("failed to create NATS data directory: %w", err)
+		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Try to connect to existing server first
