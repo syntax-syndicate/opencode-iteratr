@@ -21,12 +21,14 @@ const (
 // NoteInputModal is an interactive modal for creating new notes.
 // It displays a textarea for content input and allows the user to submit notes.
 type NoteInputModal struct {
-	visible  bool
-	textarea textarea.Model
-	noteType string    // Current selected type (hardcoded to "learning" for now)
-	focus    focusZone // Which UI element currently has keyboard focus
-	width    int
-	height   int
+	visible   bool
+	textarea  textarea.Model
+	noteType  string    // Current selected type (derived from types[typeIndex])
+	types     []string  // Available note types: ["learning", "stuck", "tip", "decision"]
+	typeIndex int       // Current index in types array
+	focus     focusZone // Which UI element currently has keyboard focus
+	width     int
+	height    int
 }
 
 // NewNoteInputModal creates a new NoteInputModal component.
@@ -40,13 +42,18 @@ func NewNoteInputModal() *NoteInputModal {
 	ta.SetWidth(50)
 	ta.SetHeight(6)
 
+	// Define available note types
+	types := []string{"learning", "stuck", "tip", "decision"}
+
 	return &NoteInputModal{
-		visible:  false,
-		textarea: ta,
-		noteType: "learning",    // Hardcoded for tracer bullet
-		focus:    focusTextarea, // Start with textarea focused
-		width:    60,
-		height:   16,
+		visible:   false,
+		textarea:  ta,
+		types:     types,
+		typeIndex: 0,             // Start with first type (learning)
+		noteType:  types[0],      // Initialize to "learning"
+		focus:     focusTextarea, // Start with textarea focused
+		width:     60,
+		height:    16,
 	}
 }
 
@@ -73,9 +80,9 @@ func (m *NoteInputModal) reset() {
 	// Clear textarea content
 	m.textarea.SetValue("")
 
-	// Reset noteType to default
-	// (When type selector is implemented, this will reset typeIndex to 0)
-	m.noteType = "learning"
+	// Reset type selector to default (first type: learning)
+	m.typeIndex = 0
+	m.noteType = m.types[0]
 
 	// Reset focus to textarea (default starting position)
 	m.focus = focusTextarea
