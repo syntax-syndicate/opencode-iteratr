@@ -222,10 +222,32 @@ func (m *NoteInputModal) View() string {
 	return strings.Join(sections, "\n")
 }
 
-// renderButton renders the submit button in its current state.
-// For now, this is static (unfocused). Focus states will be added in a later task.
+// renderButton renders the submit button in its current state with appropriate styling.
+// Three states:
+// - Focused: highlighted with primary color background
+// - Unfocused: muted with dim background
+// - Disabled: muted and visually dimmed (when content is empty)
 func (m *NoteInputModal) renderButton() string {
-	buttonStyle := styleBadgeMuted.Copy()
+	content := strings.TrimSpace(m.textarea.Value())
+	isEmpty := content == ""
+
+	var buttonStyle lipgloss.Style
+
+	// Disabled state: content is empty
+	if isEmpty {
+		buttonStyle = styleBadgeMuted.Copy().
+			Foreground(colorSubtext0). // Dimmed text
+			Background(colorSurface0)  // Very subtle background
+	} else if m.focus == focusSubmitButton {
+		// Focused state: highlighted with primary color
+		buttonStyle = styleBadge.Copy().
+			Foreground(colorTextBright). // Bright text
+			Background(colorPrimary)     // Primary brand color
+	} else {
+		// Unfocused state: standard muted style
+		buttonStyle = styleBadgeMuted.Copy()
+	}
+
 	return buttonStyle.Render("  Save Note  ")
 }
 
