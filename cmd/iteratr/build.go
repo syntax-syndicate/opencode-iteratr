@@ -101,11 +101,22 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		dataDir = buildFlags.dataDir
 	}
 
+	// Determine template path with precedence:
+	// 1. Explicit --template flag
+	// 2. .iteratr.template in current directory (if exists)
+	// 3. Default embedded template (handled by template package)
+	templatePath := buildFlags.template
+	if templatePath == "" {
+		if _, err := os.Stat(".iteratr.template"); err == nil {
+			templatePath = ".iteratr.template"
+		}
+	}
+
 	// Create orchestrator
 	orch, err := orchestrator.New(orchestrator.Config{
 		SessionName:       sessionName,
 		SpecPath:          specPath,
-		TemplatePath:      buildFlags.template,
+		TemplatePath:      templatePath,
 		ExtraInstructions: buildFlags.extraInstructions,
 		Iterations:        buildFlags.iterations,
 		DataDir:           dataDir,

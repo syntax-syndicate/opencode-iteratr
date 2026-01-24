@@ -144,6 +144,20 @@ func (m *NoteInputModal) updateTextareaFocus(oldFocus focusZone) tea.Cmd {
 	return nil
 }
 
+// cycleTypeForward cycles to the next note type in the types array.
+// Wraps around from the last type back to the first.
+func (m *NoteInputModal) cycleTypeForward() {
+	m.typeIndex = (m.typeIndex + 1) % len(m.types)
+	m.noteType = m.types[m.typeIndex]
+}
+
+// cycleTypeBackward cycles to the previous note type in the types array.
+// Wraps around from the first type back to the last.
+func (m *NoteInputModal) cycleTypeBackward() {
+	m.typeIndex = (m.typeIndex - 1 + len(m.types)) % len(m.types)
+	m.noteType = m.types[m.typeIndex]
+}
+
 // Update handles keyboard input for the modal.
 // For now, this is a minimal implementation that will be expanded in later tasks.
 func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
@@ -177,6 +191,16 @@ func (m *NoteInputModal) Update(msg tea.Msg) tea.Cmd {
 		case "shift+tab":
 			// Shift+Tab cycles focus backward: button → textarea → type selector
 			return m.cycleFocusBackward()
+		case "left", "right":
+			// Left/Right arrows when type selector is focused cycles through note types
+			if m.focus == focusTypeSelector {
+				if keyMsg.String() == "right" {
+					m.cycleTypeForward()
+				} else {
+					m.cycleTypeBackward()
+				}
+				return nil
+			}
 		case "enter", " ":
 			// Enter or Space when button is focused submits the note
 			if m.focus == focusSubmitButton {
