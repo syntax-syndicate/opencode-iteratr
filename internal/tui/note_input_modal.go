@@ -273,6 +273,19 @@ func (m *NoteInputModal) View() string {
 	button := m.renderButton()
 	buttonLine := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Right).Render(button)
 	sections = append(sections, buttonLine)
+	sections = append(sections, "")
+
+	// Hint bar at bottom with keyboard shortcuts
+	hintBar := styleHintKey.Render("tab") + " " +
+		styleHintDesc.Render("cycle focus") + " " +
+		styleHintSeparator.Render("•") + " " +
+		styleHintKey.Render("ctrl+enter") + " " +
+		styleHintDesc.Render("submit") + " " +
+		styleHintSeparator.Render("•") + " " +
+		styleHintKey.Render("esc") + " " +
+		styleHintDesc.Render("close")
+	hintText := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Center).Render(hintBar)
+	sections = append(sections, hintText)
 
 	return strings.Join(sections, "\n")
 }
