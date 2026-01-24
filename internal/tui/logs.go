@@ -72,7 +72,7 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	)
 
 	// Style the modal
-	modalStyle := styleModalContainer.Copy().
+	modalStyle := styleModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 

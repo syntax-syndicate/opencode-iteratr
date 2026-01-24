@@ -406,23 +406,23 @@ var (
 			Padding(0, 1).
 			Bold(true)
 
-	styleBadgeSuccess = styleBadge.Copy().
+	styleBadgeSuccess = styleBadge.
 				Foreground(colorTextBright).
 				Background(colorSuccess)
 
-	styleBadgeWarning = styleBadge.Copy().
+	styleBadgeWarning = styleBadge.
 				Foreground(colorTextBright).
 				Background(colorWarning)
 
-	styleBadgeError = styleBadge.Copy().
+	styleBadgeError = styleBadge.
 			Foreground(colorTextBright).
 			Background(colorError)
 
-	styleBadgeInfo = styleBadge.Copy().
+	styleBadgeInfo = styleBadge.
 			Foreground(colorTextBright).
 			Background(colorSecondary)
 
-	styleBadgeMuted = styleBadge.Copy().
+	styleBadgeMuted = styleBadge.
 			Foreground(colorText).
 			Background(colorMuted)
 

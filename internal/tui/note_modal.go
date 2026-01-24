@@ -67,7 +67,7 @@ func (m *NoteModal) Draw(scr uv.Screen, area uv.Rectangle) {
 
 	content := m.buildContent(modalWidth - 4)
 
-	modalStyle := styleModalContainer.Copy().
+	modalStyle := styleModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 

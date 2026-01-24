@@ -81,7 +81,7 @@ func (m *TaskModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	content := m.buildContent(modalWidth - 4) // Account for padding and borders
 
 	// Style the modal with border and background
-	modalStyle := styleModalContainer.Copy().
+	modalStyle := styleModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 
@@ -235,7 +235,7 @@ func (m *TaskModal) renderPriorityBadge(priority int) string {
 		badge = styleBadgeMuted
 		text = "low"
 	case 4:
-		badge = styleBadgeMuted.Copy().Faint(true)
+		badge = styleBadgeMuted.Faint(true)
 		text = "backlog"
 	default:
 		badge = styleBadgeMuted
