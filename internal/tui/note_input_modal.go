@@ -253,6 +253,11 @@ func (m *NoteInputModal) View() string {
 	sections = append(sections, title)
 	sections = append(sections, "")
 
+	// Type selector badges row
+	typeBadges := m.renderTypeBadges()
+	sections = append(sections, typeBadges)
+	sections = append(sections, "")
+
 	// Textarea
 	sections = append(sections, m.textarea.View())
 	sections = append(sections, "")
@@ -263,6 +268,96 @@ func (m *NoteInputModal) View() string {
 	sections = append(sections, buttonLine)
 
 	return strings.Join(sections, "\n")
+}
+
+// renderTypeBadges renders the row of note type badges with the active type highlighted.
+// When the type selector is focused, the active badge is highlighted with primary color.
+// When unfocused, the active badge uses the standard type-specific color.
+func (m *NoteInputModal) renderTypeBadges() string {
+	var badges []string
+
+	for i, noteType := range m.types {
+		isActive := i == m.typeIndex
+		var badge lipgloss.Style
+		var text string
+
+		// Determine badge style and text based on type
+		switch noteType {
+		case "learning":
+			text = "💡 learning"
+			if isActive {
+				if m.focus == focusTypeSelector {
+					// Active and focused: use primary color
+					badge = styleBadge.Copy().
+						Foreground(colorTextBright).
+						Background(colorPrimary)
+				} else {
+					// Active but not focused: use type-specific color
+					badge = styleBadgeSuccess
+				}
+			} else {
+				// Inactive: muted
+				badge = styleBadgeMuted
+			}
+		case "stuck":
+			text = "🚫 stuck"
+			if isActive {
+				if m.focus == focusTypeSelector {
+					badge = styleBadge.Copy().
+						Foreground(colorTextBright).
+						Background(colorPrimary)
+				} else {
+					badge = styleBadgeError
+				}
+			} else {
+				badge = styleBadgeMuted
+			}
+		case "tip":
+			text = "💬 tip"
+			if isActive {
+				if m.focus == focusTypeSelector {
+					badge = styleBadge.Copy().
+						Foreground(colorTextBright).
+						Background(colorPrimary)
+				} else {
+					badge = styleBadgeWarning
+				}
+			} else {
+				badge = styleBadgeMuted
+			}
+		case "decision":
+			text = "⚡ decision"
+			if isActive {
+				if m.focus == focusTypeSelector {
+					badge = styleBadge.Copy().
+						Foreground(colorTextBright).
+						Background(colorPrimary)
+				} else {
+					badge = styleBadgeInfo
+				}
+			} else {
+				badge = styleBadgeMuted
+			}
+		default:
+			text = "📝 " + noteType
+			if isActive {
+				if m.focus == focusTypeSelector {
+					badge = styleBadge.Copy().
+						Foreground(colorTextBright).
+						Background(colorPrimary)
+				} else {
+					badge = styleBadge
+				}
+			} else {
+				badge = styleBadgeMuted
+			}
+		}
+
+		badges = append(badges, badge.Render(text))
+	}
+
+	// Join badges with spaces
+	return strings.Join(badges, " ")
 }
 
 // renderButton renders the submit button in its current state with appropriate styling.
