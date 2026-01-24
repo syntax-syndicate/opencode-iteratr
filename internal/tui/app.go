@@ -301,6 +301,16 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return a, a.dialog.HandleClick(mouse.X, mouse.Y)
 	}
 
+	// Check if note input modal is open - handle button clicks or close
+	if a.noteInputModal.IsVisible() {
+		if cmd := a.noteInputModal.HandleClick(mouse.X, mouse.Y); cmd != nil {
+			return a, cmd
+		}
+		// Click outside modal closes it
+		a.noteInputModal.Close()
+		return a, nil
+	}
+
 	// Check if task modal is open - click outside closes it
 	if a.taskModal.IsVisible() {
 		// If click is on a different task, switch to that task

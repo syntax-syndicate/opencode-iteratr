@@ -256,6 +256,28 @@ func (m *NoteInputModal) submit(content string) tea.Cmd {
 	}
 }
 
+// HandleClick processes mouse clicks on the modal.
+// Returns a command if the submit button was clicked and note is valid.
+// Returns nil if click was outside button area (caller should close modal).
+func (m *NoteInputModal) HandleClick(x, y int) tea.Cmd {
+	// Check if click is within button area
+	if x >= m.buttonArea.Min.X && x < m.buttonArea.Max.X &&
+		y >= m.buttonArea.Min.Y && y < m.buttonArea.Max.Y {
+		// Button was clicked - submit the note
+		content := strings.TrimSpace(m.textarea.Value())
+
+		// Don't submit if empty (validation)
+		if content == "" {
+			return nil
+		}
+
+		return m.submit(content)
+	}
+
+	// Click was outside button area
+	return nil
+}
+
 // View renders the modal content (for testing and integration).
 func (m *NoteInputModal) View() string {
 	if !m.visible {
