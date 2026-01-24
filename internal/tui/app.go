@@ -76,6 +76,7 @@ func (a *App) Init() tea.Cmd {
 		a.loadInitialState(),
 		a.agent.Init(),
 		a.checkConnectionHealth(), // Start periodic connection health checks
+		a.status.StartDurationTick(),
 	)
 }
 

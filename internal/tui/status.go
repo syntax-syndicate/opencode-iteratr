@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -10,11 +11,15 @@ import (
 	"github.com/mark3labs/iteratr/internal/session"
 )
 
+// DurationTickMsg is sent every second to update the session duration display.
+type DurationTickMsg struct{}
+
 // StatusBar displays session info (left) and keybinding hints (right).
 type StatusBar struct {
 	width       int
 	height      int
 	sessionName string
+	startedAt   time.Time
 	state       *session.State
 	connected   bool
 	working     bool
@@ -28,6 +33,7 @@ type StatusBar struct {
 func NewStatusBar(sessionName string) *StatusBar {
 	return &StatusBar{
 		sessionName: sessionName,
+		startedAt:   time.Now(),
 		connected:   false,
 		working:     false,
 		spinner:     NewDefaultSpinner(),
@@ -71,7 +77,8 @@ func (s *StatusBar) buildLeft() string {
 	sep := styleHeaderSeparator.Render(" | ")
 	sessionInfo := styleHeaderInfo.Render(s.sessionName)
 
-	left := title + sep + sessionInfo
+	duration := s.formatDuration(time.Since(s.startedAt))
+	left := title + sep + sessionInfo + sep + styleHeaderInfo.Render(duration)
 
 	// Add iteration info if available
 	if s.state != nil && len(s.state.Iterations) > 0 {
@@ -189,6 +196,11 @@ func (s *StatusBar) SetLayoutMode(mode LayoutMode) {
 
 // Update handles messages and spinner animation.
 func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
+	switch msg.(type) {
+	case DurationTickMsg:
+		return s.durationTick()
+	}
+
 	if !s.working {
 		return nil
 	}
@@ -198,6 +210,29 @@ func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
 	// here by returning the spinner's next tick command.
 	cmd := s.spinner.Update(msg)
 	return cmd
+}
+
+// StartDurationTick starts the 1-second duration tick loop.
+func (s *StatusBar) StartDurationTick() tea.Cmd {
+	return s.durationTick()
+}
+
+func (s *StatusBar) durationTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return DurationTickMsg{}
+	})
+}
+
+// formatDuration formats a duration as H:MM:SS or M:SS.
+func (s *StatusBar) formatDuration(d time.Duration) string {
+	d = d.Truncate(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	sec := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, sec)
+	}
+	return fmt.Sprintf("%d:%02d", m, sec)
 }
 
 // hasInProgressTasks checks if there are any in_progress tasks.
