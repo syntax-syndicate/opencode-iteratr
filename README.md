@@ -1,6 +1,14 @@
 # iteratr
 
+<p align="center">
+  <img src="iteratr.gif" alt="iteratr demo" />
+</p>
+
 AI coding agent orchestrator with embedded persistence and TUI.
+
+> **Warning:** This project is under active development. APIs, commands, and configuration formats may change without notice. Expect breaking changes between versions until a stable release is announced.
+>
+> **Warning:** iteratr runs opencode with auto-approve permissions enabled. The agent can execute commands, modify files, and make changes without manual confirmation. Use in trusted environments and review changes carefully.
 
 ## Overview
 
