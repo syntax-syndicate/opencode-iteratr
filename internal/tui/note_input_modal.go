@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -41,6 +42,12 @@ func NewNoteInputModal() *NoteInputModal {
 	ta.Prompt = "" // No prompt character
 	ta.SetWidth(50)
 	ta.SetHeight(6)
+
+	// Override textarea KeyMap to remove ctrl+n from LineNext
+	// By default, textarea binds ctrl+n to move cursor down (LineNext)
+	// We only want the down arrow key for this action, not ctrl+n
+	// This prevents confusion since ctrl+n opens the note modal globally
+	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
 
 	// Define available note types
 	types := []string{"learning", "stuck", "tip", "decision"}
