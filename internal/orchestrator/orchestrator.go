@@ -420,26 +420,13 @@ func (o *Orchestrator) Run() error {
 			break
 		}
 
-		// After iteration completes, check for user input before continuing
-		// User messages take priority over auto-iterations
-		select {
-		case <-o.ctx.Done():
-			logger.Info("Context cancelled, stopping iteration loop")
-			return nil
-		case userMsg := <-o.sendChan:
-			// User sent a message - send it as a follow-up prompt to the ACP session
-			logger.Info("Received user message, sending to agent: %s", userMsg)
-			if err := o.runner.SendMessage(o.ctx, userMsg); err != nil {
-				logger.Error("Failed to send user message: %v", err)
-				// Don't fail the whole session, just log and continue
-				if o.tuiProgram != nil {
-					o.tuiProgram.Send(tui.AgentOutputMsg{Content: fmt.Sprintf("\n[Error sending message: %v]\n", err)})
-				}
+		// After iteration completes, process ALL queued user messages
+		if err := o.processUserMessages(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				logger.Info("Context cancelled while processing user messages")
+				return nil
 			}
-			// After sending user message, continue to next iteration
-			// (don't increment iterationCount - user message doesn't count as an iteration)
-		default:
-			// No user input, continue to next auto-iteration
+			return err
 		}
 
 		iterationCount++
