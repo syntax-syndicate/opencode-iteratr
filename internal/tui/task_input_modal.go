@@ -109,6 +109,18 @@ func (m *TaskInputModal) reset() {
 	m.textarea.Blur()
 }
 
+// cyclePriorityForward cycles to the next priority level in the priorities array.
+// Wraps around from the last priority (backlog) back to the first (critical).
+func (m *TaskInputModal) cyclePriorityForward() {
+	m.priorityIndex = (m.priorityIndex + 1) % len(priorities)
+}
+
+// cyclePriorityBackward cycles to the previous priority level in the priorities array.
+// Wraps around from the first priority (critical) back to the last (backlog).
+func (m *TaskInputModal) cyclePriorityBackward() {
+	m.priorityIndex = (m.priorityIndex - 1 + len(priorities)) % len(priorities)
+}
+
 // Update handles keyboard input for the modal.
 // For now, this is a minimal implementation that handles ESC to close.
 // Will be expanded in later tasks to handle all keyboard interactions.
@@ -137,6 +149,16 @@ func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
 			// Return a function that creates the CreateTaskMsg
 			// The iteration will be set by App when it receives this
 			return m.submit(content)
+		case "left", "right":
+			// Left/Right arrows when priority selector is focused cycles through priority levels
+			if m.focus == focusPrioritySelector {
+				if keyMsg.String() == "right" {
+					m.cyclePriorityForward()
+				} else {
+					m.cyclePriorityBackward()
+				}
+				return nil
+			}
 		}
 	}
 
