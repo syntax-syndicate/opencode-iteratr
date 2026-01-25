@@ -234,6 +234,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Close the modal after submitting
 		a.noteInputModal.Close()
 		return a, nil
+
+	case CreateTaskMsg:
+		// Create a new task via Store.TaskAdd()
+		// The task will be published to NATS and picked up by event subscription
+		// Use App's iteration field (set by IterationStartMsg) instead of message field
+		iteration := a.iteration
+		if msg.Iteration != 0 {
+			iteration = msg.Iteration // Allow override if explicitly set
+		}
+		go func() {
+			_, err := a.store.TaskAdd(a.ctx, a.sessionName, session.TaskAddParams{
+				Content:   msg.Content,
+				Priority:  msg.Priority,
+				Iteration: iteration,
+			})
+			if err != nil {
+				// TODO: Add error handling/visual feedback
+				// For now, errors are silently ignored
+			}
+		}()
+		// Close the modal after submitting
+		a.taskInputModal.Close()
+		return a, nil
 	}
 
 	// Update status bar (for spinner animation) - always visible
@@ -756,6 +779,13 @@ type QueueDepthMsg struct {
 type CreateNoteMsg struct {
 	Content   string
 	NoteType  string
+	Iteration int
+}
+
+// CreateTaskMsg is sent when the user submits a task from the task input modal.
+type CreateTaskMsg struct {
+	Content   string
+	Priority  int
 	Iteration int
 }
 
