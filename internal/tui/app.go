@@ -34,6 +34,7 @@ type App struct {
 	logsVisible    bool // Toggle for logs modal overlay
 	sidebarVisible bool // Toggle for sidebar visibility in compact mode
 	iteration      int  // Current iteration number (for note tagging)
+	queueDepth     int  // Number of messages waiting in orchestrator queue
 	store          *session.Store
 	sessionName    string
 	nc             *nats.Conn
@@ -686,6 +687,16 @@ type ConnectionStatusMsg struct {
 // UserInputMsg is sent when the user types a message in the input field.
 type UserInputMsg struct {
 	Text string
+}
+
+// QueuedMessageProcessingMsg is sent by the orchestrator when it starts processing a queued message.
+type QueuedMessageProcessingMsg struct {
+	Text string
+}
+
+// QueueDepthMsg is sent to update the UI with the current queue depth.
+type QueueDepthMsg struct {
+	Depth int
 }
 
 // CreateNoteMsg is sent when the user creates a new note from the input modal.
