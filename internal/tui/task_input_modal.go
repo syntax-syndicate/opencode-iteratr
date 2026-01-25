@@ -106,3 +106,32 @@ func (m *TaskInputModal) reset() {
 	// Blur the textarea to reset its internal state
 	m.textarea.Blur()
 }
+
+// Update handles keyboard input for the modal.
+// For now, this is a minimal implementation that handles ESC to close.
+// Will be expanded in later tasks to handle all keyboard interactions.
+func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
+	if !m.visible {
+		return nil
+	}
+
+	// Handle key presses
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch keyMsg.String() {
+		case "esc":
+			// ESC closes the modal without saving
+			m.Close()
+			return nil
+		}
+	}
+
+	// Forward messages to textarea only when it's focused
+	// This ensures other focus zones don't accidentally trigger textarea input
+	if m.focus == focusTextarea {
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		return cmd
+	}
+
+	return nil
+}
