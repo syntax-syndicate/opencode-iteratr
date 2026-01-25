@@ -15,3 +15,4 @@
 | [user-input-acp](./user-input-acp.md) | Draft | Replace inbox with Bubbles textinput, send user messages via persistent ACP session |
 | [lint-fixes](./lint-fixes.md) | Active | Run golangci-lint and fix all reported issues |
 | [user-note-creation](./user-note-creation.md) | Draft | Ctrl+N modal to create user notes via NATS (same persistence as agent notes) |
+| [message-queue-enhancement](./message-queue-enhancement.md) | Draft | Replace UI-layer single-message queue with orchestrator-layer FIFO queue (crush pattern) |
