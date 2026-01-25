@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -122,6 +124,19 @@ func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
 			// ESC closes the modal without saving
 			m.Close()
 			return nil
+		case "ctrl+enter":
+			// Ctrl+Enter submits the task from any focus zone
+			// Get the content from textarea
+			content := strings.TrimSpace(m.textarea.Value())
+
+			// Don't submit if empty (validation)
+			if content == "" {
+				return nil
+			}
+
+			// Return a function that creates the CreateTaskMsg
+			// The iteration will be set by App when it receives this
+			return m.submit(content)
 		}
 	}
 
@@ -134,6 +149,19 @@ func (m *TaskInputModal) Update(msg tea.Msg) tea.Cmd {
 	}
 
 	return nil
+}
+
+// submit returns a command that creates a CreateTaskMsg.
+// The App will receive this message and fill in the iteration number.
+func (m *TaskInputModal) submit(content string) tea.Cmd {
+	priority := priorities[m.priorityIndex].value
+	return func() tea.Msg {
+		return CreateTaskMsg{
+			Content:   content,
+			Priority:  priority,
+			Iteration: 0, // Will be filled in by App
+		}
+	}
 }
 
 // View renders the modal content (for testing and integration).
