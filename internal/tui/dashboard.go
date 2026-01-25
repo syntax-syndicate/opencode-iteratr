@@ -34,8 +34,7 @@ type Dashboard struct {
 	focusPane    FocusPane    // Which pane has keyboard focus
 	focused      bool         // Whether the dashboard has focus
 	inputFocused bool         // Whether the input field is focused
-	agentBusy    bool         // Whether the agent is currently processing
-	queuedMsg    string       // Message queued while agent is busy
+	agentBusy    bool         // Whether the agent is currently processing (used for input placeholder)
 }
 
 // NewDashboard creates a new Dashboard component.
@@ -71,22 +70,13 @@ func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 				if d.agentOutput != nil {
 					text := d.agentOutput.InputValue()
 					if text != "" {
-						if d.agentBusy {
-							// Agent is busy - queue the message for later
-							d.queuedMsg = text
-							d.agentOutput.ResetInput()
-							d.inputFocused = false
-							d.agentOutput.SetInputFocused(false)
-							d.focusPane = FocusAgent
-						} else {
-							// Agent is not busy - emit message immediately
-							d.agentOutput.ResetInput()
-							d.inputFocused = false
-							d.agentOutput.SetInputFocused(false)
-							d.focusPane = FocusAgent
-							return func() tea.Msg {
-								return UserInputMsg{Text: text}
-							}
+						// Always emit immediately - orchestrator handles queueing
+						d.agentOutput.ResetInput()
+						d.inputFocused = false
+						d.agentOutput.SetInputFocused(false)
+						d.focusPane = FocusAgent
+						return func() tea.Msg {
+							return UserInputMsg{Text: text}
 						}
 					}
 				}
@@ -228,22 +218,12 @@ func (d *Dashboard) IsFocused() bool {
 
 // SetAgentBusy sets whether the agent is currently processing.
 // Updates the input placeholder to show "Agent is working..." when busy.
-// When the agent becomes available and there's a queued message, emits it immediately.
+// The busy state is kept for input placeholder text only.
 func (d *Dashboard) SetAgentBusy(busy bool) tea.Cmd {
 	d.agentBusy = busy
 	if d.agentOutput != nil {
 		d.agentOutput.SetBusy(busy)
 	}
-
-	// When agent becomes available (!busy) and there's a queued message, emit it
-	if !busy && d.queuedMsg != "" {
-		msg := d.queuedMsg
-		d.queuedMsg = "" // Clear the queue
-		return func() tea.Msg {
-			return UserInputMsg{Text: msg}
-		}
-	}
-
 	return nil
 }
 
