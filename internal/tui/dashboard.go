@@ -227,6 +227,15 @@ func (d *Dashboard) SetAgentBusy(busy bool) tea.Cmd {
 	return nil
 }
 
+// SetQueueDepth updates the queue depth indicator in the agent output.
+// Shows how many user messages are waiting in the orchestrator queue.
+func (d *Dashboard) SetQueueDepth(depth int) tea.Cmd {
+	if d.agentOutput != nil {
+		d.agentOutput.SetQueueDepth(depth)
+	}
+	return nil
+}
+
 // updateScrollListFocus sets the focused state on ScrollLists based on the active pane.
 // Only the active pane's ScrollList should have focused=true to receive keyboard events.
 func (d *Dashboard) updateScrollListFocus() {

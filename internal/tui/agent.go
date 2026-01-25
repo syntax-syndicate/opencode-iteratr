@@ -21,6 +21,7 @@ type AgentOutput struct {
 	ready             bool // Whether scrollList is initialized
 	spinner           *GradientSpinner
 	isStreaming       bool
+	queueDepth        int          // Number of messages waiting in orchestrator queue
 	focusedIndex      int          // Index of the message that has keyboard focus (-1 = no focus)
 	viewportArea      uv.Rectangle // Screen area where viewport is drawn (for mouse hit detection)
 	inputArea         uv.Rectangle // Screen area where input field is drawn (for mouse hit detection)
@@ -867,4 +868,10 @@ func (a *AgentOutput) SetBusy(busy bool) {
 	} else {
 		a.input.Placeholder = "Send a message..."
 	}
+}
+
+// SetQueueDepth updates the queue depth indicator.
+// Shows how many user messages are waiting in the orchestrator queue.
+func (a *AgentOutput) SetQueueDepth(depth int) {
+	a.queueDepth = depth
 }

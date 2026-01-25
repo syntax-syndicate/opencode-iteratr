@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipglossv2 "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/nats-io/nats.go"
 )
@@ -162,18 +163,33 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case UserInputMsg:
-		// Handle user input from the text field
-		// TODO: Wire to orchestrator via sendChan to call runner.SendMessage()
-		// For now, this is a placeholder that will be completed when sendChan is added
-		// Non-blocking send to avoid UI freeze if orchestrator isn't ready
+		// Handle user input from the text field - send to orchestrator queue
+		// Increment queue depth and send to channel
+		a.queueDepth++
 		if a.sendChan != nil {
 			select {
 			case a.sendChan <- msg.Text:
-				// Message sent successfully
+				// Message queued successfully - update UI with new queue depth
+				if a.dashboard != nil {
+					return a, a.dashboard.SetQueueDepth(a.queueDepth)
+				}
 			default:
-				// Channel full or not ready, drop message
-				// TODO: Add visual feedback for dropped messages
+				// Channel full - message dropped
+				a.queueDepth-- // Revert increment since message wasn't queued
+				logger.Warn("sendChan full, message dropped: %s", msg.Text)
+				// TODO: Show visual feedback to user (toast/status message)
 			}
+		}
+		return a, nil
+
+	case QueuedMessageProcessingMsg:
+		// Orchestrator started processing a queued message - decrement queue depth
+		a.queueDepth--
+		if a.queueDepth < 0 {
+			a.queueDepth = 0
+		}
+		if a.dashboard != nil {
+			return a, a.dashboard.SetQueueDepth(a.queueDepth)
 		}
 		return a, nil
 
