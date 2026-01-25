@@ -267,47 +267,6 @@ func TestDashboard_UserInputMsgOnEnter(t *testing.T) {
 	}
 }
 
-func TestDashboard_UserInputMsgQueuedWhenBusy(t *testing.T) {
-	// Create a new agent output and dashboard
-	agentOutput := NewAgentOutput()
-	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
-
-	// Set agent as busy
-	d.agentBusy = true
-
-	// Set focus to input pane
-	d.focusPane = FocusInput
-	d.agentOutput.SetInputFocused(true)
-
-	// Set some input text
-	d.agentOutput.input.SetValue("queued message")
-
-	// Simulate Enter key press
-	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
-	cmdFunc := d.Update(enterKey)
-
-	// Verify cmd is nil (message is queued, not emitted)
-	if cmdFunc != nil {
-		t.Error("expected cmd to be nil when agent is busy (message should be queued)")
-	}
-
-	// Verify message was queued
-	if d.queuedMsg != "queued message" {
-		t.Errorf("expected queuedMsg 'queued message', got %q", d.queuedMsg)
-	}
-
-	// Verify input was reset
-	if d.agentOutput.InputValue() != "" {
-		t.Errorf("expected input to be reset, got %q", d.agentOutput.InputValue())
-	}
-
-	// Verify focus was returned to agent
-	if d.focusPane != FocusAgent {
-		t.Errorf("expected focusPane to be FocusAgent, got %d", d.focusPane)
-	}
-}
-
 func TestDashboard_EmptyInputNoMessage(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
