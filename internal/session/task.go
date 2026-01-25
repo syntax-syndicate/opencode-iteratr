@@ -13,7 +13,8 @@ import (
 // TaskAddParams represents the parameters for adding a task.
 type TaskAddParams struct {
 	Content   string `json:"content"`
-	Status    string `json:"status,omitempty"` // Optional: remaining, in_progress, completed, blocked
+	Status    string `json:"status,omitempty"`   // Optional: remaining, in_progress, completed, blocked
+	Priority  int    `json:"priority,omitempty"` // Optional: 0=critical, 1=high, 2=medium, 3=low, 4=backlog
 	Iteration int    `json:"iteration"`
 }
 
@@ -62,10 +63,15 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 	now := time.Now()
 
 	// Create event metadata
-	meta, _ := json.Marshal(map[string]any{
+	metaMap := map[string]any{
 		"status":    status,
 		"iteration": params.Iteration,
-	})
+	}
+	// Only include priority if explicitly set (non-zero)
+	if params.Priority != 0 {
+		metaMap["priority"] = params.Priority
+	}
+	meta, _ := json.Marshal(metaMap)
 
 	// Create and publish event
 	event := Event{
@@ -129,10 +135,15 @@ func (s *Store) TaskBatchAdd(ctx context.Context, session string, tasks []TaskAd
 		counter++
 		id := fmt.Sprintf("TAS-%d", counter)
 
-		meta, _ := json.Marshal(map[string]any{
+		metaMap := map[string]any{
 			"status":    status,
 			"iteration": params.Iteration,
-		})
+		}
+		// Only include priority if explicitly set (non-zero)
+		if params.Priority != 0 {
+			metaMap["priority"] = params.Priority
+		}
+		meta, _ := json.Marshal(metaMap)
 
 		event := Event{
 			ID:        id,
