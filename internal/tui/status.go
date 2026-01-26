@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
@@ -68,7 +68,7 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	content := left + strings.Repeat(" ", padding) + right
 
 	// Render with style
-	DrawStyled(scr, area, styleStatusBar, content)
+	DrawStyled(scr, area, theme.Current().S().StatusBar, content)
 
 	return nil
 }
@@ -76,8 +76,8 @@ func (s *StatusBar) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 // buildLeft builds the left side of the status bar with session info.
 func (s *StatusBar) buildLeft() string {
 	title := theme.Current().S().HeaderTitle.Render("iteratr")
-	sep := styleHeaderSeparator.Render(" | ")
-	sessionInfo := styleHeaderInfo.Render(s.sessionName)
+	sep := theme.Current().S().HeaderSeparator.Render(" | ")
+	sessionInfo := theme.Current().S().HeaderInfo.Render(s.sessionName)
 
 	// Use frozen duration if stopped, otherwise calculate from now
 	var elapsed time.Duration
@@ -87,13 +87,13 @@ func (s *StatusBar) buildLeft() string {
 		elapsed = time.Since(s.startedAt)
 	}
 	duration := s.formatDuration(elapsed)
-	left := title + sep + sessionInfo + sep + styleHeaderInfo.Render(duration)
+	left := title + sep + sessionInfo + sep + theme.Current().S().HeaderInfo.Render(duration)
 
 	// Add iteration info if available
 	if s.state != nil && len(s.state.Iterations) > 0 {
 		currentIter := s.state.Iterations[len(s.state.Iterations)-1]
 		iterInfo := fmt.Sprintf("Iteration #%d", currentIter.Number)
-		left += sep + styleHeaderInfo.Render(iterInfo)
+		left += sep + theme.Current().S().HeaderInfo.Render(iterInfo)
 	}
 
 	// Add task stats if tasks exist
@@ -132,16 +132,16 @@ func (s *StatusBar) buildTaskStats() string {
 
 	var parts []string
 	if completed > 0 {
-		parts = append(parts, styleStatusCompleted.Render(fmt.Sprintf("✓ %d", completed)))
+		parts = append(parts, theme.Current().S().StatusCompleted.Render(fmt.Sprintf("✓ %d", completed)))
 	}
 	if inProgress > 0 {
-		parts = append(parts, styleStatusInProgress.Render(fmt.Sprintf("● %d", inProgress)))
+		parts = append(parts, theme.Current().S().StatusInProgress.Render(fmt.Sprintf("● %d", inProgress)))
 	}
 	if remaining > 0 {
-		parts = append(parts, styleStatusRemaining.Render(fmt.Sprintf("○ %d", remaining)))
+		parts = append(parts, theme.Current().S().StatusRemaining.Render(fmt.Sprintf("○ %d", remaining)))
 	}
 	if blocked > 0 {
-		parts = append(parts, styleStatusBlocked.Render(fmt.Sprintf("✗ %d", blocked)))
+		parts = append(parts, theme.Current().S().StatusBlocked.Render(fmt.Sprintf("✗ %d", blocked)))
 	}
 
 	if len(parts) == 0 {
@@ -153,8 +153,9 @@ func (s *StatusBar) buildTaskStats() string {
 
 // buildRight builds the right side with keybinding hints.
 func (s *StatusBar) buildRight() string {
-	hintKey := lipgloss.NewStyle().Foreground(colorSubtext0)
-	hintDesc := lipgloss.NewStyle().Foreground(colorOverlay0)
+	t := theme.Current()
+	hintKey := lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgSubtle))
+	hintDesc := lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgMuted))
 	sep := "  "
 
 	return hintKey.Render("ctrl+l") + hintDesc.Render(" logs") + sep +
