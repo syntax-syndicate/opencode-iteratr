@@ -4,6 +4,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // Dialog represents a modal dialog overlay
@@ -83,23 +84,24 @@ func (d *Dialog) Draw(scr uv.Screen, area uv.Rectangle) {
 		contentWidth = titleWidth
 	}
 
+	t := theme.Current()
 	// Title styling - just colored text, no background
 	titleStyle := lipgloss.NewStyle().
-		Foreground(colorPrimary).
+		Foreground(lipgloss.Color(t.Primary)).
 		Bold(true).
 		Width(contentWidth).
 		Align(lipgloss.Center)
 
 	// Message styling
 	messageStyle := lipgloss.NewStyle().
-		Foreground(colorText).
+		Foreground(lipgloss.Color(t.FgBase)).
 		Width(contentWidth).
 		Align(lipgloss.Center)
 
 	// Button styling - inline padding only
 	buttonStyle := lipgloss.NewStyle().
-		Foreground(colorBase).
-		Background(colorPrimary).
+		Foreground(lipgloss.Color(t.BgBase)).
+		Background(lipgloss.Color(t.Primary)).
 		Padding(0, 2)
 
 	// Build content parts
@@ -126,7 +128,7 @@ func (d *Dialog) Draw(scr uv.Screen, area uv.Rectangle) {
 	// Dialog box styling
 	dialogStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorPrimary).
+		BorderForeground(lipgloss.Color(t.Primary)).
 		Padding(1, 3)
 
 	dialog := dialogStyle.Render(content)

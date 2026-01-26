@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // Compile-time interface checks
@@ -148,16 +149,17 @@ func (d *Dashboard) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 // renderSessionInfo renders the session name and iteration number.
 func (d *Dashboard) renderSessionInfo() string {
+	s := theme.Current().S()
 	var parts []string
 
 	// Session name
-	sessionLabel := styleStatLabel.Render("Session:")
-	sessionValue := styleStatValue.Render(d.sessionName)
+	sessionLabel := s.Base.Render("Session:")
+	sessionValue := s.Bright.Render(d.sessionName)
 	parts = append(parts, sessionLabel+" "+sessionValue)
 
 	// Iteration number
-	iterationLabel := styleStatLabel.Render("Iteration:")
-	iterationValue := styleStatValue.Render(fmt.Sprintf("#%d", d.iteration))
+	iterationLabel := s.Base.Render("Iteration:")
+	iterationValue := s.Bright.Render(fmt.Sprintf("#%d", d.iteration))
 	parts = append(parts, iterationLabel+" "+iterationValue)
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
@@ -276,10 +278,11 @@ func (d *Dashboard) renderProgressIndicator() string {
 	// Format the progress text
 	progressText := fmt.Sprintf("%d/%d tasks", stats.Completed, stats.Total)
 
+	s := theme.Current().S()
 	// Combine bar and text
-	bar := styleProgressFill.Render(filled) + styleDim.Render(empty)
-	label := styleStatLabel.Render("Progress:")
-	return fmt.Sprintf("%s [%s] %s", label, bar, styleStatValue.Render(progressText))
+	bar := s.Success.Render(filled) + s.Muted.Render(empty)
+	label := s.Base.Render("Progress:")
+	return fmt.Sprintf("%s [%s] %s", label, bar, s.Bright.Render(progressText))
 }
 
 // progressStats holds task statistics.

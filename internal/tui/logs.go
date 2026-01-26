@@ -6,9 +6,10 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // LogViewer displays scrollable event history with color-coding.
@@ -57,12 +58,13 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	l.viewport.SetHeight(contentHeight)
 
 	// Build modal content: title + separator + viewport
+	s := theme.Current().S()
 	title := renderModalTitle("Event Log", contentWidth)
-	separator := styleModalSeparator.Render(strings.Repeat("─", contentWidth))
+	separator := s.ModalSeparator.Render(strings.Repeat("─", contentWidth))
 	vpContent := l.viewport.View()
 
 	// Hint at bottom
-	hint := styleModalHint.Render("esc close • ↑/↓ scroll • ctrl+l close")
+	hint := s.ModalHint.Render("esc close • ↑/↓ scroll • ctrl+l close")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
@@ -72,7 +74,7 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	)
 
 	// Style the modal
-	modalStyle := styleModalContainer.
+	modalStyle := s.ModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 
@@ -109,16 +111,19 @@ func (l *LogViewer) Update(msg tea.Msg) tea.Cmd {
 // Render returns the log viewer view as a string.
 func (l *LogViewer) Render() string {
 	if len(l.events) == 0 {
-		l.viewport.SetContent(styleEmptyState.Render("No events yet"))
+		s := theme.Current().S()
+		l.viewport.SetContent(s.EmptyState.Render("No events yet"))
 	}
 	return l.viewport.View()
 }
 
 // renderEvent renders a single event with appropriate styling.
 func (l *LogViewer) renderEvent(event session.Event) string {
+	s := theme.Current().S()
+
 	// Format timestamp
 	timestamp := event.Timestamp.Format("15:04:05")
-	timestampStr := styleLogTimestamp.Render(timestamp)
+	timestampStr := s.LogTimestamp.Render(timestamp)
 
 	// Choose style based on event type
 	var typeStyle lipgloss.Style
@@ -126,26 +131,26 @@ func (l *LogViewer) renderEvent(event session.Event) string {
 
 	switch event.Type {
 	case "task":
-		typeStyle = styleLogTask
+		typeStyle = s.LogTask
 		typeLabel = "TASK"
 	case "note":
-		typeStyle = styleLogNote
+		typeStyle = s.LogNote
 		typeLabel = "NOTE"
 	case "iteration":
-		typeStyle = styleLogIteration
+		typeStyle = s.LogIteration
 		typeLabel = "ITER"
 	case "control":
-		typeStyle = styleLogControl
+		typeStyle = s.LogControl
 		typeLabel = "CTRL"
 	default:
-		typeStyle = styleLogContent
+		typeStyle = s.LogContent
 		typeLabel = "EVENT"
 	}
 
 	typeStr := typeStyle.Render(fmt.Sprintf("[%s]", typeLabel))
 
 	// Format action
-	actionStr := styleDim.Render(event.Action)
+	actionStr := s.Muted.Render(event.Action)
 
 	// Format content (truncate if too long)
 	content := event.Data
@@ -153,7 +158,7 @@ func (l *LogViewer) renderEvent(event session.Event) string {
 	if len(content) > maxContentWidth {
 		content = content[:maxContentWidth-3] + "..."
 	}
-	contentStr := styleLogContent.Render(content)
+	contentStr := s.LogContent.Render(content)
 
 	return fmt.Sprintf("%s %s %-10s %s", timestampStr, typeStr, actionStr, contentStr)
 }
@@ -194,7 +199,8 @@ func (l *LogViewer) AddEvent(event session.Event) tea.Cmd {
 // updateContent rebuilds the viewport content from current events.
 func (l *LogViewer) updateContent() {
 	if len(l.events) == 0 {
-		l.viewport.SetContent(styleEmptyState.Render("No events yet"))
+		s := theme.Current().S()
+		l.viewport.SetContent(s.EmptyState.Render("No events yet"))
 		return
 	}
 

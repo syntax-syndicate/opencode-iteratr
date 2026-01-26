@@ -16,9 +16,10 @@ type Spinner struct {
 
 // NewSpinner creates a new spinner with the given style
 func NewSpinner(style spinner.Spinner) Spinner {
+	t := theme.Current()
 	s := spinner.New(
 		spinner.WithSpinner(style),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(colorPrimary)),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary))),
 	)
 	return Spinner{model: s}
 }
@@ -142,12 +143,13 @@ func GetPulseStyle(base lipgloss.Style, intensity float64) lipgloss.Style {
 		return base
 	}
 
+	t := theme.Current()
 	// Blend between base and highlight color based on intensity
 	// For now, just adjust the foreground color brightness
 	if intensity > 0.5 {
-		return base.Foreground(colorPrimary)
+		return base.Foreground(lipgloss.Color(t.Primary))
 	}
-	return base.Foreground(colorSecondary)
+	return base.Foreground(lipgloss.Color(t.Secondary))
 }
 
 // GradientSpinnerMsg is sent on each gradient spinner tick
@@ -190,7 +192,8 @@ func (g *GradientSpinner) View() string {
 
 	// Prepend label if set
 	if g.label != "" {
-		labelStyle := lipgloss.NewStyle().Foreground(colorText)
+		t := theme.Current()
+		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgBase))
 		return labelStyle.Render(g.label+" ") + result
 	}
 

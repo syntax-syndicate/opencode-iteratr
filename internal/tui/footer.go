@@ -5,8 +5,9 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // FooterAction represents a clickable action in the footer.
@@ -57,8 +58,9 @@ func (f *Footer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Build footer content based on available width
 	content := f.buildFooterContent(area.Dx())
 
+	s := theme.Current().S()
 	// Render to screen using DrawStyled helper
-	DrawStyled(scr, area, styleFooter, content)
+	DrawStyled(scr, area, s.StatusBar, content)
 
 	return nil
 }
@@ -82,14 +84,15 @@ func (f *Footer) buildFooterContent(availableWidth int) string {
 		{"3", "Notes", ViewNotes, FooterActionNotes},
 	}
 
+	s := theme.Current().S()
 	var leftButtons []buttonPart
 	for _, v := range views {
-		key := styleFooterKey.Render(fmt.Sprintf("[%s]", v.key))
+		key := s.FooterKey.Render(fmt.Sprintf("[%s]", v.key))
 		var label string
 		if v.view == f.activeView {
-			label = styleFooterActive.Render(v.name)
+			label = s.FooterActive.Render(v.name)
 		} else {
-			label = styleFooterLabel.Render(v.name)
+			label = s.FooterLabel.Render(v.name)
 		}
 		leftButtons = append(leftButtons, buttonPart{
 			rendered: key + " " + label,
@@ -100,14 +103,14 @@ func (f *Footer) buildFooterContent(availableWidth int) string {
 	// In compact mode, add sidebar toggle hint
 	if f.layoutMode == LayoutCompact {
 		leftButtons = append(leftButtons, buttonPart{
-			rendered: styleFooterKey.Render("[s]") + styleFooterLabel.Render("Sidebar"),
+			rendered: s.FooterKey.Render("[s]") + s.FooterLabel.Render("Sidebar"),
 			action:   FooterActionSidebar,
 		})
 	}
 
 	rightButtons := []buttonPart{
-		{rendered: styleFooterKey.Render("[?]") + styleFooterLabel.Render("Help"), action: FooterActionHelp},
-		{rendered: styleFooterKey.Render("[q]") + styleFooterLabel.Render("Quit"), action: FooterActionQuit},
+		{rendered: s.FooterKey.Render("[?]") + s.FooterLabel.Render("Help"), action: FooterActionHelp},
+		{rendered: s.FooterKey.Render("[q]") + s.FooterLabel.Render("Quit"), action: FooterActionQuit},
 	}
 
 	// Build left and right strings
@@ -177,19 +180,20 @@ func (f *Footer) buildFooterContent(availableWidth int) string {
 
 // buildCondensedContent creates a shorter version for narrow terminals.
 func (f *Footer) buildCondensedContent(availableWidth int) string {
+	s := theme.Current().S()
 	// Minimal version: [1-4]Views [?]Help [q]Quit
-	views := styleFooterKey.Render("[1-4]") + styleFooterLabel.Render("Views")
-	help := styleFooterKey.Render("[?]") + styleFooterLabel.Render("Help")
-	quit := styleFooterKey.Render("[q]") + styleFooterLabel.Render("Quit")
+	views := s.FooterKey.Render("[1-4]") + s.FooterLabel.Render("Views")
+	help := s.FooterKey.Render("[?]") + s.FooterLabel.Render("Help")
+	quit := s.FooterKey.Render("[q]") + s.FooterLabel.Render("Quit")
 
 	parts := []string{views, help, quit}
 	content := strings.Join(parts, " ")
 
 	// If still too wide, use ultra-minimal version
 	if lipgloss.Width(content) > availableWidth {
-		content = styleFooterKey.Render("[1-4]") + " " +
-			styleFooterKey.Render("[?]") + " " +
-			styleFooterKey.Render("[q]")
+		content = s.FooterKey.Render("[1-4]") + " " +
+			s.FooterKey.Render("[?]") + " " +
+			s.FooterKey.Render("[q]")
 	}
 
 	return content

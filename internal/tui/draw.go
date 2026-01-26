@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // DrawText renders plain text at a position
@@ -34,11 +35,12 @@ func DrawPanel(scr uv.Screen, area uv.Rectangle, title string, focused bool) uv.
 	// Draw title header if provided
 	if title != "" {
 		headerHeight = 1
-		titleStyle := stylePanelTitle
-		ruleStyle := stylePanelRule
+		s := theme.Current().S()
+		titleStyle := s.PanelTitle
+		ruleStyle := s.PanelRule
 		if focused {
-			titleStyle = stylePanelTitleFocused
-			ruleStyle = stylePanelRuleFocused
+			titleStyle = s.PanelTitleFocused
+			ruleStyle = s.PanelRuleFocused
 		}
 
 		// Build "Title ────────" header
@@ -72,7 +74,8 @@ func DrawPanel(scr uv.Screen, area uv.Rectangle, title string, focused bool) uv.
 // DrawScrollIndicator renders a scroll position indicator
 func DrawScrollIndicator(scr uv.Screen, area uv.Rectangle, percent float64) {
 	indicator := fmt.Sprintf(" %d%% ", int(percent*100))
-	indicatorStyle := styleScrollIndicator
+	s := theme.Current().S()
+	indicatorStyle := s.ScrollIndicator
 
 	// Position at bottom-right of area
 	indicatorArea := uv.Rectangle{
