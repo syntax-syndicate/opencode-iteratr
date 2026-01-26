@@ -227,8 +227,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Iteration: iteration,
 			})
 			if err != nil {
-				// TODO: Add error handling/visual feedback
-				// For now, errors are silently ignored
+				// TODO: Add visual feedback for user
+				logger.Warn("failed to add note: %v", err)
 			}
 		}()
 		// Close the modal after submitting
@@ -250,8 +250,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Iteration: iteration,
 			})
 			if err != nil {
-				// TODO: Add error handling/visual feedback
-				// For now, errors are silently ignored
+				// TODO: Add visual feedback for user
+				logger.Warn("failed to add task: %v", err)
 			}
 		}()
 		// Close the modal after submitting
