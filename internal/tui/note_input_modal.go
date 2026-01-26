@@ -6,8 +6,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // focusZone represents which UI element has keyboard focus within the modal.
@@ -52,8 +54,9 @@ func NewNoteInputModal() *NoteInputModal {
 
 	// Style textarea to match modal theme using default dark styles
 	// and customizing the cursor color to match our secondary brand color
+	t := theme.Current()
 	styles := textarea.DefaultDarkStyles()
-	styles.Cursor.Color = lipgloss.Color(colorSecondary)
+	styles.Cursor.Color = lipgloss.Color(t.Secondary)
 	styles.Cursor.Shape = tea.CursorBlock
 	styles.Cursor.Blink = true
 	ta.SetStyles(styles)
@@ -307,14 +310,15 @@ func (m *NoteInputModal) View() string {
 	sections = append(sections, "")
 
 	// Hint bar at bottom with keyboard shortcuts
-	hintBar := styleHintKey.Render("tab") + " " +
-		styleHintDesc.Render("cycle focus") + " " +
-		styleHintSeparator.Render("•") + " " +
-		styleHintKey.Render("ctrl+enter") + " " +
-		styleHintDesc.Render("submit") + " " +
-		styleHintSeparator.Render("•") + " " +
-		styleHintKey.Render("esc") + " " +
-		styleHintDesc.Render("close")
+	s := theme.Current().S()
+	hintBar := s.HintKey.Render("tab") + " " +
+		s.HintDesc.Render("cycle focus") + " " +
+		s.HintSeparator.Render("•") + " " +
+		s.HintKey.Render("ctrl+enter") + " " +
+		s.HintDesc.Render("submit") + " " +
+		s.HintSeparator.Render("•") + " " +
+		s.HintKey.Render("esc") + " " +
+		s.HintDesc.Render("close")
 	hintText := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Center).Render(hintBar)
 	sections = append(sections, hintText)
 
@@ -326,6 +330,8 @@ func (m *NoteInputModal) View() string {
 // When unfocused, the active badge uses the standard type-specific color.
 func (m *NoteInputModal) renderTypeBadges() string {
 	var badges []string
+	t := theme.Current()
+	s := t.S()
 
 	for i, noteType := range m.types {
 		isActive := i == m.typeIndex
@@ -339,68 +345,68 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			if isActive {
 				if m.focus == focusTypeSelector {
 					// Active and focused: use primary color
-					badge = styleBadge.
-						Foreground(colorTextBright).
-						Background(colorPrimary)
+					badge = s.Badge.
+						Foreground(lipgloss.Color(t.FgBright)).
+						Background(lipgloss.Color(t.Primary))
 				} else {
 					// Active but not focused: use type-specific color
-					badge = styleBadgeSuccess
+					badge = s.BadgeSuccess
 				}
 			} else {
 				// Inactive: muted
-				badge = styleBadgeMuted
+				badge = s.BadgeMuted
 			}
 		case "stuck":
 			text = "! stuck"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.
-						Foreground(colorTextBright).
-						Background(colorPrimary)
+					badge = s.Badge.
+						Foreground(lipgloss.Color(t.FgBright)).
+						Background(lipgloss.Color(t.Primary))
 				} else {
-					badge = styleBadgeError
+					badge = s.BadgeError
 				}
 			} else {
-				badge = styleBadgeMuted
+				badge = s.BadgeMuted
 			}
 		case "tip":
 			text = "› tip"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.
-						Foreground(colorTextBright).
-						Background(colorPrimary)
+					badge = s.Badge.
+						Foreground(lipgloss.Color(t.FgBright)).
+						Background(lipgloss.Color(t.Primary))
 				} else {
-					badge = styleBadgeWarning
+					badge = s.BadgeWarning
 				}
 			} else {
-				badge = styleBadgeMuted
+				badge = s.BadgeMuted
 			}
 		case "decision":
 			text = "◇ decision"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.
-						Foreground(colorTextBright).
-						Background(colorPrimary)
+					badge = s.Badge.
+						Foreground(lipgloss.Color(t.FgBright)).
+						Background(lipgloss.Color(t.Primary))
 				} else {
-					badge = styleBadgeInfo
+					badge = s.BadgeInfo
 				}
 			} else {
-				badge = styleBadgeMuted
+				badge = s.BadgeMuted
 			}
 		default:
 			text = "≡ " + noteType
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.
-						Foreground(colorTextBright).
-						Background(colorPrimary)
+					badge = s.Badge.
+						Foreground(lipgloss.Color(t.FgBright)).
+						Background(lipgloss.Color(t.Primary))
 				} else {
-					badge = styleBadge
+					badge = s.Badge
 				}
 			} else {
-				badge = styleBadgeMuted
+				badge = s.BadgeMuted
 			}
 		}
 
@@ -419,22 +425,24 @@ func (m *NoteInputModal) renderTypeBadges() string {
 func (m *NoteInputModal) renderButton() string {
 	content := strings.TrimSpace(m.textarea.Value())
 	isEmpty := content == ""
+	t := theme.Current()
+	s := t.S()
 
 	var buttonStyle lipgloss.Style
 
 	// Disabled state: content is empty
 	if isEmpty {
-		buttonStyle = styleBadgeMuted.
-			Foreground(colorSubtext0). // Dimmed text
-			Background(colorSurface0)  // Very subtle background
+		buttonStyle = s.BadgeMuted.
+			Foreground(lipgloss.Color(t.FgSubtle)).  // Dimmed text
+			Background(lipgloss.Color(t.BgSurface0)) // Very subtle background
 	} else if m.focus == focusSubmitButton {
 		// Focused state: highlighted with primary color
-		buttonStyle = styleBadge.
-			Foreground(colorTextBright). // Bright text
-			Background(colorPrimary)     // Primary brand color
+		buttonStyle = s.Badge.
+			Foreground(lipgloss.Color(t.FgBright)). // Bright text
+			Background(lipgloss.Color(t.Primary))   // Primary brand color
 	} else {
 		// Unfocused state: standard muted style
-		buttonStyle = styleBadgeMuted
+		buttonStyle = s.BadgeMuted
 	}
 
 	return buttonStyle.Render("  Save Note  ")
@@ -493,7 +501,8 @@ func (m *NoteInputModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	content := m.View()
 
 	// Style the modal with border and background
-	modalStyle := styleModalContainer.
+	s := theme.Current().S()
+	modalStyle := s.ModalContainer.
 		Width(modalWidth).
 		Height(modalHeight)
 
