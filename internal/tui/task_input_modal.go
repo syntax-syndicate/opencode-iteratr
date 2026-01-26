@@ -37,7 +37,6 @@ type TaskInputModal struct {
 	focus         focusZone      // Which UI element currently has keyboard focus
 	width         int
 	height        int
-	buttonArea    uv.Rectangle // Hit area for mouse click on submit button
 }
 
 // NewTaskInputModal creates a new TaskInputModal component.
