@@ -118,7 +118,7 @@ func (t *TemplateEditorStep) Update(msg tea.Msg) tea.Cmd {
 		t.viewport.GotoTop()
 		// Clean up temp file
 		if t.tmpFile != "" {
-			os.Remove(t.tmpFile)
+			_ = os.Remove(t.tmpFile)
 			t.tmpFile = ""
 		}
 		return nil
@@ -139,11 +139,11 @@ func (t *TemplateEditorStep) openEditor() tea.Cmd {
 
 	// Write current content to temp file
 	if _, err := tmpfile.WriteString(t.content); err != nil {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		_ = tmpfile.Close()
+		_ = os.Remove(tmpfile.Name())
 		return nil
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Store temp file path for cleanup
 	t.tmpFile = tmpfile.Name()
@@ -151,7 +151,7 @@ func (t *TemplateEditorStep) openEditor() tea.Cmd {
 	// Create editor command
 	cmd, err := editor.Command("iteratr", tmpfile.Name())
 	if err != nil {
-		os.Remove(tmpfile.Name())
+		_ = os.Remove(tmpfile.Name())
 		return nil
 	}
 
