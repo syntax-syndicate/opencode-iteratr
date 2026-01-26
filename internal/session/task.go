@@ -13,7 +13,7 @@ import (
 // TaskAddParams represents the parameters for adding a task.
 type TaskAddParams struct {
 	Content   string `json:"content"`
-	Status    string `json:"status,omitempty"`   // Optional: remaining, in_progress, completed, blocked
+	Status    string `json:"status,omitempty"`   // Optional: remaining, in_progress, completed, blocked, cancelled
 	Priority  int    `json:"priority,omitempty"` // Optional: 0=critical, 1=high, 2=medium, 3=low, 4=backlog
 	Iteration int    `json:"iteration"`
 }
@@ -21,7 +21,7 @@ type TaskAddParams struct {
 // TaskStatusParams represents the parameters for updating task status.
 type TaskStatusParams struct {
 	ID        string `json:"id"`     // Task ID or prefix (3+ chars)
-	Status    string `json:"status"` // remaining, in_progress, completed, blocked
+	Status    string `json:"status"` // remaining, in_progress, completed, blocked, cancelled
 	Iteration int    `json:"iteration"`
 }
 
@@ -31,6 +31,7 @@ type TaskListResult struct {
 	InProgress []*Task `json:"in_progress"`
 	Completed  []*Task `json:"completed"`
 	Blocked    []*Task `json:"blocked"`
+	Cancelled  []*Task `json:"cancelled"`
 }
 
 // TaskAdd creates a new task in the session.
@@ -49,7 +50,7 @@ func (s *Store) TaskAdd(ctx context.Context, session string, params TaskAddParam
 
 	// Validate status
 	if !isValidTaskStatus(status) {
-		return nil, fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, or blocked)", status)
+		return nil, fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, blocked, or cancelled)", status)
 	}
 
 	// Load current state to get next task counter
@@ -129,7 +130,7 @@ func (s *Store) TaskBatchAdd(ctx context.Context, session string, tasks []TaskAd
 			status = "remaining"
 		}
 		if !isValidTaskStatus(status) {
-			return nil, fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, or blocked)", status)
+			return nil, fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, blocked, or cancelled)", status)
 		}
 
 		counter++
@@ -186,7 +187,7 @@ func (s *Store) TaskStatus(ctx context.Context, session string, params TaskStatu
 
 	// Validate status
 	if !isValidTaskStatus(params.Status) {
-		return fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, or blocked)", params.Status)
+		return fmt.Errorf("invalid status: %s (must be remaining, in_progress, completed, blocked, or cancelled)", params.Status)
 	}
 
 	// Load current state to resolve task ID prefix
@@ -349,6 +350,7 @@ func (s *Store) TaskList(ctx context.Context, session string) (*TaskListResult, 
 		InProgress: make([]*Task, 0),
 		Completed:  make([]*Task, 0),
 		Blocked:    make([]*Task, 0),
+		Cancelled:  make([]*Task, 0),
 	}
 
 	for _, task := range state.Tasks {
@@ -361,6 +363,8 @@ func (s *Store) TaskList(ctx context.Context, session string) (*TaskListResult, 
 			result.Completed = append(result.Completed, task)
 		case "blocked":
 			result.Blocked = append(result.Blocked, task)
+		case "cancelled":
+			result.Cancelled = append(result.Cancelled, task)
 		}
 	}
 
@@ -370,7 +374,7 @@ func (s *Store) TaskList(ctx context.Context, session string) (*TaskListResult, 
 // isValidTaskStatus checks if a status string is valid.
 func isValidTaskStatus(status string) bool {
 	switch status {
-	case "remaining", "in_progress", "completed", "blocked":
+	case "remaining", "in_progress", "completed", "blocked", "cancelled":
 		return true
 	default:
 		return false

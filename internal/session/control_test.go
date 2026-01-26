@@ -146,10 +146,10 @@ func TestSessionCompleteWithTasks(t *testing.T) {
 	store := NewStore(js, stream)
 	sessionName := "test-session-tasks"
 
-	// Add some tasks
+	// Add tasks in terminal states (completed, blocked, cancelled)
 	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
 		Content:   "Task 1",
-		Status:    "remaining",
+		Status:    "completed",
 		Iteration: 1,
 	})
 	if err != nil {
@@ -158,14 +158,23 @@ func TestSessionCompleteWithTasks(t *testing.T) {
 
 	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
 		Content:   "Task 2",
-		Status:    "completed",
+		Status:    "blocked",
 		Iteration: 1,
 	})
 	if err != nil {
 		t.Fatalf("Failed to add task 2: %v", err)
 	}
 
-	// Mark session as complete
+	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
+		Content:   "Task 3",
+		Status:    "cancelled",
+		Iteration: 1,
+	})
+	if err != nil {
+		t.Fatalf("Failed to add task 3: %v", err)
+	}
+
+	// Mark session as complete (should succeed with all terminal states)
 	err = store.SessionComplete(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("Failed to mark session complete: %v", err)
@@ -183,7 +192,140 @@ func TestSessionCompleteWithTasks(t *testing.T) {
 	}
 
 	// Verify tasks are still present
-	if len(state.Tasks) != 2 {
-		t.Errorf("Expected 2 tasks, got %d", len(state.Tasks))
+	if len(state.Tasks) != 3 {
+		t.Errorf("Expected 3 tasks, got %d", len(state.Tasks))
+	}
+}
+
+func TestSessionCompleteWithIncompleteTasks(t *testing.T) {
+	// Start embedded NATS server
+	srv, _, err := nats.StartEmbeddedNATS(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to start NATS: %v", err)
+	}
+	defer srv.Shutdown()
+
+	// Connect to NATS in-process
+	nc, err := natsclient.Connect("", natsclient.InProcessServer(srv))
+	if err != nil {
+		t.Fatalf("Failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+
+	// Create JetStream context
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("Failed to create JetStream: %v", err)
+	}
+
+	// Setup stream
+	ctx := context.Background()
+	stream, err := nats.SetupStream(ctx, js)
+	if err != nil {
+		t.Fatalf("Failed to setup stream: %v", err)
+	}
+
+	// Create store
+	store := NewStore(js, stream)
+	sessionName := "test-session-incomplete"
+
+	// Add a remaining task (non-terminal state)
+	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
+		Content:   "Task 1",
+		Status:    "remaining",
+		Iteration: 1,
+	})
+	if err != nil {
+		t.Fatalf("Failed to add task 1: %v", err)
+	}
+
+	// Add a completed task
+	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
+		Content:   "Task 2",
+		Status:    "completed",
+		Iteration: 1,
+	})
+	if err != nil {
+		t.Fatalf("Failed to add task 2: %v", err)
+	}
+
+	// Attempt to mark session as complete (should fail)
+	err = store.SessionComplete(ctx, sessionName)
+	if err == nil {
+		t.Fatalf("Expected error when completing session with incomplete tasks, got nil")
+	}
+
+	// Verify error message mentions incomplete tasks
+	if err.Error() != "cannot complete session: 1 task(s) not in terminal state (completed/blocked/cancelled). Complete all tasks before marking session complete" {
+		t.Errorf("Unexpected error message: %v", err)
+	}
+
+	// Load state to verify session is NOT complete
+	state, err := store.LoadState(ctx, sessionName)
+	if err != nil {
+		t.Fatalf("Failed to load state: %v", err)
+	}
+
+	if state.Complete {
+		t.Errorf("Expected session to NOT be complete, but Complete=true")
+	}
+}
+
+func TestSessionCompleteWithInProgressTask(t *testing.T) {
+	// Start embedded NATS server
+	srv, _, err := nats.StartEmbeddedNATS(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to start NATS: %v", err)
+	}
+	defer srv.Shutdown()
+
+	// Connect to NATS in-process
+	nc, err := natsclient.Connect("", natsclient.InProcessServer(srv))
+	if err != nil {
+		t.Fatalf("Failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+
+	// Create JetStream context
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("Failed to create JetStream: %v", err)
+	}
+
+	// Setup stream
+	ctx := context.Background()
+	stream, err := nats.SetupStream(ctx, js)
+	if err != nil {
+		t.Fatalf("Failed to setup stream: %v", err)
+	}
+
+	// Create store
+	store := NewStore(js, stream)
+	sessionName := "test-session-in-progress"
+
+	// Add an in_progress task (non-terminal state)
+	_, err = store.TaskAdd(ctx, sessionName, TaskAddParams{
+		Content:   "Task 1",
+		Status:    "in_progress",
+		Iteration: 1,
+	})
+	if err != nil {
+		t.Fatalf("Failed to add task: %v", err)
+	}
+
+	// Attempt to mark session as complete (should fail)
+	err = store.SessionComplete(ctx, sessionName)
+	if err == nil {
+		t.Fatalf("Expected error when completing session with in_progress task, got nil")
+	}
+
+	// Load state to verify session is NOT complete
+	state, err := store.LoadState(ctx, sessionName)
+	if err != nil {
+		t.Fatalf("Failed to load state: %v", err)
+	}
+
+	if state.Complete {
+		t.Errorf("Expected session to NOT be complete, but Complete=true")
 	}
 }

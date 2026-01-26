@@ -92,7 +92,7 @@ type State struct {
 type Task struct {
 	ID        string    `json:"id"`
 	Content   string    `json:"content"`
-	Status    string    `json:"status"`     // remaining, in_progress, completed, blocked
+	Status    string    `json:"status"`     // remaining, in_progress, completed, blocked, cancelled
 	Priority  int       `json:"priority"`   // 0-4, default 2 (0=critical, 1=high, 2=medium, 3=low, 4=backlog)
 	DependsOn []string  `json:"depends_on"` // Task IDs this task is blocked by
 	CreatedAt time.Time `json:"created_at"`
