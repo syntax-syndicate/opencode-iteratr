@@ -9,7 +9,6 @@ require (
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251114164805-d267651963ad
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/aymanbagabas/go-udiff v0.3.1
-	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20251116181749-377898bcce38
 	github.com/charmbracelet/x/editor v0.2.0
 	github.com/nats-io/nats-server/v2 v2.10.0
