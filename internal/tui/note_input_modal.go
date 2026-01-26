@@ -339,7 +339,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			if isActive {
 				if m.focus == focusTypeSelector {
 					// Active and focused: use primary color
-					badge = styleBadge.Copy().
+					badge = styleBadge.
 						Foreground(colorTextBright).
 						Background(colorPrimary)
 				} else {
@@ -354,7 +354,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			text = "🚫 stuck"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.Copy().
+					badge = styleBadge.
 						Foreground(colorTextBright).
 						Background(colorPrimary)
 				} else {
@@ -367,7 +367,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			text = "💬 tip"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.Copy().
+					badge = styleBadge.
 						Foreground(colorTextBright).
 						Background(colorPrimary)
 				} else {
@@ -380,7 +380,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			text = "⚡ decision"
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.Copy().
+					badge = styleBadge.
 						Foreground(colorTextBright).
 						Background(colorPrimary)
 				} else {
@@ -393,7 +393,7 @@ func (m *NoteInputModal) renderTypeBadges() string {
 			text = "📝 " + noteType
 			if isActive {
 				if m.focus == focusTypeSelector {
-					badge = styleBadge.Copy().
+					badge = styleBadge.
 						Foreground(colorTextBright).
 						Background(colorPrimary)
 				} else {
@@ -424,17 +424,17 @@ func (m *NoteInputModal) renderButton() string {
 
 	// Disabled state: content is empty
 	if isEmpty {
-		buttonStyle = styleBadgeMuted.Copy().
+		buttonStyle = styleBadgeMuted.
 			Foreground(colorSubtext0). // Dimmed text
 			Background(colorSurface0)  // Very subtle background
 	} else if m.focus == focusSubmitButton {
 		// Focused state: highlighted with primary color
-		buttonStyle = styleBadge.Copy().
+		buttonStyle = styleBadge.
 			Foreground(colorTextBright). // Bright text
 			Background(colorPrimary)     // Primary brand color
 	} else {
 		// Unfocused state: standard muted style
-		buttonStyle = styleBadgeMuted.Copy()
+		buttonStyle = styleBadgeMuted
 	}
 
 	return buttonStyle.Render("  Save Note  ")
