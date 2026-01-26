@@ -140,18 +140,27 @@ func (r *Runner) Start(ctx context.Context) error {
 }
 
 // RunIteration executes a single iteration by sending a prompt to the persistent ACP session.
+// Optional hookOutput is sent as a separate content block before the main prompt.
 // Start() must be called first to initialize the session.
-func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
+func (r *Runner) RunIteration(ctx context.Context, prompt string, hookOutput string) error {
 	if r.conn == nil {
 		return fmt.Errorf("ACP session not started - call Start() first")
 	}
 
 	logger.Debug("Running iteration on existing ACP session")
 
+	// Build content blocks: hook output (if any) + main prompt
+	var texts []string
+	if hookOutput != "" {
+		texts = append(texts, hookOutput)
+		logger.Debug("Including hook output: %d bytes", len(hookOutput))
+	}
+	texts = append(texts, prompt)
+
 	// Send prompt and stream notifications to callbacks
 	// Wire onText, onToolCall, and onThinking callbacks through to prompt()
 	startTime := time.Now()
-	stopReason, err := r.conn.prompt(ctx, r.sessionID, prompt, r.onText, r.onToolCall, r.onThinking)
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, r.onText, r.onToolCall, r.onThinking)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -186,19 +195,24 @@ func (r *Runner) RunIteration(ctx context.Context, prompt string) error {
 	return nil
 }
 
-// SendMessage sends a user message to the persistent ACP session as a follow-up prompt.
-// This allows user input to be delivered to the agent mid-session.
+// SendMessages sends multiple user messages to the persistent ACP session as a single prompt.
+// Each message becomes a separate content block in the request.
+// This allows batching queued user input while keeping them logically distinct.
 // Start() must be called first to initialize the session.
-func (r *Runner) SendMessage(ctx context.Context, text string) error {
+func (r *Runner) SendMessages(ctx context.Context, texts []string) error {
 	if r.conn == nil {
 		return fmt.Errorf("ACP session not started - call Start() first")
 	}
 
-	logger.Debug("Sending user message to ACP session")
+	if len(texts) == 0 {
+		return nil
+	}
 
-	// Send prompt with user message, streaming responses to callbacks
+	logger.Debug("Sending %d user message(s) to ACP session", len(texts))
+
+	// Send prompt with all messages as separate content blocks
 	startTime := time.Now()
-	stopReason, err := r.conn.prompt(ctx, r.sessionID, text, r.onText, r.onToolCall, r.onThinking)
+	stopReason, err := r.conn.prompt(ctx, r.sessionID, texts, r.onText, r.onToolCall, r.onThinking)
 	duration := time.Since(startTime)
 
 	if err != nil {

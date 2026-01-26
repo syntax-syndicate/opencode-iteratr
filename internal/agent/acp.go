@@ -249,16 +249,23 @@ func (c *acpConn) setModel(ctx context.Context, sessionID, modelID string) error
 }
 
 // prompt sends a prompt to the session and streams notifications via callbacks.
+// Accepts multiple text blocks which are sent as separate content blocks in the same request.
 // Returns the stop reason when the prompt completes or an error occurs.
-func (c *acpConn) prompt(ctx context.Context, sessionID, text string, onText func(string), onToolCall func(ToolCallEvent), onThinking func(string)) (string, error) {
-	params := promptParams{
-		SessionID: sessionID,
-		Prompt: []contentBlock{
-			{
+func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, onText func(string), onToolCall func(ToolCallEvent), onThinking func(string)) (string, error) {
+	// Build content blocks from texts
+	blocks := make([]contentBlock, 0, len(texts))
+	for _, text := range texts {
+		if text != "" {
+			blocks = append(blocks, contentBlock{
 				Type: "text",
 				Text: text,
-			},
-		},
+			})
+		}
+	}
+
+	params := promptParams{
+		SessionID: sessionID,
+		Prompt:    blocks,
 	}
 
 	reqID, err := c.sendRequest("session/prompt", params)

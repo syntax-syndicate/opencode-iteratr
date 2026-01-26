@@ -360,15 +360,15 @@ func (o *Orchestrator) Run() error {
 			o.tuiProgram.Send(tui.IterationStartMsg{Number: currentIteration})
 		}
 
-		// Execute pre-iteration hook if configured
+		// Execute pre-iteration hooks if configured
 		var hookOutput string
-		if o.hooksConfig != nil && o.hooksConfig.Hooks.PreIteration != nil {
-			logger.Debug("Executing pre-iteration hook")
+		if o.hooksConfig != nil && len(o.hooksConfig.Hooks.PreIteration) > 0 {
+			logger.Debug("Executing %d pre-iteration hook(s)", len(o.hooksConfig.Hooks.PreIteration))
 			hookVars := hooks.Variables{
 				Session:   o.cfg.SessionName,
 				Iteration: strconv.Itoa(currentIteration),
 			}
-			output, err := hooks.Execute(o.ctx, o.hooksConfig.Hooks.PreIteration, o.cfg.WorkDir, hookVars)
+			output, err := hooks.ExecuteAll(o.ctx, o.hooksConfig.Hooks.PreIteration, o.cfg.WorkDir, hookVars)
 			if err != nil {
 				// Context cancelled - propagate
 				if o.ctx.Err() != nil {
@@ -394,7 +394,6 @@ func (o *Orchestrator) Run() error {
 			TemplatePath:      o.cfg.TemplatePath,
 			ExtraInstructions: o.cfg.ExtraInstructions,
 			NATSPort:          o.natsPort,
-			HookOutput:        hookOutput,
 		})
 		if err != nil {
 			logger.Error("Failed to build prompt: %v", err)
@@ -403,9 +402,10 @@ func (o *Orchestrator) Run() error {
 		logger.Debug("Prompt built, length: %d characters", len(prompt))
 
 		// Run agent iteration with panic recovery (reusing persistent ACP session)
+		// Hook output is sent as a separate content block before the main prompt
 		logger.Info("Running agent for iteration #%d", currentIteration)
 		err = ierr.Recover(func() error {
-			return o.runner.RunIteration(o.ctx, prompt)
+			return o.runner.RunIteration(o.ctx, prompt, hookOutput)
 		})
 		if err != nil {
 			// Check if context was cancelled (TUI quit, signal, etc.) - exit gracefully
@@ -475,37 +475,51 @@ func (o *Orchestrator) Run() error {
 	return nil
 }
 
-// processUserMessages drains sendChan and processes all queued messages sequentially.
+// processUserMessages drains sendChan and sends all queued messages as a single ACP request.
+// Each message becomes a separate content block, but appears as separate messages in the TUI.
 // Called after each agent response (iteration or user message).
 // Returns when channel is empty and all messages processed.
 func (o *Orchestrator) processUserMessages() error {
+	// Collect all queued messages
+	var messages []string
 	for {
 		select {
 		case <-o.ctx.Done():
 			return o.ctx.Err()
 		case userMsg := <-o.sendChan:
-			logger.Info("Processing queued user message: %s", userMsg)
-
-			// Notify TUI that we're processing a queued message
-			if o.tuiProgram != nil {
-				o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: userMsg})
-			}
-
-			if err := o.runner.SendMessage(o.ctx, userMsg); err != nil {
-				logger.Error("Failed to send user message: %v", err)
-				if o.tuiProgram != nil {
-					o.tuiProgram.Send(tui.AgentOutputMsg{
-						Content: fmt.Sprintf("\n[Error sending message: %v]\n", err),
-					})
-				}
-				// Continue processing remaining messages
-			}
-			// Loop continues - check for more messages
+			messages = append(messages, userMsg)
 		default:
-			// Channel empty, all messages processed
-			return nil
+			// Channel empty, done collecting
+			goto send
 		}
 	}
+
+send:
+	if len(messages) == 0 {
+		return nil
+	}
+
+	logger.Info("Processing %d queued user message(s)", len(messages))
+
+	// Notify TUI for each message (so they appear as separate messages in UI)
+	if o.tuiProgram != nil {
+		for _, msg := range messages {
+			o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: msg})
+		}
+	}
+
+	// Send all messages as separate content blocks in a single ACP request
+	if err := o.runner.SendMessages(o.ctx, messages); err != nil {
+		logger.Error("Failed to send user messages: %v", err)
+		if o.tuiProgram != nil {
+			o.tuiProgram.Send(tui.AgentOutputMsg{
+				Content: fmt.Sprintf("\n[Error sending messages: %v]\n", err),
+			})
+		}
+		return nil // Don't fail the iteration loop
+	}
+
+	return nil
 }
 
 // Stop gracefully shuts down all components.

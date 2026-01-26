@@ -23,7 +23,6 @@ type Variables struct {
 	Extra     string // Extra instructions
 	Port      string // NATS server port
 	Binary    string // Full path to iteratr binary
-	Hooks     string // Pre-iteration hook output
 }
 
 // Render replaces {{variable}} placeholders in template with actual values.
@@ -37,7 +36,6 @@ type Variables struct {
 // - {{extra}} - Extra instructions (empty if none)
 // - {{port}} - NATS server port
 // - {{binary}} - Full path to iteratr binary
-// - {{hooks}} - Pre-iteration hook output (empty if none)
 func Render(template string, vars Variables) string {
 	result := template
 
@@ -51,7 +49,6 @@ func Render(template string, vars Variables) string {
 		"{{extra}}":     vars.Extra,
 		"{{port}}":      vars.Port,
 		"{{binary}}":    vars.Binary,
-		"{{hooks}}":     vars.Hooks,
 	}
 
 	for placeholder, value := range replacements {
@@ -90,7 +87,6 @@ type BuildConfig struct {
 	TemplatePath      string         // Path to custom template (optional)
 	ExtraInstructions string         // Extra instructions (optional)
 	NATSPort          int            // NATS server port
-	HookOutput        string         // Pre-iteration hook output (optional)
 }
 
 // BuildPrompt loads session state, formats it, and injects it into the template.
@@ -149,7 +145,6 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 		Extra:     cfg.ExtraInstructions,
 		Port:      strconv.Itoa(cfg.NATSPort),
 		Binary:    binaryPath,
-		Hooks:     cfg.HookOutput,
 	}
 
 	logger.Debug("Formatted state: %d tasks, %d notes",
