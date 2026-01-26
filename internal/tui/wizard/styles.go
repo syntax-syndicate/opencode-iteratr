@@ -6,11 +6,28 @@ import (
 
 // Color palette (Catppuccin Mocha)
 var (
-	colorPrimary   = lipgloss.Color("#cba6f7") // Mauve
-	colorSecondary = lipgloss.Color("#b4befe") // Lavender
-	colorSubtext0  = lipgloss.Color("#a6adc8") // Subtext0
-	colorSubtext1  = lipgloss.Color("#bac2de") // Subtext1
-	colorSurface2  = lipgloss.Color("#585b70") // Surface2
+	colorPrimary       = lipgloss.Color("#cba6f7") // Mauve
+	colorSecondary     = lipgloss.Color("#b4befe") // Lavender
+	colorText          = lipgloss.Color("#cdd6f4") // Text
+	colorBase          = lipgloss.Color("#1e1e2e") // Base
+	colorSubtext0      = lipgloss.Color("#a6adc8") // Subtext0
+	colorSubtext1      = lipgloss.Color("#bac2de") // Subtext1
+	colorSurface2      = lipgloss.Color("#585b70") // Surface2
+	colorBorderFocused = lipgloss.Color("#b4befe") // Lavender for borders
+)
+
+// Modal styles (consistent with NoteInputModal)
+var (
+	styleModalContainer = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorBorderFocused).
+				Background(colorBase).
+				Padding(1, 2)
+
+	styleModalTitle = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true).
+			Align(lipgloss.Center)
 )
 
 // Hint bar styles

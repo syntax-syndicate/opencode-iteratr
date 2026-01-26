@@ -2,9 +2,11 @@ package wizard
 
 import (
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	lipglossv2 "charm.land/lipgloss/v2"
+	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -228,7 +230,7 @@ func (m *WizardModel) View() tea.View {
 		ReportEventTypes: true, // Required for ctrl+enter
 	}
 
-	// Render current step
+	// Render current step content
 	var stepContent string
 	switch m.step {
 	case 0:
@@ -249,9 +251,8 @@ func (m *WizardModel) View() tea.View {
 		}
 	}
 
-	// For now, render step content directly
-	// TODO: Wrap in modal container with title, buttons, hints
-	content := fmt.Sprintf("Build Wizard - Step %d of 4\n\n%s", m.step+1, stepContent)
+	// Wrap in modal container with title
+	content := m.renderModal(stepContent)
 
 	canvas := uv.NewScreenBuffer(m.width, m.height)
 	uv.NewStyledString(content).Draw(canvas, uv.Rectangle{
@@ -261,6 +262,50 @@ func (m *WizardModel) View() tea.View {
 
 	view.Content = lipglossv2.NewLayer(canvas.Render())
 	return view
+}
+
+// renderModal wraps the step content in a modal container with title.
+func (m *WizardModel) renderModal(stepContent string) string {
+	var sections []string
+
+	// Title with step indicator and step name
+	stepNames := []string{
+		"Select Spec File",
+		"Select Model",
+		"Edit Prompt Template",
+		"Session Configuration",
+	}
+	title := fmt.Sprintf("Build Wizard - Step %d of 4: %s", m.step+1, stepNames[m.step])
+	sections = append(sections, styleModalTitle.Render(title))
+	sections = append(sections, "")
+
+	// Step content
+	sections = append(sections, stepContent)
+
+	// Join all sections
+	content := strings.Join(sections, "\n")
+
+	// Calculate modal dimensions based on terminal size
+	// Leave margins for visual spacing
+	modalWidth := m.width - 10
+	if modalWidth < 60 {
+		modalWidth = 60
+	}
+	if modalWidth > 100 {
+		modalWidth = 100 // Max width for readability
+	}
+
+	// Apply modal container style without fixed height
+	// This allows content to determine height naturally
+	modalStyle := styleModalContainer.Width(modalWidth)
+
+	modalContent := modalStyle.Render(content)
+
+	// Center the modal on screen
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		modalContent,
+	)
 }
 
 // isComplete checks if all required steps have valid data.
