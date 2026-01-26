@@ -121,6 +121,8 @@ func setupWizardStore(dataDir string) (*session.Store, func(), error) {
 func runBuild(cmd *cobra.Command, args []string) error {
 	// Track temp template file for cleanup
 	var tempTemplatePath string
+	// Track if we're resuming an existing session (spec is optional in this case)
+	resumeMode := false
 
 	// Run wizard if no spec provided and not headless
 	if buildFlags.spec == "" && !buildFlags.headless {
@@ -147,6 +149,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			// Resume mode: only session name is set from wizard
 			// Spec/model/template will fall back to defaults or existing CLI flags
 			buildFlags.name = result.SessionName
+			resumeMode = true
 			logger.Info("Resuming existing session: %s", result.SessionName)
 		} else {
 			// New session mode: apply all wizard results to buildFlags
@@ -188,20 +191,24 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine spec path
+	// In resume mode, spec is optional (session already has tasks)
 	specPath := buildFlags.spec
 	if specPath == "" {
 		// Look for SPEC.md in specs/ directory
 		defaultSpec := "specs/SPEC.md"
 		if _, err := os.Stat(defaultSpec); err == nil {
 			specPath = defaultSpec
-		} else {
+		} else if !resumeMode {
+			// Require spec file for new sessions (not resume mode)
 			return fmt.Errorf("no spec file found, use --spec to specify path or run without --headless to use wizard")
 		}
 	}
 
-	// Check if spec file exists
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		return fmt.Errorf("spec file not found: %s", specPath)
+	// Check if spec file exists (only if a spec path was determined)
+	if specPath != "" {
+		if _, err := os.Stat(specPath); os.IsNotExist(err) {
+			return fmt.Errorf("spec file not found: %s", specPath)
+		}
 	}
 
 	// Determine session name
