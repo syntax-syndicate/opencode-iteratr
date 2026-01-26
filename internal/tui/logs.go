@@ -46,8 +46,8 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	}
 
 	// Update viewport size to match modal
-	contentWidth := modalWidth - 4   // Account for border + padding
-	contentHeight := modalHeight - 4 // Account for border + title + padding
+	contentWidth := modalWidth - 6   // Account for border (2) + padding (4)
+	contentHeight := modalHeight - 5 // Account for padding (2) + title (1) + separator (1) + hint (1)
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
@@ -66,12 +66,13 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Hint at bottom
 	hint := s.ModalHint.Render("esc close • ↑/↓ scroll • ctrl+l close")
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
+	// Use strings.Join instead of lipgloss.JoinVertical (like crush does)
+	content := strings.Join([]string{
 		title,
 		separator,
 		vpContent,
 		hint,
-	)
+	}, "\n")
 
 	// Style the modal
 	modalStyle := s.ModalContainer.

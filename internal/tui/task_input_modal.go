@@ -347,8 +347,8 @@ func (m *TaskInputModal) View() string {
 
 	var sections []string
 
-	// Title
-	title := renderModalTitle("New Task", m.width-4)
+	// Title - width accounts for border (2) + padding (4)
+	title := renderModalTitle("New Task", m.width-6)
 	sections = append(sections, title)
 	sections = append(sections, "")
 
