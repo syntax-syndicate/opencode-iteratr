@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mark3labs/iteratr/internal/tui"
 )
 
 // FileItem represents a file or directory in the file picker.
@@ -47,11 +48,12 @@ func (f *FileItem) Height() int {
 
 // FilePickerStep manages the file picker UI step.
 type FilePickerStep struct {
-	currentPath string      // Current directory path
-	items       []*FileItem // All items in current directory
-	selectedIdx int         // Index of selected item
-	width       int         // Available width
-	height      int         // Available height
+	currentPath string          // Current directory path
+	items       []*FileItem     // All items in current directory
+	scrollList  *tui.ScrollList // Lazy-rendering scroll list for items
+	selectedIdx int             // Index of selected item
+	width       int             // Available width
+	height      int             // Available height
 }
 
 // NewFilePickerStep creates a new file picker step.
@@ -64,10 +66,15 @@ func NewFilePickerStep() *FilePickerStep {
 
 	fp := &FilePickerStep{
 		currentPath: cwd,
+		scrollList:  tui.NewScrollList(60, 10),
 		selectedIdx: 0,
 		width:       60,
 		height:      10,
 	}
+
+	// Configure scroll list
+	fp.scrollList.SetAutoScroll(false) // Manual navigation for file picker
+	fp.scrollList.SetFocused(true)
 
 	// Load initial directory
 	fp.loadDirectory(cwd)
@@ -144,6 +151,14 @@ func (f *FilePickerStep) loadDirectory(path string) error {
 	// Reset selection to first item
 	f.selectedIdx = 0
 
+	// Update scroll list with new items
+	scrollItems := make([]tui.ScrollItem, len(f.items))
+	for i, item := range f.items {
+		scrollItems[i] = item
+	}
+	f.scrollList.SetItems(scrollItems)
+	f.scrollList.SetSelected(f.selectedIdx)
+
 	return nil
 }
 
@@ -151,6 +166,13 @@ func (f *FilePickerStep) loadDirectory(path string) error {
 func (f *FilePickerStep) SetSize(width, height int) {
 	f.width = width
 	f.height = height
+	// Reserve space for path header and hint bar (about 5 lines)
+	listHeight := height - 5
+	if listHeight < 3 {
+		listHeight = 3
+	}
+	f.scrollList.SetWidth(width)
+	f.scrollList.SetHeight(listHeight)
 }
 
 // Update handles messages for the file picker step.
@@ -160,10 +182,14 @@ func (f *FilePickerStep) Update(msg tea.Msg) tea.Cmd {
 		case "up", "k":
 			if len(f.items) > 0 && f.selectedIdx > 0 {
 				f.selectedIdx--
+				f.scrollList.SetSelected(f.selectedIdx)
+				f.scrollList.ScrollToItem(f.selectedIdx)
 			}
 		case "down", "j":
 			if len(f.items) > 0 && f.selectedIdx < len(f.items)-1 {
 				f.selectedIdx++
+				f.scrollList.SetSelected(f.selectedIdx)
+				f.scrollList.ScrollToItem(f.selectedIdx)
 			}
 		case "enter":
 			// Handle selection
@@ -223,37 +249,13 @@ func (f *FilePickerStep) View() string {
 		b.WriteString(emptyStyle.Render("No .md or .txt files in this directory"))
 		b.WriteString("\n\n")
 
-		// Still show parent directory entry if it exists
+		// Still show parent directory entry if it exists using ScrollList
 		if len(f.items) > 0 && f.items[0].name == ".." {
-			item := f.items[0]
-			line := item.Render(f.width)
-			line = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#cba6f7")).
-				Background(lipgloss.Color("#313244")).
-				Bold(true).
-				Render("▸ " + line)
-			b.WriteString(line)
-			b.WriteString("\n")
+			b.WriteString(f.renderScrollListWithSelection())
 		}
 	} else {
-		// Show items normally
-		for i, item := range f.items {
-			line := item.Render(f.width)
-
-			// Highlight selected item
-			if i == f.selectedIdx {
-				line = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#cba6f7")).
-					Background(lipgloss.Color("#313244")).
-					Bold(true).
-					Render("▸ " + line)
-			} else {
-				line = "  " + line
-			}
-
-			b.WriteString(line)
-			b.WriteString("\n")
-		}
+		// Show items using ScrollList for lazy rendering
+		b.WriteString(f.renderScrollListWithSelection())
 	}
 
 	// Add spacing before hint bar
@@ -285,6 +287,12 @@ func (f *FilePickerStep) View() string {
 	b.WriteString(hintBar)
 
 	return b.String()
+}
+
+// renderScrollListWithSelection renders the scroll list.
+// ScrollList handles lazy rendering and selection highlighting internally.
+func (f *FilePickerStep) renderScrollListWithSelection() string {
+	return f.scrollList.View()
 }
 
 // SelectedPath returns the currently selected file path (empty if directory selected).
