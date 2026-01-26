@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,8 +9,11 @@ import (
 
 	"github.com/mark3labs/iteratr/internal/config"
 	"github.com/mark3labs/iteratr/internal/logger"
+	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/orchestrator"
+	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/wizard"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +52,72 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildFlags.reset, "reset", false, "Reset session data before starting (clears all NATS events for this session)")
 }
 
+// setupWizardStore creates a temporary NATS connection and session store for the wizard.
+// Returns the store and a cleanup function that must be called when done.
+func setupWizardStore(dataDir string) (*session.Store, func(), error) {
+	// Ensure data directory exists
+	fullDataDir := filepath.Join(dataDir, "data")
+	if err := os.MkdirAll(fullDataDir, 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	// Try to connect to existing NATS server first
+	nc := nats.TryConnectExisting(fullDataDir)
+	var ns interface{} // NATS server (if we started one)
+
+	if nc == nil {
+		// No existing server, start one
+		logger.Debug("Starting temporary NATS server for wizard")
+		server, port, err := nats.StartEmbeddedNATS(fullDataDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to start NATS: %w", err)
+		}
+		ns = server
+
+		// Connect to the server we just started
+		nc, err = nats.ConnectToPort(port)
+		if err != nil {
+			server.Shutdown()
+			return nil, nil, fmt.Errorf("failed to connect to NATS: %w", err)
+		}
+	}
+
+	// Create JetStream context
+	js, err := nats.CreateJetStream(nc)
+	if err != nil {
+		nc.Close()
+		if ns != nil {
+			ns.(*natsserver.Server).Shutdown()
+		}
+		return nil, nil, fmt.Errorf("failed to create JetStream: %w", err)
+	}
+
+	// Setup stream
+	ctx := context.Background()
+	stream, err := nats.SetupStream(ctx, js)
+	if err != nil {
+		nc.Close()
+		if ns != nil {
+			ns.(*natsserver.Server).Shutdown()
+		}
+		return nil, nil, fmt.Errorf("failed to setup stream: %w", err)
+	}
+
+	// Create session store
+	store := session.NewStore(js, stream)
+
+	// Return cleanup function
+	cleanup := func() {
+		if nc != nil {
+			nc.Close()
+		}
+		// Don't shutdown server if we didn't start it (connected to existing)
+		// The orchestrator will manage the server lifecycle
+	}
+
+	return store, cleanup, nil
+}
+
 func runBuild(cmd *cobra.Command, args []string) error {
 	// Track temp template file for cleanup
 	var tempTemplatePath string
@@ -55,7 +125,19 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// Run wizard if no spec provided and not headless
 	if buildFlags.spec == "" && !buildFlags.headless {
 		logger.Info("No spec file provided, launching wizard...")
-		result, err := wizard.RunWizard()
+
+		// Set up NATS for wizard session selector
+		dataDir := os.Getenv("ITERATR_DATA_DIR")
+		if dataDir == "" {
+			dataDir = buildFlags.dataDir
+		}
+		wizardStore, cleanup, err := setupWizardStore(dataDir)
+		if err != nil {
+			return fmt.Errorf("failed to setup wizard store: %w", err)
+		}
+		defer cleanup()
+
+		result, err := wizard.RunWizard(wizardStore)
 		if err != nil {
 			return fmt.Errorf("wizard failed: %w", err)
 		}
