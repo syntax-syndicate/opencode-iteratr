@@ -1,6 +1,7 @@
 package wizard
 
 import (
+	"context"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/mark3labs/iteratr/internal/session"
 )
 
 // ConfigStep manages the session configuration UI step.
@@ -19,10 +21,11 @@ type ConfigStep struct {
 	iterationsError string          // Validation error for iterations
 	width           int             // Available width
 	height          int             // Available height
+	sessionStore    *session.Store  // Session store for uniqueness check
 }
 
 // NewConfigStep creates a new config step with smart defaults.
-func NewConfigStep(specPath string) *ConfigStep {
+func NewConfigStep(specPath string, sessionStore *session.Store) *ConfigStep {
 	// Initialize session name input
 	sessionInput := textinput.New()
 	sessionInput.Placeholder = "Enter session name..."
@@ -67,6 +70,7 @@ func NewConfigStep(specPath string) *ConfigStep {
 		focusIndex:      0, // Start with session input focused
 		width:           60,
 		height:          10,
+		sessionStore:    sessionStore,
 	}
 }
 
@@ -281,6 +285,22 @@ func (c *ConfigStep) validate() bool {
 				valid = false
 				break
 			}
+		}
+
+		// Check for uniqueness if store is available
+		if valid && c.sessionStore != nil {
+			ctx := context.Background()
+			sessions, err := c.sessionStore.ListSessions(ctx)
+			if err == nil {
+				for _, s := range sessions {
+					if s.Name == sessionName {
+						c.sessionError = "Session name already exists"
+						valid = false
+						break
+					}
+				}
+			}
+			// Silently ignore errors loading sessions (e.g., store not connected)
 		}
 	}
 

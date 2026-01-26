@@ -427,7 +427,7 @@ func (m *WizardModel) initCurrentStep() {
 		}
 	case 4:
 		if m.configStep == nil {
-			m.configStep = NewConfigStep(m.result.SpecPath)
+			m.configStep = NewConfigStep(m.result.SpecPath, m.sessionStore)
 		}
 	}
 	m.updateCurrentStepSize()
