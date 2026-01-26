@@ -27,11 +27,11 @@ type WizardModel struct {
 	width     int          // Terminal width
 	height    int          // Terminal height
 
-	// Step components (initialized lazily)
-	// filePickerStep   *FilePickerStep
-	// modelSelectorStep *ModelSelectorStep
-	// templateEditorStep *TemplateEditorStep
-	// configStep *ConfigStep
+	// Step components
+	filePickerStep     *FilePickerStep
+	modelSelectorStep  *ModelSelectorStep
+	templateEditorStep *TemplateEditorStep
+	configStep         *ConfigStep
 }
 
 // RunWizard is the entry point for the build wizard.
@@ -69,7 +69,8 @@ func RunWizard() (*WizardResult, error) {
 
 // Init initializes the wizard model.
 func (m *WizardModel) Init() tea.Cmd {
-	// TODO: Initialize first step (file picker)
+	// Initialize file picker (step 0)
+	m.filePickerStep = NewFilePickerStep()
 	return nil
 }
 
@@ -86,18 +87,18 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			// ESC behavior depends on step
 			if m.step == 0 {
-				// On first step, confirm exit
-				// TODO: Show confirmation dialog
+				// On first step, exit wizard
 				m.cancelled = true
 				return m, tea.Quit
 			} else {
 				// On other steps, go back
 				m.step--
+				// Re-initialize the previous step if needed
+				m.initCurrentStep()
 				return m, nil
 			}
 		case "ctrl+enter":
 			// Ctrl+Enter finishes wizard if all steps valid
-			// TODO: Validate all steps and quit if valid
 			if m.isComplete() {
 				return m, tea.Quit
 			}
@@ -107,12 +108,116 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Store terminal dimensions
 		m.width = msg.Width
 		m.height = msg.Height
+		// Update size of current step
+		m.updateCurrentStepSize()
 		return m, nil
+
+	case FileSelectedMsg:
+		// File selected in step 0
+		m.result.SpecPath = msg.Path
+		m.step++
+		m.initCurrentStep()
+		return m, m.modelSelectorStep.Init()
+
+	case ModelSelectedMsg:
+		// Model selected in step 1
+		m.result.Model = msg.ModelID
+		m.step++
+		m.initCurrentStep()
+		return m, m.templateEditorStep.Init()
+
+	case ConfigCompleteMsg:
+		// Config complete in step 3
+		m.result.Template = m.templateEditorStep.Content()
+		m.result.SessionName = m.configStep.SessionName()
+		m.result.Iterations = m.configStep.Iterations()
+		return m, tea.Quit
 	}
 
 	// Forward to current step
-	// TODO: Forward messages to active step component
-	return m, nil
+	var cmd tea.Cmd
+	switch m.step {
+	case 0:
+		if m.filePickerStep != nil {
+			cmd = m.filePickerStep.Update(msg)
+		}
+	case 1:
+		if m.modelSelectorStep != nil {
+			cmd = m.modelSelectorStep.Update(msg)
+		}
+	case 2:
+		if m.templateEditorStep != nil {
+			cmd = m.templateEditorStep.Update(msg)
+		}
+		// Handle Enter to advance from template editor
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok && keyMsg.String() == "enter" {
+			// Move to config step
+			m.step++
+			m.initCurrentStep()
+			return m, m.configStep.Init()
+		}
+	case 3:
+		if m.configStep != nil {
+			cmd = m.configStep.Update(msg)
+		}
+	}
+
+	return m, cmd
+}
+
+// initCurrentStep initializes the current step component if not already initialized.
+func (m *WizardModel) initCurrentStep() {
+	switch m.step {
+	case 0:
+		if m.filePickerStep == nil {
+			m.filePickerStep = NewFilePickerStep()
+		}
+	case 1:
+		if m.modelSelectorStep == nil {
+			m.modelSelectorStep = NewModelSelectorStep()
+		}
+	case 2:
+		if m.templateEditorStep == nil {
+			m.templateEditorStep = NewTemplateEditorStep()
+		}
+	case 3:
+		if m.configStep == nil {
+			m.configStep = NewConfigStep(m.result.SpecPath)
+		}
+	}
+	m.updateCurrentStepSize()
+}
+
+// updateCurrentStepSize updates the size of the current step component.
+func (m *WizardModel) updateCurrentStepSize() {
+	// Reserve space for modal container (padding, borders, title, buttons)
+	contentWidth := m.width - 10
+	contentHeight := m.height - 10
+	if contentWidth < 40 {
+		contentWidth = 40
+	}
+	if contentHeight < 10 {
+		contentHeight = 10
+	}
+
+	switch m.step {
+	case 0:
+		if m.filePickerStep != nil {
+			m.filePickerStep.SetSize(contentWidth, contentHeight)
+		}
+	case 1:
+		if m.modelSelectorStep != nil {
+			m.modelSelectorStep.SetSize(contentWidth, contentHeight)
+		}
+	case 2:
+		if m.templateEditorStep != nil {
+			m.templateEditorStep.SetSize(contentWidth, contentHeight)
+		}
+	case 3:
+		if m.configStep != nil {
+			m.configStep.SetSize(contentWidth, contentHeight)
+		}
+	}
 }
 
 // View renders the wizard UI.
@@ -123,9 +228,30 @@ func (m *WizardModel) View() tea.View {
 		ReportEventTypes: true, // Required for ctrl+enter
 	}
 
-	// TODO: Render current step in modal container using canvas
-	// For now, render a simple placeholder
-	content := fmt.Sprintf("Build Wizard - Step %d of 4\n\nWidth: %d, Height: %d\n\nPress ESC to cancel", m.step+1, m.width, m.height)
+	// Render current step
+	var stepContent string
+	switch m.step {
+	case 0:
+		if m.filePickerStep != nil {
+			stepContent = m.filePickerStep.View()
+		}
+	case 1:
+		if m.modelSelectorStep != nil {
+			stepContent = m.modelSelectorStep.View()
+		}
+	case 2:
+		if m.templateEditorStep != nil {
+			stepContent = m.templateEditorStep.View()
+		}
+	case 3:
+		if m.configStep != nil {
+			stepContent = m.configStep.View()
+		}
+	}
+
+	// For now, render step content directly
+	// TODO: Wrap in modal container with title, buttons, hints
+	content := fmt.Sprintf("Build Wizard - Step %d of 4\n\n%s", m.step+1, stepContent)
 
 	canvas := uv.NewScreenBuffer(m.width, m.height)
 	uv.NewStyledString(content).Draw(canvas, uv.Rectangle{
