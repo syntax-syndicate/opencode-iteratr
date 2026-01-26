@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mark3labs/iteratr/internal/tui"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // FileItem represents a file or directory in the file picker.
@@ -227,7 +228,8 @@ func (f *FilePickerStep) View() string {
 	var b strings.Builder
 
 	// Show current path
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render(f.currentPath))
+	t := theme.Current()
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgMuted)).Render(f.currentPath))
 	b.WriteString("\n\n")
 
 	// Check if directory is empty (excluding parent directory entry)
@@ -241,12 +243,12 @@ func (f *FilePickerStep) View() string {
 
 	if len(f.items) == 0 {
 		// Absolutely empty - no parent, no files (shouldn't happen but handle it)
-		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Italic(true)
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.BgOverlay)).Italic(true)
 		b.WriteString(emptyStyle.Render("Directory is empty"))
 		b.WriteString("\n")
 	} else if !hasFiles {
 		// Show empty directory message
-		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Italic(true)
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(t.BgOverlay)).Italic(true)
 		b.WriteString(emptyStyle.Render("No .md or .txt files in this directory"))
 		b.WriteString("\n\n")
 
