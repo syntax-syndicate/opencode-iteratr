@@ -116,7 +116,7 @@ func (s *StatusBar) buildTaskStats() string {
 		return ""
 	}
 
-	var completed, inProgress, remaining, blocked int
+	var completed, inProgress, remaining, blocked, cancelled int
 	for _, task := range s.state.Tasks {
 		switch task.Status {
 		case "completed":
@@ -125,6 +125,8 @@ func (s *StatusBar) buildTaskStats() string {
 			inProgress++
 		case "blocked":
 			blocked++
+		case "cancelled":
+			cancelled++
 		default:
 			remaining++
 		}
@@ -142,6 +144,9 @@ func (s *StatusBar) buildTaskStats() string {
 	}
 	if blocked > 0 {
 		parts = append(parts, theme.Current().S().StatusBlocked.Render(fmt.Sprintf("✗ %d", blocked)))
+	}
+	if cancelled > 0 {
+		parts = append(parts, theme.Current().S().StatusBlocked.Render(fmt.Sprintf("⊘ %d", cancelled)))
 	}
 
 	if len(parts) == 0 {

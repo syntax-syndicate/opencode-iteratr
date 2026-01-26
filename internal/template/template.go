@@ -203,7 +203,7 @@ func formatTasks(state *session.State) string {
 
 	var sb strings.Builder
 	sb.WriteString("## Current Tasks\n")
-	statuses := []string{"remaining", "in_progress", "completed", "blocked"}
+	statuses := []string{"remaining", "in_progress", "completed", "blocked", "cancelled"}
 	for _, status := range statuses {
 		tasks := byStatus[status]
 		if len(tasks) == 0 {

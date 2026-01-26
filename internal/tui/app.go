@@ -69,8 +69,8 @@ func NewApp(ctx context.Context, store *session.Store, sessionName string, nc *n
 		noteModal:      NewNoteModal(),
 		noteInputModal: NewNoteInputModal(),
 		taskInputModal: NewTaskInputModal(),
-		eventChan:      make(chan session.Event, 100), // Buffered channel for events
-		layoutDirty:    true,                          // Calculate layout on first render
+		eventChan:      make(chan session.Event, 1000), // Buffered channel for events (needs capacity for large task batches)
+		layoutDirty:    true,                           // Calculate layout on first render
 	}
 }
 
@@ -162,7 +162,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			"All tasks have been completed successfully!",
 			nil, // Just close the modal, don't quit
 		)
-		return a, nil
+		// Reload state to ensure UI shows latest task counts
+		// (SessionCompleteMsg is sent directly by orchestrator, bypassing NATS event flow)
+		return a, a.loadInitialState()
 
 	case UserInputMsg:
 		// Handle user input from the text field - send to orchestrator queue

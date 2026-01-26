@@ -66,6 +66,9 @@ func (t *taskScrollItem) renderTask() string {
 	case "blocked":
 		indicator = "⊘"
 		indicatorStyle = s.StatusBlocked
+	case "cancelled":
+		indicator = "⊗"
+		indicatorStyle = s.StatusBlocked
 	default:
 		indicator = "○"
 		indicatorStyle = s.StatusRemaining
