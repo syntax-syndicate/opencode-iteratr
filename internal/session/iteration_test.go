@@ -93,6 +93,7 @@ func TestIterationOperations(t *testing.T) {
 
 		if iter2 == nil {
 			t.Fatal("expected to find iteration 2")
+			return // Explicit return to help static analysis
 		}
 		if !iter2.Complete {
 			t.Error("expected iteration 2 to be complete")
