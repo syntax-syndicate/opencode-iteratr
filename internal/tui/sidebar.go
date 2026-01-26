@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // OpenTaskModalMsg is sent when a task should be opened in the modal.
@@ -368,7 +369,7 @@ func (s *Sidebar) drawLogo(scr uv.Screen, area uv.Rectangle) {
 			if len(runes) == 1 {
 				pos = 0
 			}
-			color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			color := theme.InterpolateColor(string(colorPrimary), string(colorSecondary), pos)
 			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 			result.WriteString(charStyle.Render(string(r)))
 		}
@@ -739,7 +740,7 @@ func (s *Sidebar) Render() string {
 			if len(runes) == 1 {
 				pos = 0
 			}
-			color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+			color := theme.InterpolateColor(string(colorPrimary), string(colorSecondary), pos)
 			charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 			result.WriteString(charStyle.Render(string(r)))
 		}

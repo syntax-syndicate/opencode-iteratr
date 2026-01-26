@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // ============================================================================
@@ -504,7 +505,7 @@ func renderModalTitle(title string, width int) string {
 	var pattern strings.Builder
 	for i := 0; i < remainingWidth; i += segmentSize {
 		pos := float64(i) / float64(remainingWidth)
-		color := interpolateColor(string(colorPrimary), string(colorSecondary), pos)
+		color := theme.InterpolateColor(string(colorPrimary), string(colorSecondary), pos)
 		charStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
 		// Build alternating ▀▄ pattern for this segment

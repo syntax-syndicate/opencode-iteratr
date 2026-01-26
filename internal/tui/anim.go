@@ -1,12 +1,12 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
 // Spinner wraps bubbles spinner with convenience methods
@@ -183,7 +183,7 @@ func (g *GradientSpinner) View() string {
 		pos := float64((i+g.frame)%g.size) / float64(g.size)
 
 		// Interpolate between colorA and colorB
-		colorHex := interpolateColor(g.colorA, g.colorB, pos)
+		colorHex := theme.InterpolateColor(g.colorA, g.colorB, pos)
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
 		result += style.Render("█")
 	}
@@ -195,42 +195,6 @@ func (g *GradientSpinner) View() string {
 	}
 
 	return result
-}
-
-// interpolateColor blends between two hex colors based on position (0.0 to 1.0)
-func interpolateColor(colorA, colorB string, pos float64) string {
-	// Parse hex colors (format: #RRGGBB)
-	r1, g1, b1 := parseHexColor(colorA)
-	r2, g2, b2 := parseHexColor(colorB)
-
-	// Interpolate each channel
-	r := uint8(float64(r1)*(1-pos) + float64(r2)*pos)
-	g := uint8(float64(g1)*(1-pos) + float64(g2)*pos)
-	b := uint8(float64(b1)*(1-pos) + float64(b2)*pos)
-
-	// Return as hex color string
-	return formatHexColor(r, g, b)
-}
-
-// parseHexColor extracts RGB values from hex color string
-func parseHexColor(hex string) (uint8, uint8, uint8) {
-	// Remove # prefix if present
-	if len(hex) > 0 && hex[0] == '#' {
-		hex = hex[1:]
-	}
-
-	// Parse RGB values
-	var r, g, b uint8
-	if len(hex) == 6 {
-		_, _ = fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
-	}
-
-	return r, g, b
-}
-
-// formatHexColor converts RGB values to hex color string
-func formatHexColor(r, g, b uint8) string {
-	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }
 
 // Tick returns a command that sends a GradientSpinnerMsg after 80ms
