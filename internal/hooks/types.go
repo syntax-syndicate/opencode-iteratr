@@ -8,7 +8,7 @@ type Config struct {
 
 // HooksConfig contains all hook configurations.
 type HooksConfig struct {
-	PreIteration *HookConfig `yaml:"pre_iteration"`
+	PreIteration []*HookConfig `yaml:"pre_iteration"`
 }
 
 // HookConfig defines a single hook's configuration.

@@ -2,5 +2,7 @@ version: 1
 
 hooks:
   pre_iteration:
-    command: "echo 'Session: {{session}} | Iteration: {{iteration}}' && date && echo '--- End of hook output ---'"
-    timeout: 30
+    - command: "golangci-lint run ./..."
+      timeout: 5
+    - command: "go vet ./..."
+      timeout: 5

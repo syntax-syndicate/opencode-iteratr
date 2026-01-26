@@ -115,6 +115,29 @@ func Execute(ctx context.Context, hook *HookConfig, workDir string, vars Variabl
 	return output, nil
 }
 
+// ExecuteAll runs multiple hook commands and concatenates their output.
+// Returns combined output from all hooks separated by newlines.
+// Only returns error for context cancellation.
+func ExecuteAll(ctx context.Context, hooks []*HookConfig, workDir string, vars Variables) (string, error) {
+	if len(hooks) == 0 {
+		return "", nil
+	}
+
+	var outputs []string
+	for _, hook := range hooks {
+		output, err := Execute(ctx, hook, workDir, vars)
+		if err != nil {
+			// Context cancelled - propagate
+			return "", err
+		}
+		if output != "" {
+			outputs = append(outputs, output)
+		}
+	}
+
+	return strings.Join(outputs, "\n"), nil
+}
+
 // expandVariables replaces {{variable}} placeholders in the command string.
 func expandVariables(command string, vars Variables) string {
 	replacements := map[string]string{
