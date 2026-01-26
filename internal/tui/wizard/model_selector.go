@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipglossv2 "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mark3labs/iteratr/internal/tui"
 )
 
 // ModelInfo represents a model that can be selected.
@@ -43,6 +44,7 @@ func (m *ModelInfo) Height() int {
 type ModelSelectorStep struct {
 	allModels      []*ModelInfo    // Full list from opencode
 	filtered       []*ModelInfo    // Filtered by search
+	scrollList     *tui.ScrollList // Lazy-rendering scroll list for filtered models
 	selectedIdx    int             // Index in filtered list
 	searchInput    textinput.Model // Fuzzy search input
 	loading        bool            // Whether models are being fetched
@@ -86,8 +88,13 @@ func NewModelSelectorStep() *ModelSelectorStep {
 	s.Spinner = spinner.Dot
 	s.Style = lipglossv2.NewStyle().Foreground(lipglossv2.Color("#cba6f7"))
 
+	scrollList := tui.NewScrollList(60, 10)
+	scrollList.SetAutoScroll(false) // Manual navigation
+	scrollList.SetFocused(true)
+
 	return &ModelSelectorStep{
 		searchInput: input,
+		scrollList:  scrollList,
 		spinner:     s,
 		loading:     true,
 		selectedIdx: 0,
@@ -172,6 +179,14 @@ func (m *ModelSelectorStep) filterModels() {
 	if m.selectedIdx >= len(m.filtered) {
 		m.selectedIdx = 0
 	}
+
+	// Update scroll list with filtered items
+	scrollItems := make([]tui.ScrollItem, len(m.filtered))
+	for i, model := range m.filtered {
+		scrollItems[i] = model
+	}
+	m.scrollList.SetItems(scrollItems)
+	m.scrollList.SetSelected(m.selectedIdx)
 }
 
 // SetSize updates the dimensions for the model selector.
@@ -179,6 +194,13 @@ func (m *ModelSelectorStep) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	m.searchInput.SetWidth(width - 10)
+	// Reserve space for search input, spacing, and hint bar (about 6 lines)
+	listHeight := height - 6
+	if listHeight < 3 {
+		listHeight = 3
+	}
+	m.scrollList.SetWidth(width)
+	m.scrollList.SetHeight(listHeight)
 }
 
 // Update handles messages for the model selector step.
@@ -235,12 +257,16 @@ func (m *ModelSelectorStep) Update(msg tea.Msg) tea.Cmd {
 		case "up", "k":
 			if m.selectedIdx > 0 {
 				m.selectedIdx--
+				m.scrollList.SetSelected(m.selectedIdx)
+				m.scrollList.ScrollToItem(m.selectedIdx)
 			}
 			return nil
 
 		case "down", "j":
 			if m.selectedIdx < len(m.filtered)-1 {
 				m.selectedIdx++
+				m.scrollList.SetSelected(m.selectedIdx)
+				m.scrollList.ScrollToItem(m.selectedIdx)
 			}
 			return nil
 
@@ -319,24 +345,8 @@ func (m *ModelSelectorStep) View() string {
 		return b.String()
 	}
 
-	// Render model list
-	for i, model := range m.filtered {
-		line := model.Render(m.width)
-
-		// Highlight selected item
-		if i == m.selectedIdx {
-			line = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#cba6f7")).
-				Background(lipgloss.Color("#313244")).
-				Bold(true).
-				Render("▸ " + line)
-		} else {
-			line = "  " + line
-		}
-
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
+	// Render model list using ScrollList for lazy rendering
+	b.WriteString(m.scrollList.View())
 
 	// Add spacing before hint bar
 	b.WriteString("\n")
