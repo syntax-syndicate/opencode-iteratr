@@ -1,7 +1,7 @@
 package wizard
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Color palette (Catppuccin Mocha) - used by renderHintBar

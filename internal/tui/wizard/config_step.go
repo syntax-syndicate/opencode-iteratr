@@ -7,8 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	lipglossv2 "charm.land/lipgloss/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ConfigStep manages the session configuration UI step.
@@ -32,17 +31,17 @@ func NewConfigStep(specPath string) *ConfigStep {
 	// Configure styles for textinput (using lipgloss v2)
 	sessionStyles := textinput.Styles{
 		Focused: textinput.StyleState{
-			Text:        lipglossv2.NewStyle().Foreground(lipglossv2.Color("#cdd6f4")),
-			Placeholder: lipglossv2.NewStyle().Foreground(lipglossv2.Color("#a6adc8")),
-			Prompt:      lipglossv2.NewStyle().Foreground(lipglossv2.Color("#b4befe")),
+			Text:        lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")),
+			Placeholder: lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")),
+			Prompt:      lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe")),
 		},
 		Blurred: textinput.StyleState{
-			Text:        lipglossv2.NewStyle().Foreground(lipglossv2.Color("#a6adc8")),
-			Placeholder: lipglossv2.NewStyle().Foreground(lipglossv2.Color("#a6adc8")),
-			Prompt:      lipglossv2.NewStyle().Foreground(lipglossv2.Color("#6c7086")),
+			Text:        lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")),
+			Placeholder: lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")),
+			Prompt:      lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")),
 		},
 		Cursor: textinput.CursorStyle{
-			Color: lipglossv2.Color("#cba6f7"),
+			Color: lipgloss.Color("#cba6f7"),
 			Shape: tea.CursorBar,
 			Blink: true,
 		},

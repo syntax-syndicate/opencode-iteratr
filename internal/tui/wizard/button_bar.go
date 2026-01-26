@@ -3,7 +3,7 @@ package wizard
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ButtonState represents the visual state of a button.
