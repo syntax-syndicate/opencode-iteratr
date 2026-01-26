@@ -158,15 +158,19 @@ func (f *FilePickerStep) Update(msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 		case "up", "k":
-			if f.selectedIdx > 0 {
+			if len(f.items) > 0 && f.selectedIdx > 0 {
 				f.selectedIdx--
 			}
 		case "down", "j":
-			if f.selectedIdx < len(f.items)-1 {
+			if len(f.items) > 0 && f.selectedIdx < len(f.items)-1 {
 				f.selectedIdx++
 			}
 		case "enter":
 			// Handle selection
+			if len(f.items) == 0 {
+				// No items to select
+				return nil
+			}
 			if f.selectedIdx >= 0 && f.selectedIdx < len(f.items) {
 				item := f.items[f.selectedIdx]
 				if item.isDir {
@@ -199,35 +203,85 @@ func (f *FilePickerStep) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#a6adc8")).Render(f.currentPath))
 	b.WriteString("\n\n")
 
-	// Show items
-	for i, item := range f.items {
-		line := item.Render(f.width)
+	// Check if directory is empty (excluding parent directory entry)
+	hasFiles := false
+	for _, item := range f.items {
+		if item.name != ".." {
+			hasFiles = true
+			break
+		}
+	}
 
-		// Highlight selected item
-		if i == f.selectedIdx {
+	if len(f.items) == 0 {
+		// Absolutely empty - no parent, no files (shouldn't happen but handle it)
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Italic(true)
+		b.WriteString(emptyStyle.Render("Directory is empty"))
+		b.WriteString("\n")
+	} else if !hasFiles {
+		// Show empty directory message
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")).Italic(true)
+		b.WriteString(emptyStyle.Render("No .md or .txt files in this directory"))
+		b.WriteString("\n\n")
+
+		// Still show parent directory entry if it exists
+		if len(f.items) > 0 && f.items[0].name == ".." {
+			item := f.items[0]
+			line := item.Render(f.width)
 			line = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#cba6f7")).
 				Background(lipgloss.Color("#313244")).
 				Bold(true).
 				Render("▸ " + line)
-		} else {
-			line = "  " + line
+			b.WriteString(line)
+			b.WriteString("\n")
 		}
+	} else {
+		// Show items normally
+		for i, item := range f.items {
+			line := item.Render(f.width)
 
-		b.WriteString(line)
-		b.WriteString("\n")
+			// Highlight selected item
+			if i == f.selectedIdx {
+				line = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#cba6f7")).
+					Background(lipgloss.Color("#313244")).
+					Bold(true).
+					Render("▸ " + line)
+			} else {
+				line = "  " + line
+			}
+
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
 	}
 
 	// Add spacing before hint bar
 	b.WriteString("\n")
 
-	// Hint bar
-	hintBar := renderHintBar(
-		"↑↓/j/k", "navigate",
-		"enter", "select",
-		"backspace", "up",
-		"esc", "cancel",
-	)
+	// Hint bar (context-sensitive based on directory state)
+	var hintBar string
+	if len(f.items) == 0 {
+		// No items at all - can only go back or cancel
+		hintBar = renderHintBar(
+			"backspace", "go up",
+			"esc", "cancel",
+		)
+	} else if !hasFiles && len(f.items) > 0 {
+		// Empty directory with parent - show simplified hints
+		hintBar = renderHintBar(
+			"enter/backspace", "go up",
+			"esc", "cancel",
+		)
+	} else {
+		// Normal hints
+		hintBar = renderHintBar(
+			"↑↓/j/k", "navigate",
+			"enter", "select",
+			"backspace", "up",
+			"esc", "cancel",
+		)
+	}
 	b.WriteString(hintBar)
 
 	return b.String()
