@@ -1,0 +1,130 @@
+package hooks
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/mark3labs/iteratr/internal/logger"
+	"gopkg.in/yaml.v3"
+)
+
+// ConfigFileName is the name of the hooks configuration file.
+const ConfigFileName = ".iteratr.hooks.yml"
+
+// LoadConfig loads the hooks configuration from the working directory.
+// Returns nil if the config file doesn't exist (hooks are optional).
+// Returns an error only if the file exists but cannot be parsed.
+func LoadConfig(workDir string) (*Config, error) {
+	configPath := filepath.Join(workDir, ConfigFileName)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debug("No hooks config found at %s", configPath)
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read hooks config: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse hooks config: %w", err)
+	}
+
+	logger.Debug("Loaded hooks config from %s (version: %d)", configPath, cfg.Version)
+	return &cfg, nil
+}
+
+// Variables holds template variables that can be expanded in hook commands.
+type Variables struct {
+	Session   string
+	Iteration string
+}
+
+// Execute runs a hook command and returns its output.
+// Template variables in the command ({{session}}, {{iteration}}) are expanded before execution.
+// On error, returns an error message as output and nil error (graceful degradation).
+// Only returns error for context cancellation.
+func Execute(ctx context.Context, hook *HookConfig, workDir string, vars Variables) (string, error) {
+	if hook == nil || hook.Command == "" {
+		return "", nil
+	}
+
+	// Expand template variables in command
+	command := expandVariables(hook.Command, vars)
+	logger.Debug("Executing hook command: %s", command)
+
+	// Determine timeout
+	timeout := hook.Timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+
+	// Create context with timeout
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	// Execute command via shell
+	cmd := exec.CommandContext(execCtx, "sh", "-c", command)
+	cmd.Dir = workDir
+
+	// Capture stdout and stderr separately
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Run the command
+	err := cmd.Run()
+
+	// Check for context cancellation (propagate this)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
+	// Handle timeout
+	if execCtx.Err() == context.DeadlineExceeded {
+		logger.Warn("Hook command timed out after %ds: %s", timeout, command)
+		return fmt.Sprintf("[Hook timed out after %ds]\nPartial output:\n%s", timeout, stdout.String()), nil
+	}
+
+	// Handle command failure (graceful degradation - include error in output)
+	if err != nil {
+		logger.Warn("Hook command failed: %v", err)
+		output := stdout.String()
+		if stderr.Len() > 0 {
+			output += "\n[stderr]\n" + stderr.String()
+		}
+		return fmt.Sprintf("[Hook command failed: %v]\n%s", err, output), nil
+	}
+
+	// Success - return stdout (include stderr if present)
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		logger.Debug("Hook stderr: %s", stderr.String())
+		// Include stderr in output so agent has full context
+		output += "\n[stderr]\n" + stderr.String()
+	}
+
+	logger.Debug("Hook executed successfully, output length: %d bytes", len(output))
+	return output, nil
+}
+
+// expandVariables replaces {{variable}} placeholders in the command string.
+func expandVariables(command string, vars Variables) string {
+	replacements := map[string]string{
+		"{{session}}":   vars.Session,
+		"{{iteration}}": vars.Iteration,
+	}
+
+	result := command
+	for placeholder, value := range replacements {
+		result = strings.ReplaceAll(result, placeholder, value)
+	}
+	return result
+}

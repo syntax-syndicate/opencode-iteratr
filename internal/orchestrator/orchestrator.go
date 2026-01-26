@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/agent"
 	ierr "github.com/mark3labs/iteratr/internal/errors"
+	"github.com/mark3labs/iteratr/internal/hooks"
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/nats"
 	"github.com/mark3labs/iteratr/internal/session"
@@ -37,20 +39,21 @@ type Config struct {
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
 type Orchestrator struct {
-	cfg        Config
-	ns         *natsserver.Server // Embedded NATS server (nil if node mode)
-	natsPort   int                // NATS server port
-	nc         *natsgo.Conn       // NATS connection
-	store      *session.Store     // Session store
-	runner     *agent.Runner      // Agent runner for opencode subprocess
-	tuiApp     *tui.App           // TUI application (nil if headless)
-	tuiProgram *tea.Program       // Bubbletea program
-	tuiDone    chan struct{}      // TUI completion signal
-	sendChan   chan string        // Channel for user input messages from TUI to orchestrator
-	ctx        context.Context    // Context for cancellation
-	cancel     context.CancelFunc // Cancel function
-	stopped    bool               // Track if Stop() was already called
-	isPrimary  bool               // True if this instance owns the NATS server
+	cfg         Config
+	ns          *natsserver.Server // Embedded NATS server (nil if node mode)
+	natsPort    int                // NATS server port
+	nc          *natsgo.Conn       // NATS connection
+	store       *session.Store     // Session store
+	runner      *agent.Runner      // Agent runner for opencode subprocess
+	tuiApp      *tui.App           // TUI application (nil if headless)
+	tuiProgram  *tea.Program       // Bubbletea program
+	tuiDone     chan struct{}      // TUI completion signal
+	sendChan    chan string        // Channel for user input messages from TUI to orchestrator
+	ctx         context.Context    // Context for cancellation
+	cancel      context.CancelFunc // Cancel function
+	stopped     bool               // Track if Stop() was already called
+	isPrimary   bool               // True if this instance owns the NATS server
+	hooksConfig *hooks.Config      // Hooks configuration (nil if no hooks file)
 }
 
 // New creates a new Orchestrator with the given configuration.
@@ -158,6 +161,17 @@ func (o *Orchestrator) Start() error {
 		logger.Debug("TUI started")
 	} else {
 		logger.Info("Running in headless mode")
+	}
+
+	// 7. Load hooks configuration (optional)
+	logger.Debug("Loading hooks configuration")
+	hooksConfig, err := hooks.LoadConfig(o.cfg.WorkDir)
+	if err != nil {
+		// Log warning but continue - hooks are optional
+		logger.Warn("Failed to load hooks config: %v", err)
+	} else if hooksConfig != nil {
+		o.hooksConfig = hooksConfig
+		logger.Info("Hooks configuration loaded")
 	}
 
 	logger.Info("Orchestrator started successfully")
@@ -346,6 +360,30 @@ func (o *Orchestrator) Run() error {
 			o.tuiProgram.Send(tui.IterationStartMsg{Number: currentIteration})
 		}
 
+		// Execute pre-iteration hook if configured
+		var hookOutput string
+		if o.hooksConfig != nil && o.hooksConfig.Hooks.PreIteration != nil {
+			logger.Debug("Executing pre-iteration hook")
+			hookVars := hooks.Variables{
+				Session:   o.cfg.SessionName,
+				Iteration: strconv.Itoa(currentIteration),
+			}
+			output, err := hooks.Execute(o.ctx, o.hooksConfig.Hooks.PreIteration, o.cfg.WorkDir, hookVars)
+			if err != nil {
+				// Context cancelled - propagate
+				if o.ctx.Err() != nil {
+					logger.Info("Context cancelled during hook execution")
+					return nil
+				}
+				logger.Error("Hook execution failed: %v", err)
+			} else {
+				hookOutput = output
+				if len(output) > 0 {
+					logger.Debug("Hook output: %d bytes", len(output))
+				}
+			}
+		}
+
 		// Build prompt with current state
 		logger.Debug("Building prompt for iteration #%d", currentIteration)
 		prompt, err := template.BuildPrompt(o.ctx, template.BuildConfig{
@@ -356,6 +394,7 @@ func (o *Orchestrator) Run() error {
 			TemplatePath:      o.cfg.TemplatePath,
 			ExtraInstructions: o.cfg.ExtraInstructions,
 			NATSPort:          o.natsPort,
+			HookOutput:        hookOutput,
 		})
 		if err != nil {
 			logger.Error("Failed to build prompt: %v", err)

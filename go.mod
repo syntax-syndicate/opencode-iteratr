@@ -11,9 +11,11 @@ require (
 	github.com/charmbracelet/glamour v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/ultraviolet v0.0.0-20251116181749-377898bcce38
+	github.com/charmbracelet/x/editor v0.2.0
 	github.com/nats-io/nats-server/v2 v2.10.0
 	github.com/nats-io/nats.go v1.36.0
 	github.com/spf13/cobra v1.10.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
