@@ -37,6 +37,12 @@ type Theme struct {
 	Error   string
 	Info    string
 
+	// Diff colors
+	DiffInsertBg  string
+	DiffDeleteBg  string
+	DiffEqualBg   string
+	DiffMissingBg string
+
 	// Lazy-built styles
 	styles     *Styles
 	stylesOnce sync.Once
