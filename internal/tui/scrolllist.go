@@ -397,6 +397,16 @@ func (s *ScrollList) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "up", "k":
+			// Scroll up by one line (arrows primary, j/k backup)
+			s.ScrollBy(-1)
+			s.autoScroll = false
+		case "down", "j":
+			// Scroll down by one line (arrows primary, j/k backup)
+			s.ScrollBy(1)
+			if s.AtBottom() {
+				s.autoScroll = true
+			}
 		case "pgup":
 			s.ScrollBy(-s.height)
 			s.autoScroll = false

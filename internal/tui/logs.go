@@ -64,7 +64,7 @@ func (l *LogViewer) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	vpContent := l.viewport.View()
 
 	// Hint at bottom
-	hint := s.ModalHint.Render("esc close • ↑/↓ scroll • ctrl+l close")
+	hint := HintLogs()
 
 	// Use strings.Join instead of lipgloss.JoinVertical (like crush does)
 	content := strings.Join([]string{

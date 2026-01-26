@@ -158,13 +158,7 @@ func (s *StatusBar) buildTaskStats() string {
 
 // buildRight builds the right side with keybinding hints.
 func (s *StatusBar) buildRight() string {
-	t := theme.Current()
-	hintKey := lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgSubtle))
-	hintDesc := lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgMuted))
-	sep := "  "
-
-	return hintKey.Render("ctrl+l") + hintDesc.Render(" logs") + sep +
-		hintKey.Render("ctrl+c") + hintDesc.Render(" quit")
+	return HintStatus()
 }
 
 // SetSize updates the component dimensions.

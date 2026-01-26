@@ -310,15 +310,7 @@ func (m *NoteInputModal) View() string {
 	sections = append(sections, "")
 
 	// Hint bar at bottom with keyboard shortcuts
-	s := theme.Current().S()
-	hintBar := s.HintKey.Render("tab") + " " +
-		s.HintDesc.Render("cycle focus") + " " +
-		s.HintSeparator.Render("•") + " " +
-		s.HintKey.Render("ctrl+enter") + " " +
-		s.HintDesc.Render("submit") + " " +
-		s.HintSeparator.Render("•") + " " +
-		s.HintKey.Render("esc") + " " +
-		s.HintDesc.Render("close")
+	hintBar := HintModal()
 	hintText := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Center).Render(hintBar)
 	sections = append(sections, hintText)
 
@@ -328,6 +320,7 @@ func (m *NoteInputModal) View() string {
 // renderTypeBadges renders the row of note type badges with the active type highlighted.
 // When the type selector is focused, the active badge is highlighted with primary color.
 // When unfocused, the active badge uses the standard type-specific color.
+// Inactive badges show colored text without background.
 func (m *NoteInputModal) renderTypeBadges() string {
 	var badges []string
 	t := theme.Current()
@@ -337,77 +330,46 @@ func (m *NoteInputModal) renderTypeBadges() string {
 		isActive := i == m.typeIndex
 		var badge lipgloss.Style
 		var text string
+		var typeBadge lipgloss.Style
+		var typeColor string
 
-		// Determine badge style and text based on type
+		// Determine badge style, color, and text based on type
 		switch noteType {
 		case "learning":
 			text = "* learning"
-			if isActive {
-				if m.focus == focusTypeSelector {
-					// Active and focused: use primary color
-					badge = s.Badge.
-						Foreground(lipgloss.Color(t.FgBright)).
-						Background(lipgloss.Color(t.Primary))
-				} else {
-					// Active but not focused: use type-specific color
-					badge = s.BadgeSuccess
-				}
-			} else {
-				// Inactive: muted
-				badge = s.BadgeMuted
-			}
+			typeBadge = s.BadgeSuccess
+			typeColor = t.Success
 		case "stuck":
 			text = "! stuck"
-			if isActive {
-				if m.focus == focusTypeSelector {
-					badge = s.Badge.
-						Foreground(lipgloss.Color(t.FgBright)).
-						Background(lipgloss.Color(t.Primary))
-				} else {
-					badge = s.BadgeError
-				}
-			} else {
-				badge = s.BadgeMuted
-			}
+			typeBadge = s.BadgeError
+			typeColor = t.Error
 		case "tip":
 			text = "› tip"
-			if isActive {
-				if m.focus == focusTypeSelector {
-					badge = s.Badge.
-						Foreground(lipgloss.Color(t.FgBright)).
-						Background(lipgloss.Color(t.Primary))
-				} else {
-					badge = s.BadgeWarning
-				}
-			} else {
-				badge = s.BadgeMuted
-			}
+			typeBadge = s.BadgeWarning
+			typeColor = t.Warning
 		case "decision":
 			text = "◇ decision"
-			if isActive {
-				if m.focus == focusTypeSelector {
-					badge = s.Badge.
-						Foreground(lipgloss.Color(t.FgBright)).
-						Background(lipgloss.Color(t.Primary))
-				} else {
-					badge = s.BadgeInfo
-				}
-			} else {
-				badge = s.BadgeMuted
-			}
+			typeBadge = s.BadgeInfo
+			typeColor = t.Secondary
 		default:
 			text = "≡ " + noteType
-			if isActive {
-				if m.focus == focusTypeSelector {
-					badge = s.Badge.
-						Foreground(lipgloss.Color(t.FgBright)).
-						Background(lipgloss.Color(t.Primary))
-				} else {
-					badge = s.Badge
-				}
+			typeBadge = s.Badge
+			typeColor = t.FgBase
+		}
+
+		if isActive {
+			if m.focus == focusTypeSelector {
+				// Active and focused: use primary color
+				badge = s.Badge.
+					Foreground(lipgloss.Color(t.FgBright)).
+					Background(lipgloss.Color(t.Primary))
 			} else {
-				badge = s.BadgeMuted
+				// Active but not focused: use type-specific color
+				badge = typeBadge
 			}
+		} else {
+			// Inactive: colored text without background
+			badge = s.Badge.Foreground(lipgloss.Color(typeColor))
 		}
 
 		badges = append(badges, badge.Render(text))

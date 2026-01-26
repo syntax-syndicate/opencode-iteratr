@@ -149,101 +149,41 @@ func TestAgentOutput_UpDownKeyHandling(t *testing.T) {
 	ao.ready = true
 	ao.UpdateSize(80, 20)
 
-	// Add a mix of message types: text, thinking, tool, text, thinking, tool
-	ao.AppendText("First text message")
-
-	ao.AppendThinking("First thinking block")
-
-	toolMsg1 := AgentToolCallMsg{
-		ToolCallID: "tool-1",
-		Title:      "Read",
-		Status:     "completed",
-		Input:      map[string]any{"filePath": "test.go"},
-		Output:     "tool output 1",
-	}
-	ao.AppendToolCall(toolMsg1)
-
-	ao.AppendText("Second text message")
-
-	ao.AppendThinking("Second thinking block")
-
-	toolMsg2 := AgentToolCallMsg{
-		ToolCallID: "tool-2",
-		Title:      "Edit",
-		Status:     "completed",
-		Input:      map[string]any{"filePath": "test.go"},
-		Output:     "tool output 2",
-	}
-	ao.AppendToolCall(toolMsg2)
-
-	// Messages are at indices: 0=text, 1=thinking, 2=tool, 3=text, 4=thinking, 5=tool
-	// Expandable messages are at indices: 1, 2, 4, 5
-
-	// Initially no message is focused
-	if ao.focusedIndex != -1 {
-		t.Errorf("expected focusedIndex to be -1, got %d", ao.focusedIndex)
+	// Add enough content to require scrolling
+	for i := 0; i < 10; i++ {
+		ao.AppendText("Line of text that should create scrollable content")
 	}
 
-	// Press Down arrow - should focus first expandable message (index 1)
-	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
-	ao.Update(downKey)
-	if ao.focusedIndex != 1 {
-		t.Errorf("expected focusedIndex to be 1 after first down, got %d", ao.focusedIndex)
+	// Scroll should start at bottom (auto-scroll enabled)
+	if !ao.scrollList.AtBottom() {
+		t.Errorf("expected scroll to be at bottom initially")
 	}
 
-	// Press Down arrow again - should move to next expandable (index 2)
-	ao.Update(downKey)
-	if ao.focusedIndex != 2 {
-		t.Errorf("expected focusedIndex to be 2 after second down, got %d", ao.focusedIndex)
-	}
-
-	// Press Down arrow again - should move to next expandable (index 4)
-	ao.Update(downKey)
-	if ao.focusedIndex != 4 {
-		t.Errorf("expected focusedIndex to be 4 after third down, got %d", ao.focusedIndex)
-	}
-
-	// Press Down arrow again - should move to next expandable (index 5)
-	ao.Update(downKey)
-	if ao.focusedIndex != 5 {
-		t.Errorf("expected focusedIndex to be 5 after fourth down, got %d", ao.focusedIndex)
-	}
-
-	// Press Down arrow again - should wrap to first expandable (index 1)
-	ao.Update(downKey)
-	if ao.focusedIndex != 1 {
-		t.Errorf("expected focusedIndex to wrap to 1 after fifth down, got %d", ao.focusedIndex)
-	}
-
-	// Press Up arrow - should wrap to last expandable (index 5)
+	// Press Up arrow - should scroll up and disable auto-scroll
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	ao.Update(upKey)
-	if ao.focusedIndex != 5 {
-		t.Errorf("expected focusedIndex to wrap to 5 after up from first, got %d", ao.focusedIndex)
+	if ao.scrollList.autoScroll {
+		t.Errorf("expected autoScroll to be disabled after scrolling up")
 	}
 
-	// Press Up arrow again - should move to previous expandable (index 4)
-	ao.Update(upKey)
-	if ao.focusedIndex != 4 {
-		t.Errorf("expected focusedIndex to be 4 after up, got %d", ao.focusedIndex)
-	}
+	// Press Down arrow - should scroll down
+	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
+	ao.Update(downKey)
 
-	// Press Up arrow again - should move to previous expandable (index 2)
-	ao.Update(upKey)
-	if ao.focusedIndex != 2 {
-		t.Errorf("expected focusedIndex to be 2 after up, got %d", ao.focusedIndex)
-	}
+	// Press 'k' - should also scroll up (vim-style backup)
+	kKey := tea.KeyPressMsg{Code: 'k'}
+	ao.Update(kKey)
 
-	// Press Up arrow again - should move to previous expandable (index 1)
-	ao.Update(upKey)
-	if ao.focusedIndex != 1 {
-		t.Errorf("expected focusedIndex to be 1 after up, got %d", ao.focusedIndex)
-	}
+	// Press 'j' - should also scroll down (vim-style backup)
+	jKey := tea.KeyPressMsg{Code: 'j'}
+	ao.Update(jKey)
 
-	// Press Up arrow again - should wrap to last expandable (index 5)
-	ao.Update(upKey)
-	if ao.focusedIndex != 5 {
-		t.Errorf("expected focusedIndex to wrap to 5 after up from first, got %d", ao.focusedIndex)
+	// Scrolling to bottom should re-enable auto-scroll
+	for i := 0; i < 20; i++ {
+		ao.Update(downKey)
+	}
+	if !ao.scrollList.AtBottom() || !ao.scrollList.autoScroll {
+		t.Errorf("expected autoScroll to be re-enabled when reaching bottom")
 	}
 }
 
@@ -256,19 +196,18 @@ func TestAgentOutput_UpDownKeyHandling_NoExpandableMessages(t *testing.T) {
 	ao.AppendText("First text message")
 	ao.AppendText("Second text message")
 
-	// Initially no message is focused
+	// focusedIndex should always be -1 (focus navigation removed)
 	if ao.focusedIndex != -1 {
 		t.Errorf("expected focusedIndex to be -1, got %d", ao.focusedIndex)
 	}
 
-	// Press Down arrow - should not change focus (no expandable messages)
+	// Up/Down keys now scroll the viewport (not focus navigation)
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	ao.Update(downKey)
 	if ao.focusedIndex != -1 {
 		t.Errorf("expected focusedIndex to remain -1, got %d", ao.focusedIndex)
 	}
 
-	// Press Up arrow - should not change focus (no expandable messages)
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	ao.Update(upKey)
 	if ao.focusedIndex != -1 {
@@ -309,33 +248,26 @@ func TestAgentOutput_UpDownKeyHandling_SingleExpandableMessage(t *testing.T) {
 	// Add only one expandable message
 	ao.AppendThinking("Single thinking block")
 
-	// Initially no message is focused
+	// focusedIndex should always be -1 (focus navigation removed, up/down scroll instead)
 	if ao.focusedIndex != -1 {
 		t.Errorf("expected focusedIndex to be -1, got %d", ao.focusedIndex)
 	}
 
-	// Press Down arrow - should focus the only expandable message (index 0)
+	// Up/Down keys now scroll the viewport (not focus navigation)
 	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
 	ao.Update(downKey)
-	if ao.focusedIndex != 0 {
-		t.Errorf("expected focusedIndex to be 0, got %d", ao.focusedIndex)
+	if ao.focusedIndex != -1 {
+		t.Errorf("expected focusedIndex to remain -1, got %d", ao.focusedIndex)
 	}
 
-	// Press Down arrow again - should stay at index 0 (wrap to itself)
-	ao.Update(downKey)
-	if ao.focusedIndex != 0 {
-		t.Errorf("expected focusedIndex to remain at 0, got %d", ao.focusedIndex)
-	}
-
-	// Press Up arrow - should stay at index 0 (wrap to itself)
 	upKey := tea.KeyPressMsg{Code: tea.KeyUp}
 	ao.Update(upKey)
-	if ao.focusedIndex != 0 {
-		t.Errorf("expected focusedIndex to remain at 0, got %d", ao.focusedIndex)
+	if ao.focusedIndex != -1 {
+		t.Errorf("expected focusedIndex to remain -1, got %d", ao.focusedIndex)
 	}
 }
 
-func TestAgentOutput_ToggleExpandedOnFocusedMessage(t *testing.T) {
+func TestAgentOutput_ToggleExpandedViaClick(t *testing.T) {
 	ao := NewAgentOutput()
 	ao.ready = true
 	ao.UpdateSize(80, 20)
@@ -350,10 +282,6 @@ func TestAgentOutput_ToggleExpandedOnFocusedMessage(t *testing.T) {
 	}
 	ao.AppendToolCall(toolMsg)
 
-	// Focus the message with Down arrow
-	downKey := tea.KeyPressMsg{Code: tea.KeyDown}
-	ao.Update(downKey)
-
 	toolItem := ao.messages[0].(*ToolMessageItem)
 
 	// Verify message is not expanded initially
@@ -361,22 +289,20 @@ func TestAgentOutput_ToggleExpandedOnFocusedMessage(t *testing.T) {
 		t.Fatal("expected tool message to not be expanded initially")
 	}
 
-	// Toggle expansion with space key
-	spaceKey := tea.KeyPressMsg{Code: ' ', Text: " "}
-	ao.Update(spaceKey)
+	// Toggle expansion via direct method call (simulating click)
+	toolItem.ToggleExpanded()
 
 	// Message should now be expanded
 	if !toolItem.IsExpanded() {
-		t.Error("expected tool message to be expanded after space")
+		t.Error("expected tool message to be expanded after toggle")
 	}
 
-	// Toggle back with enter key
-	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
-	ao.Update(enterKey)
+	// Toggle back
+	toolItem.ToggleExpanded()
 
 	// Message should now be collapsed
 	if toolItem.IsExpanded() {
-		t.Error("expected tool message to be collapsed after enter")
+		t.Error("expected tool message to be collapsed after second toggle")
 	}
 }
 

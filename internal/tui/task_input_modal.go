@@ -272,6 +272,30 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 		var badge lipgloss.Style
 		text := priority.icon + " " + priority.label
 
+		// Get priority-specific colors (badge style for active, text color for inactive)
+		var priorityBadge lipgloss.Style
+		var priorityColor string
+		switch priority.value {
+		case 0: // critical
+			priorityBadge = s.BadgeError
+			priorityColor = t.Error
+		case 1: // high
+			priorityBadge = s.BadgeWarning
+			priorityColor = t.Warning
+		case 2: // medium
+			priorityBadge = s.BadgeInfo
+			priorityColor = t.Secondary
+		case 3: // low
+			priorityBadge = s.BadgeMuted
+			priorityColor = t.FgMuted
+		case 4: // backlog
+			priorityBadge = s.BadgeMuted.Faint(true)
+			priorityColor = t.FgMuted
+		default:
+			priorityBadge = s.BadgeMuted
+			priorityColor = t.FgMuted
+		}
+
 		if isActive {
 			if m.focus == focusPrioritySelector {
 				// Active and focused: use primary color
@@ -280,24 +304,11 @@ func (m *TaskInputModal) renderPriorityBadges() string {
 					Background(lipgloss.Color(t.Primary))
 			} else {
 				// Active but not focused: use priority-specific color
-				switch priority.value {
-				case 0: // critical
-					badge = s.BadgeError
-				case 1: // high
-					badge = s.BadgeWarning
-				case 2: // medium
-					badge = s.BadgeInfo
-				case 3: // low
-					badge = s.BadgeMuted
-				case 4: // backlog
-					badge = s.BadgeMuted.Faint(true)
-				default:
-					badge = s.BadgeMuted
-				}
+				badge = priorityBadge
 			}
 		} else {
-			// Inactive: muted
-			badge = s.BadgeMuted
+			// Inactive: colored text without background
+			badge = s.Badge.Foreground(lipgloss.Color(priorityColor))
 		}
 
 		badges = append(badges, badge.Render(text))
@@ -368,15 +379,7 @@ func (m *TaskInputModal) View() string {
 	sections = append(sections, "")
 
 	// Hint bar at bottom with keyboard shortcuts
-	s := theme.Current().S()
-	hintBar := s.HintKey.Render("tab") + " " +
-		s.HintDesc.Render("cycle focus") + " " +
-		s.HintSeparator.Render("•") + " " +
-		s.HintKey.Render("ctrl+enter") + " " +
-		s.HintDesc.Render("submit") + " " +
-		s.HintSeparator.Render("•") + " " +
-		s.HintKey.Render("esc") + " " +
-		s.HintDesc.Render("close")
+	hintBar := HintModal()
 	hintText := lipgloss.NewStyle().Width(m.width - 4).Align(lipgloss.Center).Render(hintBar)
 	sections = append(sections, hintText)
 
