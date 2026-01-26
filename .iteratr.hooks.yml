@@ -1,0 +1,6 @@
+version: 1
+
+hooks:
+  pre_iteration:
+    command: "echo 'Session: {{session}} | Iteration: {{iteration}}' && date && echo '--- End of hook output ---'"
+    timeout: 30
