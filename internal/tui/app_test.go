@@ -14,6 +14,7 @@ func TestNewApp(t *testing.T) {
 
 	if app == nil {
 		t.Fatal("expected non-nil app")
+		return // Explicit return to help static analysis
 	}
 	if app.sessionName != "test-session" {
 		t.Errorf("session name: got %s, want test-session", app.sessionName)
