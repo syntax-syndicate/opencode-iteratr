@@ -251,6 +251,7 @@ func (o *Orchestrator) Run() error {
 					Kind:       event.Kind,
 					Input:      event.RawInput,
 					Output:     event.Output,
+					SessionID:  event.SessionID,
 				}
 				if event.FileDiff != nil {
 					msg.FileDiff = &tui.FileDiff{
