@@ -4,5 +4,7 @@ hooks:
   pre_iteration:
     - command: "golangci-lint run ./..."
       timeout: 5
+      pipe_output: true
     - command: "go vet ./..."
       timeout: 5
+      pipe_output: true
