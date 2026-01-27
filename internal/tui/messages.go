@@ -626,6 +626,115 @@ func (i *InfoMessageItem) Height() int {
 	return lines
 }
 
+// SubagentMessageItem represents a subagent task call.
+type SubagentMessageItem struct {
+	id           string
+	subagentType string
+	description  string
+	status       ToolStatus // Pending, Running, Success, Error
+	sessionID    string     // Empty until completion
+	cachedRender string
+	cachedWidth  int
+}
+
+// ID returns the unique identifier for this subagent message.
+func (s *SubagentMessageItem) ID() string {
+	return s.id
+}
+
+// Render renders the subagent message at the given width.
+// Shows status icon, subagent type in brackets, and description.
+// If completed with sessionID, shows "Click to view" hint on the right.
+func (s *SubagentMessageItem) Render(width int) string {
+	// Return cached render if width matches
+	if s.cachedWidth == width && s.cachedRender != "" {
+		return s.cachedRender
+	}
+
+	var result strings.Builder
+
+	// --- HEADER: [icon] [type] status ---
+	var icon string
+	var iconStyle lipgloss.Style
+	var statusText string
+	th := theme.Current().S()
+
+	switch s.status {
+	case ToolStatusPending:
+		icon = "●"
+		iconStyle = th.ToolIconPending
+		statusText = "Pending"
+	case ToolStatusRunning:
+		icon = "◐"
+		iconStyle = th.ToolIconPending
+		statusText = "Running..."
+	case ToolStatusSuccess:
+		icon = "●"
+		iconStyle = th.ToolIconSuccess
+		statusText = "Completed"
+	case ToolStatusError:
+		icon = "×"
+		iconStyle = th.ToolIconError
+		statusText = "Error"
+	case ToolStatusCanceled:
+		icon = "×"
+		iconStyle = th.ToolIconCanceled
+		statusText = "Canceled"
+	default:
+		icon = "●"
+		iconStyle = th.ToolIconPending
+		statusText = "Unknown"
+	}
+
+	// Build header line: [indent] [icon] [type] status
+	header := "  " + iconStyle.Render(icon) + " " +
+		th.ToolName.Render("["+s.subagentType+"]") + " " +
+		th.ToolParams.Render(statusText)
+
+	result.WriteString(header)
+
+	// --- DESCRIPTION LINE ---
+	result.WriteString("\n")
+	description := "     " + th.ToolParams.Render(s.description) // 5-space indent
+	result.WriteString(description)
+
+	// --- "Click to view" HINT (only if sessionID available) ---
+	if s.sessionID != "" {
+		result.WriteString("\n")
+		// Right-align the hint
+		hint := "[Click to view]"
+		hintStyled := th.ToolParams.Foreground(lipgloss.Color(theme.Current().FgSubtle)).Render(hint)
+		hintWidth := len(hint)
+		if hintWidth < width {
+			padding := strings.Repeat(" ", width-hintWidth)
+			result.WriteString(padding + hintStyled)
+		} else {
+			result.WriteString(hintStyled)
+		}
+	}
+
+	// Cache and return
+	rendered := result.String()
+	s.cachedRender = rendered
+	s.cachedWidth = width
+	return rendered
+}
+
+// Height returns the number of lines this subagent message occupies.
+func (s *SubagentMessageItem) Height() int {
+	if s.cachedRender == "" {
+		return 0
+	}
+	// Count newlines in cached render
+	lines := 1
+	for _, ch := range s.cachedRender {
+		if ch == '\n' {
+			lines++
+		}
+	}
+	return lines
+}
+
 // DividerMessageItem represents an iteration divider.
 type DividerMessageItem struct {
 	id           string
