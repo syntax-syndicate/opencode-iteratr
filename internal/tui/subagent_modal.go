@@ -19,7 +19,9 @@ type SubagentModal struct {
 	subagentType string
 	workDir      string
 
-	// ACP subprocess will be added when implementing Start()
+	// ACP subprocess (populated by Start())
+	cmd  interface{} // *exec.Cmd - will be set in Start()
+	conn interface{} // *acpConn - will be set in Start()
 
 	// State
 	loading bool
@@ -76,6 +78,26 @@ func (m *SubagentModal) HandleUpdate(msg tea.Msg) tea.Cmd {
 }
 
 // Close terminates the ACP subprocess and cleans up resources.
+// Safe to call multiple times or if Start() was never called.
 func (m *SubagentModal) Close() {
-	// This will be implemented in task TAS-21
+	// Cancel context to stop any ongoing operations
+	if m.cancel != nil {
+		m.cancel()
+	}
+
+	// Close ACP connection if established
+	// conn will be *acpConn when Start() is implemented
+	if m.conn != nil {
+		// Type assertion and close will be added in TAS-16
+		// For now, this is a placeholder for the interface
+		m.conn = nil
+	}
+
+	// Kill subprocess if running
+	// cmd will be *exec.Cmd when Start() is implemented
+	if m.cmd != nil {
+		// Type assertion and process kill will be added in TAS-16
+		// Pattern: cmd.Process.Kill() then cmd.Wait()
+		m.cmd = nil
+	}
 }
