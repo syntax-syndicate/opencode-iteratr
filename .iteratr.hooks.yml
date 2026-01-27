@@ -1,7 +1,7 @@
 version: 1
 
 hooks:
-  pre_iteration:
+  post_iteration:
     - command: "golangci-lint run ./..."
       timeout: 5
       pipe_output: true
