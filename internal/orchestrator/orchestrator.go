@@ -278,6 +278,13 @@ func (o *Orchestrator) Run() error {
 			OnFileChange: func(change agent.FileChange) {
 				// Record change in tracker
 				o.fileTracker.RecordChange(change.AbsPath, change.IsNew, change.Additions, change.Deletions)
+				// Send message to TUI
+				o.tuiProgram.Send(tui.FileChangeMsg{
+					Path:      change.Path,
+					IsNew:     change.IsNew,
+					Additions: change.Additions,
+					Deletions: change.Deletions,
+				})
 			},
 		})
 	} else {
