@@ -147,7 +147,11 @@ hooks:
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Unsubscribe()
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Logf("Failed to unsubscribe: %v", err)
+		}
+	}()
 
 	// Add a task
 	task, err := store.TaskAdd(ctx, "test-session", session.TaskAddParams{
@@ -310,7 +314,11 @@ hooks:
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Unsubscribe()
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Logf("Failed to unsubscribe: %v", err)
+		}
+	}()
 
 	// Complete task
 	if err := store.TaskStatus(ctx, "test-session", session.TaskStatusParams{
@@ -444,7 +452,11 @@ hooks:
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sub.Unsubscribe()
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			t.Logf("Failed to unsubscribe: %v", err)
+		}
+	}()
 
 	// Change status to in_progress (NOT completed)
 	if err := store.TaskStatus(ctx, "test-session", session.TaskStatusParams{
