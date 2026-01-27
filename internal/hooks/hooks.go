@@ -138,6 +138,31 @@ func ExecuteAll(ctx context.Context, hooks []*HookConfig, workDir string, vars V
 	return strings.Join(outputs, "\n"), nil
 }
 
+// ExecuteAllPiped runs multiple hook commands and returns only output from hooks with pipe_output: true.
+// All hooks are executed (for side effects), but only output from hooks with PipeOutput=true is returned.
+// Returns combined piped output separated by newlines.
+// Only returns error for context cancellation.
+func ExecuteAllPiped(ctx context.Context, hooks []*HookConfig, workDir string, vars Variables) (string, error) {
+	if len(hooks) == 0 {
+		return "", nil
+	}
+
+	var pipedOutputs []string
+	for _, hook := range hooks {
+		output, err := Execute(ctx, hook, workDir, vars)
+		if err != nil {
+			// Context cancelled - propagate
+			return "", err
+		}
+		// Only include output if pipe_output is true
+		if hook.PipeOutput && output != "" {
+			pipedOutputs = append(pipedOutputs, output)
+		}
+	}
+
+	return strings.Join(pipedOutputs, "\n"), nil
+}
+
 // expandVariables replaces {{variable}} placeholders in the command string.
 func expandVariables(command string, vars Variables) string {
 	replacements := map[string]string{
