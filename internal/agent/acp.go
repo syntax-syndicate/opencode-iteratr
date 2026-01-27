@@ -628,6 +628,12 @@ type newSessionParams struct {
 	McpServers []any  `json:"mcpServers"`
 }
 
+type loadSessionParams struct {
+	SessionID  string `json:"sessionId"`
+	Cwd        string `json:"cwd"`
+	McpServers []any  `json:"mcpServers"`
+}
+
 type newSessionResult struct {
 	SessionID string       `json:"sessionId"`
 	Models    *modelsState `json:"models,omitempty"`
