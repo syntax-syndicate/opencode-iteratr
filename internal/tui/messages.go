@@ -597,14 +597,6 @@ func (i *InfoMessageItem) Render(width int) string {
 			s.InfoDuration.Render(durationStr)
 	}
 
-	// Add trailing horizontal rule to fill remaining width
-	infoWidth := lipgloss.Width(infoText)
-	remainingWidth := width - infoWidth - 1 // -1 for space before rule
-	if remainingWidth > 0 {
-		rule := strings.Repeat("─", remainingWidth)
-		infoText = infoText + " " + s.InfoRule.Render(rule)
-	}
-
 	// Cache and return
 	i.cachedRender = infoText
 	i.cachedWidth = width
