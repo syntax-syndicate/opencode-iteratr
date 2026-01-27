@@ -54,6 +54,8 @@ type Orchestrator struct {
 	stopped     bool               // Track if Stop() was already called
 	isPrimary   bool               // True if this instance owns the NATS server
 	hooksConfig *hooks.Config      // Hooks configuration (nil if no hooks file)
+	fileTracker *agent.FileTracker // Tracks files modified during iteration
+	autoCommit  bool               // Auto-commit modified files after iteration
 }
 
 // New creates a new Orchestrator with the given configuration.
