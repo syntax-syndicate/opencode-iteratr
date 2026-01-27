@@ -21,3 +21,4 @@
 | [wizard-session-selector](./wizard-session-selector.md) | Draft | Resume existing sessions or start new from wizard step 0 |
 | [hooks](./hooks.md) | Active | Pre-iteration hooks for injecting dynamic context via shell commands |
 | [theme-system](./theme-system.md) | Draft | Centralized theme package for consistent colors/styles (crush pattern) |
+| [file-tracking](./file-tracking.md) | Draft | Track modified files during iteration for auto-commit |
