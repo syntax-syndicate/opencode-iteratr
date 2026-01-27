@@ -203,8 +203,10 @@ func (c *acpConn) newSession(ctx context.Context, cwd string) (string, error) {
 	}
 }
 
-// loadSession loads an existing ACP session and returns the session ID.
-func (c *acpConn) loadSession(ctx context.Context, sessionID, cwd string) (string, error) {
+// LoadSession loads an existing ACP session and returns the session ID.
+// After LoadSession returns, the caller must continue reading notifications
+// to replay the full session history until EOF.
+func (c *acpConn) LoadSession(ctx context.Context, sessionID, cwd string) (string, error) {
 	params := loadSessionParams{
 		SessionID:  sessionID,
 		Cwd:        cwd,
