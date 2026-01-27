@@ -154,7 +154,7 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.buttonFocused = true
 				m.blurStepContent()
 				m.ensureButtonBar()
-				m.buttonBar.Focus()
+				m.buttonBar.FocusFirst() // Start at first button (Back) for sequential cycling
 				return m, nil
 			}
 		case "shift+tab":
@@ -164,9 +164,7 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.buttonFocused = true
 				m.blurStepContent()
 				m.ensureButtonBar()
-				m.buttonBar.Focus()
-				// Start at first button when coming from shift+tab
-				m.buttonBar.FocusPrev()
+				m.buttonBar.FocusLast() // Start at last button (Next) for reverse cycling
 				return m, nil
 			}
 		}
@@ -231,7 +229,7 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.buttonFocused = true
 		m.blurStepContent()
 		m.ensureButtonBar()
-		m.buttonBar.Focus()
+		m.buttonBar.FocusFirst() // Start at first button (Back) for sequential cycling
 		return m, nil
 
 	case TabExitBackwardMsg:
@@ -239,9 +237,7 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.buttonFocused = true
 		m.blurStepContent()
 		m.ensureButtonBar()
-		m.buttonBar.Focus()
-		// Start at first button when coming backwards
-		m.buttonBar.FocusPrev()
+		m.buttonBar.FocusLast() // Start at last button (Next) for reverse cycling
 		return m, nil
 
 	case ContentChangedMsg:
@@ -330,8 +326,11 @@ func (m *WizardModel) goNext() (tea.Model, tea.Cmd) {
 
 	switch m.step {
 	case 0:
-		// Session selector - will be handled by SessionSelectedMsg
-		// This is a placeholder for explicit Next button clicks
+		// Session selector - trigger the current selection (same as Enter key)
+		if m.sessionSelectorStep != nil {
+			cmd := m.sessionSelectorStep.TriggerSelection()
+			return m, cmd
+		}
 		return m, nil
 	case 1:
 		// File picker - emit selection message
@@ -571,6 +570,7 @@ func (m *WizardModel) updateCurrentStepSize() {
 func (m *WizardModel) View() tea.View {
 	var view tea.View
 	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion // Enable mouse clicks
 	view.KeyboardEnhancements = tea.KeyboardEnhancements{
 		ReportEventTypes: true, // Required for ctrl+enter
 	}
@@ -749,8 +749,11 @@ func (m *WizardModel) createButtonBar(modalX, modalY, modalWidth, contentStartY 
 func (m *WizardModel) isStepValid() bool {
 	switch m.step {
 	case 0:
-		// Session selector: always valid (either pick a session or create new)
-		return true
+		// Session selector: valid if loaded, no error, and not in confirmation state
+		if m.sessionSelectorStep != nil {
+			return m.sessionSelectorStep.IsReady()
+		}
+		return false
 	case 1:
 		// File picker: valid if a file (not directory) is selected
 		if m.filePickerStep != nil {

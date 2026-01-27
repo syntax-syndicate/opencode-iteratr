@@ -493,6 +493,42 @@ func (s *SessionSelectorStep) IsConfirming() bool {
 	return s.state == "confirm_continue" || s.state == "confirm_reset"
 }
 
+// IsReady returns true if the session selector is ready for Next button action.
+// Ready means: not loading, no error, in listing state (not confirming).
+func (s *SessionSelectorStep) IsReady() bool {
+	return !s.loading && s.error == "" && s.state == "listing"
+}
+
+// TriggerSelection triggers the currently selected item (same as pressing Enter).
+// Returns a command that may emit SessionSelectedMsg or transition to confirmation state.
+func (s *SessionSelectorStep) TriggerSelection() tea.Cmd {
+	if s.selectedIdx >= 0 && s.selectedIdx < len(s.sessions) {
+		selected := &s.sessions[s.selectedIdx]
+		s.selectedSession = selected
+
+		if selected.isNew {
+			// New session selected - proceed to wizard
+			return func() tea.Msg {
+				return SessionSelectedMsg{Name: "", IsNew: true}
+			}
+		}
+
+		// Existing session selected
+		if selected.info.Complete {
+			// Completed session - ask if they want to continue
+			s.state = "confirm_continue"
+			s.confirmInput = ""
+			return nil
+		} else {
+			// Incomplete session - ask if they want to reset
+			s.state = "confirm_reset"
+			s.confirmInput = ""
+			return nil
+		}
+	}
+	return nil
+}
+
 // ReturnToListing returns to the session listing from a confirmation state.
 func (s *SessionSelectorStep) ReturnToListing() {
 	s.state = "listing"

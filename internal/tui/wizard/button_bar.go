@@ -68,6 +68,34 @@ func (b *ButtonBar) Focus() {
 	}
 }
 
+// FocusFirst sets focus on the first enabled button (for sequential Tab cycling).
+func (b *ButtonBar) FocusFirst() {
+	for i := 0; i < len(b.buttons); i++ {
+		if b.buttons[i].State != ButtonDisabled {
+			b.focusIndex = i
+			return
+		}
+	}
+	// If all disabled, focus first anyway (unlikely)
+	if len(b.buttons) > 0 {
+		b.focusIndex = 0
+	}
+}
+
+// FocusLast sets focus on the last enabled button (for reverse Tab cycling).
+func (b *ButtonBar) FocusLast() {
+	for i := len(b.buttons) - 1; i >= 0; i-- {
+		if b.buttons[i].State != ButtonDisabled {
+			b.focusIndex = i
+			return
+		}
+	}
+	// If all disabled, focus first anyway (unlikely)
+	if len(b.buttons) > 0 {
+		b.focusIndex = 0
+	}
+}
+
 // Blur removes focus from the button bar.
 func (b *ButtonBar) Blur() {
 	b.focusIndex = -1
