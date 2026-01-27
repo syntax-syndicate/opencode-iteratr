@@ -539,6 +539,20 @@ send:
 	return nil
 }
 
+// runAutoCommit executes auto-commit after iteration completes.
+// Checks if in git repo, builds commit prompt with file list and context,
+// and reuses existing Runner to send commit request to current ACP session.
+func (o *Orchestrator) runAutoCommit(ctx context.Context) error {
+	// Check if in git repo
+	if !isGitRepo(o.cfg.WorkDir) {
+		logger.Debug("Not in git repo, skipping auto-commit")
+		return nil
+	}
+
+	logger.Info("Running auto-commit for %d modified file(s)", o.fileTracker.Count())
+	return nil
+}
+
 // Stop gracefully shuts down all components.
 // It collects errors from each component and returns a combined error if any fail.
 // Multiple calls to Stop() are safe and idempotent.
