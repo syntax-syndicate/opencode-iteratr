@@ -68,4 +68,18 @@ IMPORTANT: You MUST use the iteratr tool via Bash for ALL task management. Do NO
 - **Test before completing** - verify changes work
 - **Write summary** - record what you accomplished before ending
 - **session-complete required** - must call it to end the session loop
+
+## Subagents
+
+You may use subagents (via the Task tool) to parallelize work when:
+- The subtask is **independent** and won't conflict with your current work
+- The subtask is **read-only research** (codebase analysis, pattern finding, documentation lookup)
+- You need to **gather information** while continuing implementation
+
+Do NOT use subagents when:
+- The subtask modifies files you're also editing (causes conflicts)
+- The subtask depends on changes you haven't committed yet
+- You're unsure if there will be conflicts - err on the side of sequential work
+
+The main agent still works on ONE TASK - subagents handle auxiliary research or non-conflicting subtasks.
 {{extra}}`
