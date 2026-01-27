@@ -35,6 +35,7 @@ type Config struct {
 	Headless          bool   // Run without TUI
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
 	Reset             bool   // Reset session data before starting
+	AutoCommit        bool   // Auto-commit modified files after iteration
 }
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
@@ -76,11 +77,13 @@ func New(cfg Config) (*Orchestrator, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Orchestrator{
-		cfg:      cfg,
-		ctx:      ctx,
-		cancel:   cancel,
-		tuiDone:  make(chan struct{}),
-		sendChan: make(chan string, 10), // Buffered channel for user input messages
+		cfg:         cfg,
+		ctx:         ctx,
+		cancel:      cancel,
+		tuiDone:     make(chan struct{}),
+		sendChan:    make(chan string, 10), // Buffered channel for user input messages
+		fileTracker: agent.NewFileTracker(cfg.WorkDir),
+		autoCommit:  cfg.AutoCommit,
 	}, nil
 }
 

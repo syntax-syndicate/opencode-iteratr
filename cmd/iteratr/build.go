@@ -27,6 +27,7 @@ var buildFlags struct {
 	dataDir           string
 	model             string
 	reset             bool
+	autoCommit        bool
 }
 
 var buildCmd = &cobra.Command{
@@ -50,6 +51,7 @@ func init() {
 	buildCmd.Flags().StringVar(&buildFlags.dataDir, "data-dir", ".iteratr", "Data directory for NATS storage")
 	buildCmd.Flags().StringVarP(&buildFlags.model, "model", "m", config.DefaultModel, "Model to use (e.g., anthropic/claude-sonnet-4-5, openai/gpt-4)")
 	buildCmd.Flags().BoolVar(&buildFlags.reset, "reset", false, "Reset session data before starting (clears all NATS events for this session)")
+	buildCmd.Flags().BoolVar(&buildFlags.autoCommit, "auto-commit", true, "Auto-commit modified files after iteration (use --auto-commit=false to disable)")
 }
 
 // setupWizardStore creates a temporary NATS connection and session store for the wizard.
@@ -269,6 +271,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		Headless:          buildFlags.headless,
 		Model:             buildFlags.model,
 		Reset:             buildFlags.reset,
+		AutoCommit:        buildFlags.autoCommit,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create orchestrator: %w", err)
