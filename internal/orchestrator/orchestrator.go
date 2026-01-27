@@ -466,6 +466,28 @@ func (o *Orchestrator) Run() error {
 
 		logger.Info("=== Iteration #%d completed successfully ===", currentIteration)
 
+		// Execute post-iteration hooks if configured
+		if o.hooksConfig != nil && len(o.hooksConfig.Hooks.PostIteration) > 0 {
+			logger.Debug("Executing %d post-iteration hook(s)", len(o.hooksConfig.Hooks.PostIteration))
+			hookVars := hooks.Variables{
+				Session:   o.cfg.SessionName,
+				Iteration: strconv.Itoa(currentIteration),
+			}
+			output, err := hooks.ExecuteAllPiped(o.ctx, o.hooksConfig.Hooks.PostIteration, o.cfg.WorkDir, hookVars)
+			if err != nil {
+				// Context cancelled - propagate
+				if o.ctx.Err() != nil {
+					logger.Info("Context cancelled during post-iteration hook execution")
+					return nil
+				}
+				logger.Error("Post-iteration hook execution failed: %v", err)
+			} else if output != "" {
+				// Append piped output to pending buffer for next iteration
+				logger.Debug("Post-iteration hook output: %d bytes (appending to pending buffer)", len(output))
+				o.appendPendingOutput(output)
+			}
+		}
+
 		// Run auto-commit if enabled and files were modified
 		if o.autoCommit && o.fileTracker.HasChanges() {
 			logger.Info("Auto-commit enabled with %d modified files, running commit", o.fileTracker.Count())
