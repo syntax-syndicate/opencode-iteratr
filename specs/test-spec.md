@@ -18,21 +18,21 @@ As a developer, I want to verify iteratr works end-to-end so I can catch regress
 
 ## Tasks
 
-### 1. File Creation
+### 1. Research (use subagents for parallel work)
+- [ ] Use a subagent to find all Go files in `internal/tui/` and list their main types
+- [ ] Use a subagent to analyze `internal/session/store.go` and summarize its public API
+
+### 2. File Creation
 - [ ] Create directory `/tmp/iteratr-test/`
 - [ ] Create a Go file `/tmp/iteratr-test/hello.go` with a simple main package
 - [ ] Create a JSON config file `/tmp/iteratr-test/config.json` with test data
 - [ ] Create a markdown file `/tmp/iteratr-test/notes.md` with placeholder content
+- [ ] Write research findings to `/tmp/iteratr-test/research.md`
 
-### 2. File Editing
+### 3. File Editing
 - [ ] Edit `/tmp/iteratr-test/hello.go` - add a helper function
 - [ ] Edit `/tmp/iteratr-test/config.json` - add new key-value pairs
 - [ ] Edit `/tmp/iteratr-test/notes.md` - append a new section
-
-### 3. Research (use subagents for parallel work)
-- [ ] Use a subagent to find all Go files in `internal/tui/` and list their main types
-- [ ] Use a subagent to analyze `internal/session/store.go` and summarize its public API
-- [ ] Write findings to `/tmp/iteratr-test/research.md`
 
 ### 4. File Validation
 - [ ] Read each file and verify edits are present

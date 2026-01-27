@@ -73,12 +73,14 @@ func (m *SubagentModal) Start() tea.Cmd {
 		m.loader = loader
 
 		// Load the session (triggers replay)
+		logger.Debug("subagent modal: loading session %s", m.sessionID)
 		if err := loader.LoadAndStream(m.ctx, m.sessionID, m.workDir); err != nil {
 			logger.Warn("Failed to load session %s: %v", m.sessionID, err)
 			return SubagentErrorMsg{Err: fmt.Errorf("session not found: %s", m.sessionID)}
 		}
 
 		// Session loading started - modal no longer in loading state
+		logger.Debug("subagent modal: session loaded, starting stream")
 		m.loading = false
 
 		// Start streaming notifications
@@ -161,6 +163,11 @@ func (m *SubagentModal) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 		// Get scrollList view
 		listContent := m.scrollList.View()
+
+		// Debug: log if content is empty
+		if listContent == "" && len(m.messages) == 0 {
+			logger.Debug("subagent modal Draw: no messages to display")
+		}
 
 		content = strings.Join([]string{
 			title,
@@ -258,6 +265,7 @@ func (m *SubagentModal) HandleUpdate(msg tea.Msg) tea.Cmd {
 func (m *SubagentModal) streamNext() tea.Msg {
 	// Guard: loader must be initialized
 	if m.loader == nil {
+		logger.Debug("subagent modal: loader is nil, returning done")
 		return SubagentDoneMsg{}
 	}
 
@@ -291,6 +299,7 @@ func (m *SubagentModal) streamNext() tea.Msg {
 	if err != nil {
 		// EOF means session replay is complete
 		if err.Error() == "EOF" {
+			logger.Debug("subagent modal: EOF reached, session replay complete, messages=%d", len(m.messages))
 			return SubagentDoneMsg{}
 		}
 		// Other errors are real failures
@@ -300,8 +309,11 @@ func (m *SubagentModal) streamNext() tea.Msg {
 
 	if !processed {
 		// No more messages
+		logger.Debug("subagent modal: no message processed, returning done, messages=%d", len(m.messages))
 		return SubagentDoneMsg{}
 	}
+
+	logger.Debug("subagent modal: processed message type=%s", msgType)
 
 	// Return appropriate message based on what was processed
 	switch msgType {

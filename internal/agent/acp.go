@@ -233,13 +233,15 @@ func (c *acpConn) LoadSession(ctx context.Context, sessionID, cwd string) (strin
 			return "", fmt.Errorf("failed to read session/load response: %w", err)
 		}
 
-		// Skip notifications
+		// Skip notifications (they come after the response per ACP protocol)
 		if resp.ID == nil {
+			logger.Debug("LoadSession: skipping notification Method=%s while waiting for response", resp.Method)
 			continue
 		}
 
 		// Check if this is our response
 		if *resp.ID != reqID {
+			logger.Debug("LoadSession: skipping response with wrong ID: got %d, want %d", *resp.ID, reqID)
 			continue
 		}
 
@@ -267,8 +269,9 @@ func (c *acpConn) LoadSession(ctx context.Context, sessionID, cwd string) (strin
 // Unlike Runner which manages the main agent loop, SessionLoader is for read-only
 // session replay in the subagent viewer modal.
 type SessionLoader struct {
-	conn *acpConn
-	cmd  *exec.Cmd
+	conn   *acpConn
+	cmd    *exec.Cmd
+	buffer []*jsonRPCResponse // Buffer for notifications received during LoadSession
 }
 
 // NewSessionLoader spawns an opencode acp subprocess and initializes it.
@@ -318,12 +321,66 @@ func NewSessionLoader(ctx context.Context, workDir string) (*SessionLoader, erro
 	}, nil
 }
 
-// LoadAndStream loads the specified session and returns the initial response.
-// After LoadAndStream returns, caller must continue reading notifications via ReadMessage
-// to replay the full session history until EOF.
+// LoadAndStream loads the specified session and buffers any notifications received
+// while waiting for the response. After LoadAndStream returns, caller must continue
+// reading notifications via ReadAndProcess to replay the full session history until EOF.
 func (s *SessionLoader) LoadAndStream(ctx context.Context, sessionID, workDir string) error {
-	_, err := s.conn.LoadSession(ctx, sessionID, workDir)
-	return err
+	// Send session/load request
+	params := loadSessionParams{
+		SessionID:  sessionID,
+		Cwd:        workDir,
+		McpServers: []any{},
+	}
+
+	reqID, err := s.conn.sendRequest("session/load", params)
+	if err != nil {
+		return fmt.Errorf("failed to send session/load request: %w", err)
+	}
+
+	// Read messages, buffering notifications until we get the response
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		resp, err := s.conn.readMessage()
+		if err != nil {
+			return fmt.Errorf("failed to read session/load response: %w", err)
+		}
+
+		// Buffer notifications (they contain the session history)
+		if resp.ID == nil {
+			logger.Debug("LoadAndStream: buffering notification Method=%s", resp.Method)
+			s.buffer = append(s.buffer, resp)
+			continue
+		}
+
+		// Check if this is our response
+		if *resp.ID != reqID {
+			logger.Debug("LoadAndStream: skipping response with wrong ID: got %d, want %d", *resp.ID, reqID)
+			continue
+		}
+
+		// Handle error response
+		if resp.Error != nil {
+			return fmt.Errorf("session/load failed: %s (code %d)", resp.Error.Message, resp.Error.Code)
+		}
+
+		// Parse result to verify session loaded
+		var result newSessionResult
+		if err := json.Unmarshal(resp.Result, &result); err != nil {
+			return fmt.Errorf("failed to parse session/load result: %w", err)
+		}
+
+		if result.SessionID == "" {
+			return fmt.Errorf("session/load response missing sessionId")
+		}
+
+		logger.Debug("LoadAndStream: session loaded, buffered %d notifications", len(s.buffer))
+		return nil
+	}
 }
 
 // ReadMessage reads one notification from the session stream.
@@ -334,6 +391,7 @@ func (s *SessionLoader) ReadMessage() (*jsonRPCResponse, error) {
 }
 
 // ReadAndProcess reads one notification and calls the appropriate callback.
+// First drains any buffered notifications from LoadAndStream, then reads from stream.
 // Returns true if a message was processed, false if EOF or unknown notification.
 // Callbacks are: onText, onToolCall, onThinking, onUser
 func (s *SessionLoader) ReadAndProcess(
@@ -342,13 +400,25 @@ func (s *SessionLoader) ReadAndProcess(
 	onThinking func(string),
 	onUser func(string),
 ) (bool, error) {
-	resp, err := s.conn.readMessage()
-	if err != nil {
-		return false, err
+	var resp *jsonRPCResponse
+	var err error
+
+	// First drain any buffered notifications from LoadAndStream
+	if len(s.buffer) > 0 {
+		resp = s.buffer[0]
+		s.buffer = s.buffer[1:]
+		logger.Debug("ReadAndProcess: reading from buffer, %d remaining", len(s.buffer))
+	} else {
+		// Read from stream
+		resp, err = s.conn.readMessage()
+		if err != nil {
+			return false, err
+		}
 	}
 
 	// Only process session/update notifications
 	if resp.ID != nil || resp.Method != "session/update" {
+		logger.Debug("SessionLoader: skipping non-update message: ID=%v Method=%s", resp.ID, resp.Method)
 		return true, nil // Continue streaming, but nothing processed
 	}
 

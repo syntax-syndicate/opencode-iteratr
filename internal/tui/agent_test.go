@@ -128,6 +128,81 @@ func TestAgentOutput_ToggleInvalidatesCacheAndRefreshes(t *testing.T) {
 	}
 }
 
+func TestAgentOutput_SubagentDetectionOnUpdate(t *testing.T) {
+	ao := NewAgentOutput()
+	ao.ready = true
+	ao.UpdateSize(80, 20)
+
+	// Simulate ACP flow: first call is "pending" with empty RawInput
+	ao.AppendToolCall(AgentToolCallMsg{
+		ToolCallID: "task-1",
+		Title:      "Task",
+		Status:     "pending",
+		Input:      map[string]any{}, // Empty on pending per ACP protocol
+	})
+
+	// Verify it was created as ToolMessageItem (since no subagent_type yet)
+	if len(ao.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(ao.messages))
+	}
+	if _, ok := ao.messages[0].(*ToolMessageItem); !ok {
+		t.Fatal("expected message to be ToolMessageItem on pending (no subagent_type)")
+	}
+
+	// Second call is "in_progress" with populated RawInput containing subagent_type
+	ao.AppendToolCall(AgentToolCallMsg{
+		ToolCallID: "task-1",
+		Title:      "Task",
+		Status:     "in_progress",
+		Input: map[string]any{
+			"subagent_type": "codebase-analyzer",
+			"prompt":        "Analyze the codebase",
+		},
+	})
+
+	// Verify it was converted to SubagentMessageItem
+	if len(ao.messages) != 1 {
+		t.Fatalf("expected 1 message after update, got %d", len(ao.messages))
+	}
+	subagentMsg, ok := ao.messages[0].(*SubagentMessageItem)
+	if !ok {
+		t.Fatal("expected message to be converted to SubagentMessageItem on update with subagent_type")
+	}
+	if subagentMsg.subagentType != "codebase-analyzer" {
+		t.Errorf("expected subagentType to be 'codebase-analyzer', got %q", subagentMsg.subagentType)
+	}
+	if subagentMsg.description != "Analyze the codebase" {
+		t.Errorf("expected description to be 'Analyze the codebase', got %q", subagentMsg.description)
+	}
+	if subagentMsg.status != ToolStatusRunning {
+		t.Errorf("expected status to be Running, got %d", subagentMsg.status)
+	}
+
+	// Third call is "completed" with sessionID
+	ao.AppendToolCall(AgentToolCallMsg{
+		ToolCallID: "task-1",
+		Title:      "Task",
+		Status:     "completed",
+		Input: map[string]any{
+			"subagent_type": "codebase-analyzer",
+			"prompt":        "Analyze the codebase",
+		},
+		SessionID: "session-123",
+	})
+
+	// Verify sessionID was updated
+	subagentMsg, ok = ao.messages[0].(*SubagentMessageItem)
+	if !ok {
+		t.Fatal("expected message to still be SubagentMessageItem")
+	}
+	if subagentMsg.sessionID != "session-123" {
+		t.Errorf("expected sessionID to be 'session-123', got %q", subagentMsg.sessionID)
+	}
+	if subagentMsg.status != ToolStatusSuccess {
+		t.Errorf("expected status to be Success, got %d", subagentMsg.status)
+	}
+}
+
 // containsSubstring checks if s contains substr
 func containsSubstring(s, substr string) bool {
 	if len(substr) == 0 {

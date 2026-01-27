@@ -387,6 +387,23 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 				a.scrollList.GotoBottom()
 			}
 		} else if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
+			// Check if this is a subagent call that we missed on initial creation
+			// (RawInput is empty on pending, only populated on in_progress)
+			if subagentType, isSubagent := msg.Input["subagent_type"].(string); isSubagent {
+				// Convert ToolMessageItem to SubagentMessageItem
+				description, _ := msg.Input["prompt"].(string)
+				newMsg := &SubagentMessageItem{
+					id:           msg.ToolCallID,
+					subagentType: subagentType,
+					description:  description,
+					status:       mapToolStatus(msg.Status),
+					sessionID:    msg.SessionID,
+				}
+				a.messages[idx] = newMsg
+				a.refreshContent()
+				return nil
+			}
+
 			// Update regular ToolMessageItem
 			toolMsg.status = mapToolStatus(msg.Status)
 			if msg.Kind != "" {
