@@ -43,6 +43,9 @@ type SubagentModal struct {
 	// Mouse interaction support
 	viewportArea      uv.Rectangle // Screen area where content is drawn (for mouse hit detection)
 	messageLineStarts []int        // Start line index in content for each message
+
+	// First user message tracking (omit the task prompt)
+	skippedFirstUser bool
 }
 
 // NewSubagentModal creates a new SubagentModal.
@@ -127,35 +130,43 @@ func (m *SubagentModal) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	var hint string
 
 	if m.err != nil {
-		// Error state: show error message with ESC hint
+		// Error state: show error message centered both vertically and horizontally
 		errorMsg := s.Error.Render(fmt.Sprintf("× %s", m.err.Error()))
 
-		// Center error message vertically
-		padding := strings.Repeat("\n", (contentHeight-1)/2)
-		errorContent := padding + errorMsg
+		// Center error message both vertically and horizontally
+		errorCentered := lipgloss.NewStyle().
+			Width(contentWidth).
+			Height(contentHeight).
+			Align(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Render(errorMsg)
 
 		content = strings.Join([]string{
 			title,
 			separator,
-			errorContent,
+			errorCentered,
 		}, "\n")
 		hint = RenderHint(KeyEsc, "close")
 
 	} else if m.loading {
-		// Loading state: show spinner
+		// Loading state: show spinner centered both vertically and horizontally
 		spinnerView := ""
 		if m.spinner != nil {
 			spinnerView = m.spinner.View()
 		}
 
-		// Center spinner vertically
-		padding := strings.Repeat("\n", (contentHeight-1)/2)
-		spinnerContent := padding + spinnerView
+		// Center spinner both vertically and horizontally
+		spinnerCentered := lipgloss.NewStyle().
+			Width(contentWidth).
+			Height(contentHeight).
+			Align(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Render(spinnerView)
 
 		content = strings.Join([]string{
 			title,
 			separator,
-			spinnerContent,
+			spinnerCentered,
 		}, "\n")
 		hint = RenderHint(KeyEsc, "close")
 
@@ -470,7 +481,14 @@ func (m *SubagentModal) appendThinking(content string) {
 
 // appendUserMessage appends a user message to the message list.
 // Mirrors AgentOutput.AppendUserMessage behavior.
+// Skips the first user message (the task prompt) as it's redundant in the modal view.
 func (m *SubagentModal) appendUserMessage(text string) {
+	// Skip the first user message (the task prompt)
+	if !m.skippedFirstUser {
+		m.skippedFirstUser = true
+		return
+	}
+
 	// If last message is a UserMessageItem, append to it
 	if len(m.messages) > 0 {
 		if userMsg, ok := m.messages[len(m.messages)-1].(*UserMessageItem); ok {

@@ -221,6 +221,13 @@ func (t *Theme) buildStyles() *Styles {
 		MarginTop(1).
 		MarginBottom(1)
 
+	// Subagent message style - subtle box with rounded border
+	s.SubagentMessageBox = lipgloss.NewStyle().
+		Background(lipgloss.Color(t.BgSurface0)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(t.BorderMuted)).
+		Padding(0, 1)
+
 	// Input styles (bubbles textinput)
 	s.TextInputStyles = t.buildTextInputStyles()
 

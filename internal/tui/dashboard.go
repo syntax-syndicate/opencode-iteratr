@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -52,6 +53,12 @@ func NewDashboard(agentOutput *AgentOutput, sidebar *Sidebar) *Dashboard {
 // Update handles messages for the dashboard.
 func (d *Dashboard) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		// Forward spinner ticks to AgentOutput for subagent spinner animation
+		if d.agentOutput != nil {
+			return d.agentOutput.Update(msg)
+		}
+		return nil
 	case tea.KeyPressMsg:
 		// Global 'i' key: focus input from any state
 		if msg.String() == "i" && d.focusPane != FocusInput {

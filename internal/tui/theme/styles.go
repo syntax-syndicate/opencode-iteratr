@@ -148,6 +148,9 @@ type Styles struct {
 	UserBorder       lipgloss.Style
 	IterationDivider lipgloss.Style
 
+	// Subagent modal styles
+	SubagentMessageBox lipgloss.Style
+
 	// Input styles
 	TextInputStyles textinput.Styles
 

@@ -86,6 +86,24 @@ func (a *AgentOutput) Update(msg tea.Msg) tea.Cmd {
 		}
 	}
 
+	// Handle subagent spinner animation - forward tick to all running subagents
+	var subagentSpinnerCmd tea.Cmd
+	for _, m := range a.messages {
+		if subagentMsg, ok := m.(*SubagentMessageItem); ok {
+			if subagentMsg.spinner != nil && subagentMsg.status == ToolStatusRunning {
+				if cmd := subagentMsg.spinner.Update(msg); cmd != nil {
+					subagentSpinnerCmd = cmd
+					// Invalidate cache to re-render with new spinner frame
+					subagentMsg.cachedWidth = 0
+				}
+			}
+		}
+	}
+	if subagentSpinnerCmd != nil {
+		a.refreshContent()
+		return subagentSpinnerCmd
+	}
+
 	// Handle keyboard input for scrolling and expand/collapse
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
@@ -352,6 +370,15 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 				status:       status,
 				sessionID:    msg.SessionID, // May be empty initially
 			}
+			// Start spinner if running
+			if status == ToolStatusRunning {
+				spinner := NewDefaultSpinner()
+				newMsg.spinner = &spinner
+				a.messages = append(a.messages, newMsg)
+				a.toolIndex[msg.ToolCallID] = len(a.messages) - 1
+				a.refreshContent()
+				return newMsg.spinner.Tick()
+			}
 			a.messages = append(a.messages, newMsg)
 			a.toolIndex[msg.ToolCallID] = len(a.messages) - 1
 			a.refreshContent()
@@ -376,9 +403,22 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 		// Check if it's a SubagentMessageItem or ToolMessageItem
 		if subagentMsg, ok := a.messages[idx].(*SubagentMessageItem); ok {
 			// Update SubagentMessageItem
-			subagentMsg.status = mapToolStatus(msg.Status)
+			newStatus := mapToolStatus(msg.Status)
+			oldStatus := subagentMsg.status
+			subagentMsg.status = newStatus
 			if msg.SessionID != "" {
 				subagentMsg.sessionID = msg.SessionID
+			}
+			// Manage spinner based on status transition
+			var spinnerCmd tea.Cmd
+			if newStatus == ToolStatusRunning && oldStatus != ToolStatusRunning {
+				// Started running - create spinner
+				spinner := NewDefaultSpinner()
+				subagentMsg.spinner = &spinner
+				spinnerCmd = subagentMsg.spinner.Tick()
+			} else if newStatus != ToolStatusRunning && subagentMsg.spinner != nil {
+				// No longer running - clear spinner
+				subagentMsg.spinner = nil
 			}
 			// Invalidate cache - ScrollList will re-render on next View() call
 			subagentMsg.cachedWidth = 0
@@ -386,18 +426,30 @@ func (a *AgentOutput) AppendToolCall(msg AgentToolCallMsg) tea.Cmd {
 			if a.ready && a.scrollList != nil && a.scrollList.autoScroll {
 				a.scrollList.GotoBottom()
 			}
+			if spinnerCmd != nil {
+				return spinnerCmd
+			}
 		} else if toolMsg, ok := a.messages[idx].(*ToolMessageItem); ok {
 			// Check if this is a subagent call that we missed on initial creation
 			// (RawInput is empty on pending, only populated on in_progress)
 			if subagentType, isSubagent := msg.Input["subagent_type"].(string); isSubagent {
 				// Convert ToolMessageItem to SubagentMessageItem
 				description, _ := msg.Input["prompt"].(string)
+				status := mapToolStatus(msg.Status)
 				newMsg := &SubagentMessageItem{
 					id:           msg.ToolCallID,
 					subagentType: subagentType,
 					description:  description,
-					status:       mapToolStatus(msg.Status),
+					status:       status,
 					sessionID:    msg.SessionID,
+				}
+				// Start spinner if running
+				if status == ToolStatusRunning {
+					spinner := NewDefaultSpinner()
+					newMsg.spinner = &spinner
+					a.messages[idx] = newMsg
+					a.refreshContent()
+					return newMsg.spinner.Tick()
 				}
 				a.messages[idx] = newMsg
 				a.refreshContent()

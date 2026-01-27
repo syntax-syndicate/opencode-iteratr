@@ -625,6 +625,7 @@ type SubagentMessageItem struct {
 	description  string
 	status       ToolStatus // Pending, Running, Success, Error
 	sessionID    string     // Empty until completion
+	spinner      *Spinner   // Spinner for running state
 	cachedRender string
 	cachedWidth  int
 }
@@ -636,80 +637,100 @@ func (s *SubagentMessageItem) ID() string {
 
 // Render renders the subagent message at the given width.
 // Shows status icon, subagent type in brackets, and description.
-// If completed with sessionID, shows "Click to view" hint on the right.
+// If completed with sessionID, shows "Click to view" hint.
+// Uses subtle background to distinguish from regular tool calls.
 func (s *SubagentMessageItem) Render(width int) string {
 	// Return cached render if width matches
 	if s.cachedWidth == width && s.cachedRender != "" {
 		return s.cachedRender
 	}
 
-	var result strings.Builder
+	t := theme.Current()
+	th := t.S()
+	bg := lipgloss.Color(t.BgSurface0)
+
+	// Calculate box content width to match tool output blocks:
+	// Tool output uses width-2 with MarginLeft(2) built into the style
+	// We use 2-char manual indent + box (border 1 + padding 1 on each side = 4)
+	// So box content width = width - 2 (indent) - 4 (frame) = width - 6
+	// But we want the visual box to align with tool output, so just use width - 4
+	// and let the box frame add the rest
+	boxWidth := width - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
 
 	// --- HEADER: [icon] [type] status ---
+	// Create styles with explicit background to prevent ANSI reset from clearing it
 	var icon string
-	var iconStyle lipgloss.Style
 	var statusText string
-	th := theme.Current().S()
+
+	iconWithBg := func(style lipgloss.Style, char string) string {
+		return style.Background(bg).Render(char)
+	}
 
 	switch s.status {
 	case ToolStatusPending:
-		icon = "●"
-		iconStyle = th.ToolIconPending
+		icon = iconWithBg(th.ToolIconPending, "●")
 		statusText = "Pending"
 	case ToolStatusRunning:
-		icon = "◐"
-		iconStyle = th.ToolIconPending
+		icon = s.spinner.View()
 		statusText = "Running..."
 	case ToolStatusSuccess:
-		icon = "●"
-		iconStyle = th.ToolIconSuccess
+		icon = iconWithBg(th.ToolIconSuccess, "●")
 		statusText = "Completed"
 	case ToolStatusError:
-		icon = "×"
-		iconStyle = th.ToolIconError
+		icon = iconWithBg(th.ToolIconError, "×")
 		statusText = "Error"
 	case ToolStatusCanceled:
-		icon = "×"
-		iconStyle = th.ToolIconCanceled
+		icon = iconWithBg(th.ToolIconCanceled, "×")
 		statusText = "Canceled"
 	default:
-		icon = "●"
-		iconStyle = th.ToolIconPending
+		icon = iconWithBg(th.ToolIconPending, "●")
 		statusText = "Unknown"
 	}
 
-	// Build header line: [indent] [icon] [type] status
-	header := "  " + iconStyle.Render(icon) + " " +
-		th.ToolName.Render("["+s.subagentType+"]") + " " +
-		th.ToolParams.Render(statusText)
-
-	result.WriteString(header)
+	// Build header line with explicit backgrounds on styled parts
+	nameStyled := th.ToolName.Background(bg).Render("[" + s.subagentType + "]")
+	statusStyled := th.ToolParams.Background(bg).Render(statusText)
+	header := icon + " " + nameStyled + " " + statusStyled
 
 	// --- DESCRIPTION LINE ---
-	result.WriteString("\n")
-	description := "     " + th.ToolParams.Render(s.description) // 5-space indent
-	result.WriteString(description)
+	description := "  " + s.description // 2-space indent within box
+
+	// Build content lines
+	var content strings.Builder
+	content.WriteString(header)
+	content.WriteString("\n")
+	content.WriteString(description)
 
 	// --- "Click to view" HINT (only if sessionID available) ---
 	if s.sessionID != "" {
-		result.WriteString("\n")
-		// Right-align the hint
-		hint := "[Click to view]"
-		hintStyled := th.ToolParams.Foreground(lipgloss.Color(theme.Current().FgSubtle)).Render(hint)
-		hintWidth := len(hint)
-		if hintWidth < width {
-			padding := strings.Repeat(" ", width-hintWidth)
-			result.WriteString(padding + hintStyled)
-		} else {
-			result.WriteString(hintStyled)
+		content.WriteString("\n\n")
+		hintStyled := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(t.FgSubtle)).
+			Background(bg).
+			Render("[Click to view]")
+		content.WriteString(hintStyled)
+	}
+
+	// Apply box styling
+	boxed := th.SubagentMessageBox.Width(boxWidth).Render(content.String())
+
+	// Add 2-char indent to each line to match other tool messages
+	lines := strings.Split(boxed, "\n")
+	var result strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			result.WriteString("\n")
 		}
+		result.WriteString("  " + line)
 	}
 
 	// Cache and return
-	rendered := result.String()
-	s.cachedRender = rendered
+	s.cachedRender = result.String()
 	s.cachedWidth = width
-	return rendered
+	return s.cachedRender
 }
 
 // Height returns the number of lines this subagent message occupies.
