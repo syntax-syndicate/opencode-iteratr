@@ -361,6 +361,10 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 					if (tcu.Status == "completed" || tcu.Status == "error") && len(tcu.Content) > 0 {
 						event.Output = tcu.Content[0].Content.Text
 					}
+					// Extract sessionId from rawOutput metadata on completion
+					if tcu.Status == "completed" {
+						event.SessionID = extractSessionID(tcu.RawOutput)
+					}
 					// Extract filediff from rawOutput metadata for edit tools
 					if tcu.Status == "completed" && tcu.Kind == "edit" {
 						event.FileDiff = extractFileDiff(tcu.RawOutput)
@@ -458,6 +462,19 @@ func (c *acpConn) prompt(ctx context.Context, sessionID string, texts []string, 
 }
 
 // JSON-RPC 2.0 message envelope
+// extractSessionID parses rawOutput.metadata.sessionId from a completed tool call.
+func extractSessionID(rawOutput map[string]any) string {
+	if rawOutput == nil {
+		return ""
+	}
+	metadata, ok := rawOutput["metadata"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	sessionID, _ := metadata["sessionId"].(string)
+	return sessionID
+}
+
 // extractFileDiff parses rawOutput.metadata.filediff from a completed edit tool call.
 func extractFileDiff(rawOutput map[string]any) *FileDiff {
 	if rawOutput == nil {
