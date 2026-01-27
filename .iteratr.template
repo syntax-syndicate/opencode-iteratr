@@ -2,81 +2,63 @@
 Session: {{session}} | Iteration: #{{iteration}}
 
 {{history}}
+
 ## Spec
 {{spec}}
 
-{{notes}}
 {{tasks}}
 
-NOTE: The "Current Tasks" section above is auto-injected at the start of each iteration. Do NOT call `task-list` - you already have the current state.
-
-## iteratr Tool Commands
-
-IMPORTANT: You MUST use the iteratr tool via Bash for ALL task management. Do NOT use other task/todo tools.
-
-### Task Management (REQUIRED)
-`{{binary}} tool task-add --data-dir .iteratr --name {{session}} --content "task description"`
-`{{binary}} tool task-batch-add --data-dir .iteratr --name {{session}} --tasks '[{"content":"task 1"},{"content":"task 2"}]'`
-`{{binary}} tool task-status --data-dir .iteratr --name {{session}} --id TASK_ID --status STATUS`
-  - Status values: remaining, in_progress, completed, blocked
-`{{binary}} tool task-priority --data-dir .iteratr --name {{session}} --id TASK_ID --priority N`
-  - Priority: 0 (critical), 1 (high), 2 (medium), 3 (low), 4 (backlog)
-`{{binary}} tool task-depends --data-dir .iteratr --name {{session}} --id TASK_ID --depends-on OTHER_ID`
-
-### Notes (for learnings, blockers, decisions)
-`{{binary}} tool note-add --data-dir .iteratr --name {{session}} --content "note text" --type TYPE`
-  - Type values: learning, stuck, tip, decision
-
-### Session Control
-`{{binary}} tool iteration-summary --data-dir .iteratr --name {{session}} --summary "what you accomplished"`
-`{{binary}} tool session-complete --data-dir .iteratr --name {{session}}`
-  - Call ONLY when ALL tasks are completed
-
-## Workflow
-
-1. **SYNC ALL TASKS FROM SPEC**: Compare spec tasks against the "Current Tasks" section above. ANY task in the spec that is not already listed MUST be added via `task-batch-add` (preferred for multiple) or `task-add`. Do this BEFORE picking a task.
-2. **Pick ONE ready task** - highest priority with no unresolved dependencies
-3. **Mark in_progress** - `task-status --id X --status in_progress`
-4. **Do the work** - implement fully, run tests
-5. **Mark completed** - `task-status --id X --status completed`
-6. **Write summary** - `iteration-summary --summary "what you did"`
-7. **STOP** - do NOT pick another task
-8. **End session** - only call session-complete when ALL tasks done
-
-## If Something Goes Wrong
-
-### Tests Failing
-- Do NOT mark task completed
-- Add note: `note-add --type stuck --content "describe failure"`
-- Either fix or mark blocked with reason
-
-### Task Blocked by External Factor
-- Mark blocked: `task-status --id X --status blocked`
-- Add dependency if blocked by another task: `task-depends --id X --depends-on Y`
-- Pick different task or end iteration
+{{notes}}
 
 ## Rules
+- ONE task per iteration - complete fully, then STOP
+- Use `{{binary}} tool` for ALL task management - never built-in todo tools
+- Test changes before marking complete
+- Update component tree if TUI components added/removed (use @component-tree agent)
+- Write iteration-summary before stopping
+- Call session-complete only when ALL tasks done
+- Respect user-added tasks even if not in spec
 
-- **ONE TASK per iteration** - complete it fully before stopping
-- **LOAD ALL SPEC TASKS**: Every unchecked task in the spec MUST exist in the task queue
-- **RESPECT USER-ADDED TASKS**: Tasks added by the user during the session are valid work items - do NOT cancel or remove them just because they aren't in the spec
-- **ALWAYS use iteratr tool**: All task management via `iteratr tool` commands - never use other todo/task tools
-- **Test before completing** - verify changes work
-- **Update component tree** - if you add or remove TUI components, use the @component-tree agent to update the component tree map
-- **Write summary** - record what you accomplished before ending
-- **session-complete required** - must call it to end the session loop
+## Workflow
+1. If no tasks: sync from spec via `task-batch-add`
+2. Pick ONE ready task (highest priority, no blockers)
+3. `task-status --id X --status in_progress`
+4. Implement + test
+5. `task-status --id X --status completed`
+6. `iteration-summary --summary "..."`
+7. STOP (do not pick another task)
+
+## Commands
+`{{binary}} tool COMMAND --data-dir .iteratr --name {{session}} [args]`
+
+| Command | Args | Notes |
+|---------|------|-------|
+| task-add | --content "..." | Add single task |
+| task-batch-add | --tasks '[{...}]' | Add multiple tasks |
+| task-status | --id X --status S | S: remaining, in_progress, completed, blocked |
+| task-priority | --id X --priority N | 0=critical, 1=high, 2=medium, 3=low, 4=backlog |
+| task-depends | --id X --depends-on Y | Set dependency |
+| note-add | --content "..." --type T | T: learning, stuck, tip, decision |
+| iteration-summary | --summary "..." | Record what you did |
+| session-complete | | Only when ALL tasks done |
+
+## If Stuck
+- `note-add --type stuck --content "describe issue"`
+- Mark task blocked or fix before completing
+- If blocked by another task: `task-depends --id X --depends-on Y`
 
 ## Subagents
+Spin up subagents (via Task tool) to parallelize work. Each subagent has fresh context, so "one task per agent" is preserved.
 
-You may use subagents (via the Task tool) to parallelize work when:
-- The subtask is **independent** and won't conflict with your current work
-- The subtask is **read-only research** (codebase analysis, pattern finding, documentation lookup)
-- You need to **gather information** while continuing implementation
+**DO parallelize when:**
+- Tasks are independent (no shared files)
+- Tasks have no uncommitted dependencies between them
+- Read-only research while you implement
 
-Do NOT use subagents when:
-- The subtask modifies files you're also editing (causes conflicts)
-- The subtask depends on changes you haven't committed yet
-- You're unsure if there will be conflicts - err on the side of sequential work
+**DO NOT parallelize when:**
+- Tasks modify the same files (causes conflicts)
+- Task B depends on Task A's uncommitted changes
+- Uncertain about conflicts - err sequential
 
-The main agent still works on ONE TASK - subagents handle auxiliary research or non-conflicting subtasks.
+Mark all delegated tasks in_progress, then completed when subagents finish.
 {{extra}}
