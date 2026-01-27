@@ -442,16 +442,17 @@ func (a *AgentOutput) AddIterationDivider(iteration int) tea.Cmd {
 }
 
 // HandleClick processes a mouse click at screen coordinates (x, y).
-// Returns true if the click toggled an expandable message.
-func (a *AgentOutput) HandleClick(x, y int) bool {
+// Returns a command if the click should open a modal (e.g., subagent viewer).
+// Returns nil if the click toggled an expandable message or had no effect.
+func (a *AgentOutput) HandleClick(x, y int) tea.Cmd {
 	if !a.ready || len(a.messageLineStarts) == 0 {
-		return false
+		return nil
 	}
 
 	// Check if click is within the viewport area
 	if x < a.viewportArea.Min.X || x >= a.viewportArea.Max.X ||
 		y < a.viewportArea.Min.Y || y >= a.viewportArea.Max.Y {
-		return false
+		return nil
 	}
 
 	// Translate screen Y to content line (accounting for scroll offset)
@@ -467,17 +468,31 @@ func (a *AgentOutput) HandleClick(x, y int) bool {
 	}
 
 	if msgIdx < 0 || msgIdx >= len(a.messages) {
-		return false
+		return nil
+	}
+
+	// Check if it's a SubagentMessageItem with sessionID (clickable to view)
+	if subagentMsg, ok := a.messages[msgIdx].(*SubagentMessageItem); ok {
+		if subagentMsg.sessionID != "" {
+			// Return command to open subagent modal
+			return func() tea.Msg {
+				return OpenSubagentModalMsg{
+					SessionID:    subagentMsg.sessionID,
+					SubagentType: subagentMsg.subagentType,
+				}
+			}
+		}
+		return nil
 	}
 
 	// Toggle if expandable
 	if expandable, ok := a.messages[msgIdx].(Expandable); ok {
 		expandable.ToggleExpanded()
 		a.refreshContent()
-		return true
+		return nil
 	}
 
-	return false
+	return nil
 }
 
 // refreshContent updates the scroll list with current messages.

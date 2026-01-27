@@ -439,9 +439,9 @@ func (a *App) handleMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Check if agent output was clicked (expand/collapse tool output)
-	if a.agent.HandleClick(mouse.X, mouse.Y) {
-		return a, nil
+	// Check if agent output was clicked (expand/collapse tool output or open subagent modal)
+	if cmd := a.agent.HandleClick(mouse.X, mouse.Y); cmd != nil {
+		return a, cmd
 	}
 
 	return a, nil
