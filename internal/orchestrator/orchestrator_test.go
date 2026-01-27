@@ -773,7 +773,11 @@ func TestBuildCommitPrompt(t *testing.T) {
 			if err := orch.Start(); err != nil {
 				t.Fatalf("failed to start orchestrator: %v", err)
 			}
-			defer orch.Stop()
+			defer func() {
+				if err := orch.Stop(); err != nil {
+					t.Errorf("failed to stop orchestrator: %v", err)
+				}
+			}()
 
 			// Setup test state if needed
 			ctx := context.Background()
