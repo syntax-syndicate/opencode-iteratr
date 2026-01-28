@@ -23,10 +23,6 @@ type Config struct {
 	Template   string `mapstructure:"template" yaml:"template"`
 }
 
-// DefaultModel is the default model used by the build command and wizard.
-// TODO: Remove this after tracer bullet phase - model should be required.
-const DefaultModel = "anthropic/claude-sonnet-4-5"
-
 // Load loads configuration with full precedence:
 // CLI flags > ENV vars > project config > XDG global config > defaults
 func Load() (*Config, error) {
@@ -34,9 +30,7 @@ func Load() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.SetConfigName("iteratr")
 
-	// Set defaults (all except model - will be required later)
-	// TODO: Remove model default after tracer bullet
-	v.SetDefault("model", DefaultModel)
+	// Set defaults (model has no default - it's required)
 	v.SetDefault("auto_commit", true)
 	v.SetDefault("data_dir", ".iteratr")
 	v.SetDefault("log_level", "info")

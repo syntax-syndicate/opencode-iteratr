@@ -158,17 +158,23 @@ func parseModelsOutput(output []byte) []*ModelInfo {
 	return models
 }
 
-// selectDefaultModel finds and selects the default model in the filtered list.
+// selectDefaultModel finds and selects the configured model in the filtered list.
+// Tries to load model from config (if exists) and pre-select it.
 func (m *ModelSelectorStep) selectDefaultModel() {
-	for i, model := range m.filtered {
-		if model.id == config.DefaultModel {
-			m.selectedIdx = i
-			m.scrollList.SetSelected(i)
-			m.scrollList.ScrollToItem(i)
-			return
+	// Try to load model from config
+	cfg, err := config.Load()
+	if err == nil && cfg.Model != "" {
+		// Found a configured model, try to select it
+		for i, model := range m.filtered {
+			if model.id == cfg.Model {
+				m.selectedIdx = i
+				m.scrollList.SetSelected(i)
+				m.scrollList.ScrollToItem(i)
+				return
+			}
 		}
 	}
-	// Default model not found, keep current selection (index 0)
+	// No config model or not found in list, keep current selection (index 0)
 }
 
 // filterModels filters allModels by search query using case-insensitive substring match.

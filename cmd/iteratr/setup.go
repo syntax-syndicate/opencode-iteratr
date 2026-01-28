@@ -43,7 +43,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	// Create hardcoded config for tracer bullet phase
 	// TODO: Replace with TUI wizard in later tasks
 	cfg := &config.Config{
-		Model:      config.DefaultModel,
+		Model:      "anthropic/claude-sonnet-4-5", // Hardcoded for tracer bullet
 		AutoCommit: true,
 		DataDir:    ".iteratr",
 		LogLevel:   "info",
