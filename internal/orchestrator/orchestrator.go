@@ -656,9 +656,12 @@ func (o *Orchestrator) Run() error {
 				}
 				logger.Error("Post-iteration hook execution failed: %v", err)
 			} else if output != "" {
-				// Append piped output to pending buffer for next iteration
-				logger.Debug("Post-iteration hook output: %d bytes (appending to pending buffer)", len(output))
-				o.appendPendingOutput(output)
+				// Send hook output to model immediately (before auto-commit)
+				logger.Debug("Post-iteration hook output: %d bytes (sending to model)", len(output))
+				if err := o.runner.SendMessages(o.ctx, []string{output}); err != nil {
+					logger.Error("Failed to send post-iteration hook output to model: %v", err)
+					// Continue anyway - don't fail the iteration
+				}
 			}
 		}
 
