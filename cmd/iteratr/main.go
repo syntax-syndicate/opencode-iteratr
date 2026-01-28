@@ -23,10 +23,7 @@ func main() {
 	// Ensure logger is closed on exit
 	defer func() { _ = logger.Close() }()
 
-	// Set version for fang's automatic --version flag
-	rootCmd.Version = version
-
-	if err := fang.Execute(context.Background(), rootCmd); err != nil {
+	if err := fang.Execute(context.Background(), rootCmd, fang.WithVersion(version)); err != nil {
 		logger.Error("Command execution failed: %v", err)
 		os.Exit(1)
 	}
