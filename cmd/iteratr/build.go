@@ -287,14 +287,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("iterations must be >= 0 (0 means unlimited)")
 	}
 
-	// Determine template path with fallback to .iteratr.template if not set
-	// buildFlags.template is already initialized from config, CLI, or wizard
+	// Use template path from config, CLI flag, or wizard
+	// If empty, orchestrator will use embedded default template
 	templatePath := buildFlags.template
-	if templatePath == "" {
-		if _, err := os.Stat(".iteratr.template"); err == nil {
-			templatePath = ".iteratr.template"
-		}
-	}
 
 	// Create orchestrator
 	orch, err := orchestrator.New(orchestrator.Config{
