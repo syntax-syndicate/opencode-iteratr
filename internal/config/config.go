@@ -98,6 +98,14 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// Validate checks that required config fields are set.
+func (c *Config) Validate() error {
+	if c.Model == "" {
+		return fmt.Errorf("model is required")
+	}
+	return nil
+}
+
 // Exists returns true if any config file exists (global or project).
 func Exists() bool {
 	return fileExists(GlobalPath()) || fileExists(ProjectPath())
