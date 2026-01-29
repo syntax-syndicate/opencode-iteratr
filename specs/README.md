@@ -25,3 +25,4 @@
 | [file-tracking](./file-tracking.md) | Draft | Track modified files during iteration for auto-commit |
 | [subagent-viewer](./subagent-viewer.md) | Draft | Display subagent calls as clickable messages with session viewer modal |
 | [config-management](./config-management.md) | Draft | Viper-based config with `iteratr setup` TUI command |
+| [mcp-tools-server](./mcp-tools-server.md) | Draft | Embedded MCP HTTP server replacing CLI tool injection |
