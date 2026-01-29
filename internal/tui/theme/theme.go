@@ -97,6 +97,8 @@ func (t *Theme) buildStyles() *Styles {
 	s.StatusInProgress = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Warning))
 	s.StatusCompleted = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Success))
 	s.StatusBlocked = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Error))
+	s.StatusPausing = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Warning)).Bold(true)
+	s.StatusPaused = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Info)).Bold(true)
 	s.Highlight = lipgloss.NewStyle().Foreground(lipgloss.Color(t.Primary)).Bold(true)
 	s.ProgressFill = lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgBright)).Background(lipgloss.Color(t.Primary))
 	s.StatLabel = lipgloss.NewStyle().Foreground(lipgloss.Color(t.FgMuted)).Bold(false)

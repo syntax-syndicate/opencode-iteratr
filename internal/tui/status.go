@@ -25,6 +25,7 @@ type StatusBar struct {
 	state             *session.State
 	connected         bool
 	working           bool
+	paused            bool // Whether orchestrator is paused (set via PauseStateMsg)
 	ticking           bool // Whether the spinner tick chain has been started
 	needsTick         bool // Whether a tick needs to be started on next Tick() call
 	layoutMode        LayoutMode
@@ -116,6 +117,17 @@ func (s *StatusBar) buildLeft() string {
 	// Add spinner when working
 	if s.working {
 		left += " " + s.spinner.View()
+	}
+
+	// Add pause indicator
+	if s.paused {
+		if s.working {
+			// Still working: show "PAUSING..." with spinner already visible
+			left += " " + theme.Current().S().StatusPausing.Render("PAUSING...")
+		} else {
+			// Blocked: show static "⏸ PAUSED" icon
+			left += " " + theme.Current().S().StatusPaused.Render("⏸ PAUSED")
+		}
 	}
 
 	return left
@@ -232,13 +244,16 @@ func (s *StatusBar) SetLayoutMode(mode LayoutMode) {
 
 // Update handles messages and spinner animation.
 func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
-	switch msg.(type) {
+	switch m := msg.(type) {
 	case DurationTickMsg:
 		// Don't reschedule if the timer has been stopped
 		if !s.stoppedAt.IsZero() {
 			return nil
 		}
 		return s.durationTick()
+	case PauseStateMsg:
+		s.paused = m.Paused
+		return nil
 	}
 
 	if !s.working {

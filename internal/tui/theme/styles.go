@@ -35,6 +35,8 @@ type Styles struct {
 	StatusInProgress lipgloss.Style
 	StatusCompleted  lipgloss.Style
 	StatusBlocked    lipgloss.Style
+	StatusPausing    lipgloss.Style
+	StatusPaused     lipgloss.Style
 	Highlight        lipgloss.Style
 	ProgressFill     lipgloss.Style
 	StatLabel        lipgloss.Style
