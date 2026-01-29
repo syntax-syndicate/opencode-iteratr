@@ -63,6 +63,13 @@
       "url": "https://github.com/spf13/viper",
       "branch": "master",
       "specialNotes": "Configuration management. Supports YAML, env vars, CLI flags with layered precedence."
+    },
+    {
+      "type": "git",
+      "name": "mcp-go",
+      "url": "https://github.com/mark3labs/mcp-go",
+      "branch": "main",
+      "specialNotes": "MCP (Model Context Protocol) Go SDK. Supports stdio, SSE, and streamable HTTP transports."
     }
   ],
   "model": "claude-haiku-4-5",
