@@ -20,6 +20,7 @@ const (
 	KeyCtrlXS    = "ctrl+x s" // Toggle sidebar
 	KeyCtrlXN    = "ctrl+x n" // Create note
 	KeyCtrlXT    = "ctrl+x t" // Create task
+	KeyCtrlXP    = "ctrl+x p" // Pause/resume
 	KeyCtrlEnter = "ctrl+enter"
 	KeyPgUpDown  = "pgup/pgdn"
 	KeyHomeEnd   = "home/end"
@@ -104,9 +105,9 @@ func HintTaskNav() string {
 }
 
 // HintStatus returns hints for the status bar.
-// "ctrl+x l logs . ctrl+c quit"
+// "ctrl+x p pause . ctrl+x l logs . ctrl+c quit"
 func HintStatus() string {
-	return RenderHintBar(KeyCtrlXL, "logs", KeyCtrlC, "quit")
+	return RenderHintBar(KeyCtrlXP, "pause", KeyCtrlXL, "logs", KeyCtrlC, "quit")
 }
 
 // HintAgentViewport returns hints for the agent output viewport.

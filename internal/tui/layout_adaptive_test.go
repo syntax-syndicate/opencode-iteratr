@@ -59,7 +59,7 @@ func TestStatusBar_AdaptToLayoutMode(t *testing.T) {
 			if !strings.Contains(content, "test-session") {
 				t.Errorf("Should contain session name, got: %q", content)
 			}
-			if !strings.Contains(content, "quit") {
+			if !strings.Contains(content, "ctrl+c") {
 				t.Errorf("Should contain keybinding hints, got: %q", content)
 			}
 
