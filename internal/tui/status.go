@@ -154,12 +154,13 @@ func (s *StatusBar) buildLeft() string {
 func (s *StatusBar) buildGitInfo() string {
 	th := theme.Current().S()
 
-	// Branch name with dirty indicator
-	branch := s.gitBranch
+	// Branch name styled with primary color
+	result := th.HeaderTitle.Render(s.gitBranch)
+
+	// Dirty indicator styled with warning color (appended after branch)
 	if s.gitDirty {
-		branch += th.Warning.Render("*")
+		result += th.Warning.Render("*")
 	}
-	result := th.HeaderTitle.Render(branch)
 
 	// Short commit hash
 	result += " " + th.HeaderInfo.Render(s.gitHash)
