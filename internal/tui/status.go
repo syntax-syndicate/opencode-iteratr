@@ -310,6 +310,9 @@ func (s *StatusBar) Update(msg tea.Msg) tea.Cmd {
 	case AgentBusyMsg:
 		s.agentBusy = m.Busy
 		return nil
+	case GitInfoMsg:
+		s.SetGitInfo(m)
+		return nil
 	}
 
 	if !s.working {

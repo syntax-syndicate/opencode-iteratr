@@ -10,6 +10,7 @@ import (
 	lipglossv2 "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/agent"
+	"github.com/mark3labs/iteratr/internal/git"
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
@@ -45,12 +46,13 @@ type App struct {
 	layoutDirty bool
 
 	// State
-	logsVisible       bool // Toggle for logs modal overlay
-	sidebarVisible    bool // Toggle for sidebar visibility in compact mode
-	iteration         int  // Current iteration number (for note tagging)
-	queueDepth        int  // Number of messages waiting in orchestrator queue
-	modifiedFileCount int  // Number of files modified in current iteration
-	awaitingPrefixKey bool // True when waiting for second key after ctrl+x
+	logsVisible       bool      // Toggle for logs modal overlay
+	sidebarVisible    bool      // Toggle for sidebar visibility in compact mode
+	iteration         int       // Current iteration number (for note tagging)
+	queueDepth        int       // Number of messages waiting in orchestrator queue
+	modifiedFileCount int       // Number of files modified in current iteration
+	awaitingPrefixKey bool      // True when waiting for second key after ctrl+x
+	lastGitCheck      time.Time // Last time git info was fetched (for throttling)
 	store             *session.Store
 	sessionName       string
 	workDir           string // Working directory for agent (needed for subagent modal)
@@ -290,7 +292,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.modifiedFileCount++
 		// Update status bar to reflect new count
 		a.status.SetModifiedFileCount(a.modifiedFileCount)
-		return a, a.status.Tick()
+
+		// Check git info with throttling: skip if < 500ms since last check,
+		// but always check on first file change of iteration (modifiedFileCount == 1)
+		var gitCmd tea.Cmd
+		now := time.Now()
+		if a.modifiedFileCount == 1 || now.Sub(a.lastGitCheck) >= 500*time.Millisecond {
+			a.lastGitCheck = now
+			gitCmd = a.fetchGitInfo()
+		}
+
+		return a, tea.Batch(a.status.Tick(), gitCmd)
 
 	case OpenSubagentModalMsg:
 		// Close existing modal if any (shouldn't happen with full-screen modal)
@@ -1007,5 +1019,25 @@ func (a *App) propagateSizes() {
 			sidebarWidth = a.layout.Main.Dx() / 2
 		}
 		a.sidebar.SetSize(sidebarWidth, a.layout.Main.Dy())
+	}
+}
+
+// fetchGitInfo returns a command that fetches git repository status
+// and sends a GitInfoMsg to update the status bar.
+func (a *App) fetchGitInfo() tea.Cmd {
+	return func() tea.Msg {
+		info, err := git.GetInfo(a.workDir)
+		if err != nil || info == nil {
+			// Not a git repo or error - mark as invalid
+			return GitInfoMsg{Valid: false}
+		}
+		return GitInfoMsg{
+			Branch: info.Branch,
+			Hash:   info.Hash,
+			Dirty:  info.Dirty,
+			Ahead:  info.Ahead,
+			Behind: info.Behind,
+			Valid:  true,
+		}
 	}
 }
