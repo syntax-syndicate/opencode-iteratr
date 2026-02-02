@@ -37,6 +37,8 @@ type WizardModel struct {
 
 	// Session store for session operations
 	sessionStore *session.Store
+	// Template path from config (empty = use default)
+	templatePath string
 
 	// Step components
 	sessionSelectorStep *SessionSelectorStep
@@ -52,13 +54,15 @@ type WizardModel struct {
 
 // RunWizard is the entry point for the build wizard.
 // It creates a standalone BubbleTea program, runs it, and returns the result.
+// templatePath is the custom template path from config (empty string means use default).
 // Returns nil result and error if user cancels or an error occurs.
-func RunWizard(sessionStore *session.Store) (*WizardResult, error) {
+func RunWizard(sessionStore *session.Store, templatePath string) (*WizardResult, error) {
 	// Create initial model
 	m := &WizardModel{
 		step:         0,
 		cancelled:    false,
 		sessionStore: sessionStore,
+		templatePath: templatePath,
 	}
 
 	// Create BubbleTea program
@@ -219,7 +223,10 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ConfigCompleteMsg:
 		// Config complete in step 4
-		m.result.Template = m.templateEditorStep.Content()
+		// Only set template if user edited it; otherwise let config template be used
+		if m.templateEditorStep.WasEdited() {
+			m.result.Template = m.templateEditorStep.Content()
+		}
 		m.result.SessionName = m.configStep.SessionName()
 		m.result.Iterations = m.configStep.Iterations()
 		return m, tea.Quit
@@ -365,7 +372,10 @@ func (m *WizardModel) goNext() (tea.Model, tea.Cmd) {
 	case 4:
 		// Config step - finish wizard
 		if m.configStep != nil && m.configStep.IsValid() {
-			m.result.Template = m.templateEditorStep.Content()
+			// Only set template if user edited it; otherwise let config template be used
+			if m.templateEditorStep.WasEdited() {
+				m.result.Template = m.templateEditorStep.Content()
+			}
 			m.result.SessionName = m.configStep.SessionName()
 			m.result.Iterations = m.configStep.Iterations()
 			return m, tea.Quit
@@ -443,7 +453,7 @@ func (m *WizardModel) initCurrentStep() {
 		}
 	case 3:
 		if m.templateEditorStep == nil {
-			m.templateEditorStep = NewTemplateEditorStep()
+			m.templateEditorStep = NewTemplateEditorStep(m.templatePath)
 		}
 	case 4:
 		if m.configStep == nil {
@@ -781,9 +791,8 @@ func (m *WizardModel) isStepValid() bool {
 
 // isComplete checks if all required steps have valid data.
 func (m *WizardModel) isComplete() bool {
-	// TODO: Validate each step
+	// Template is optional here - can come from config if not edited in wizard
 	return m.result.SpecPath != "" &&
 		m.result.Model != "" &&
-		m.result.Template != "" &&
 		m.result.SessionName != ""
 }

@@ -36,10 +36,12 @@ type TemplateEditorStep struct {
 	width    int            // Available width
 	height   int            // Available height
 	tmpFile  string         // Path to temp file for editing
+	edited   bool           // True if user edited the template via external editor
 }
 
 // NewTemplateEditorStep creates a new template editor step.
-func NewTemplateEditorStep() *TemplateEditorStep {
+// templatePath is the custom template path from config (empty string means use default).
+func NewTemplateEditorStep(templatePath string) *TemplateEditorStep {
 	// Create viewport
 	vp := viewport.New(
 		viewport.WithWidth(60),
@@ -50,8 +52,12 @@ func NewTemplateEditorStep() *TemplateEditorStep {
 	vp.MouseWheelEnabled = true
 	vp.MouseWheelDelta = 3
 
-	// Get default template content
-	content := template.DefaultTemplate
+	// Load template content - use custom path if provided, otherwise use default
+	content, err := template.GetTemplate(templatePath)
+	if err != nil {
+		// Fall back to default if custom template can't be loaded
+		content = template.DefaultTemplate
+	}
 
 	// Set highlighted content
 	vp.SetContent(highlightTemplate(content))
@@ -124,6 +130,7 @@ func (t *TemplateEditorStep) Update(msg tea.Msg) tea.Cmd {
 	case TemplateEditedMsg:
 		// Editor returned with new content
 		t.content = msg.Content
+		t.edited = true // Mark as edited so wizard knows to use this content
 		t.viewport.SetContent(highlightTemplate(t.content))
 		t.viewport.GotoTop()
 		// Clean up temp file
@@ -215,6 +222,12 @@ func (t *TemplateEditorStep) View() string {
 // Content returns the current template content.
 func (t *TemplateEditorStep) Content() string {
 	return t.content
+}
+
+// WasEdited returns true if the user edited the template via external editor.
+// Used to determine whether to override config template settings.
+func (t *TemplateEditorStep) WasEdited() bool {
+	return t.edited
 }
 
 // TemplateEditedMsg is sent when the external editor returns with new content.
