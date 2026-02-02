@@ -10,7 +10,7 @@ import (
 
 // TestIntegration_KeyboardNavigation tests keyboard shortcuts
 func TestIntegration_KeyboardNavigation(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -43,7 +43,7 @@ func TestIntegration_KeyboardNavigation(t *testing.T) {
 
 // TestIntegration_StatePropagation tests that state updates propagate to all components
 func TestIntegration_StatePropagation(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -96,7 +96,7 @@ func TestIntegration_StatePropagation(t *testing.T) {
 
 // TestIntegration_ViewportScrolling tests viewport scrolling in scrollable components
 func TestIntegration_ViewportScrolling(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -141,7 +141,7 @@ func TestIntegration_ViewportScrolling(t *testing.T) {
 
 // TestIntegration_SidebarScrolling tests sidebar viewport scrolling
 func TestIntegration_SidebarScrolling(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -184,7 +184,7 @@ func TestIntegration_SidebarScrolling(t *testing.T) {
 
 // TestIntegration_FocusManagement tests focus switching between components
 func TestIntegration_FocusManagement(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -208,7 +208,7 @@ func TestIntegration_FocusManagement(t *testing.T) {
 
 // TestIntegration_ResizeHandling tests that resize updates all components
 func TestIntegration_ResizeHandling(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 
 	sizes := []struct {
 		width  int
@@ -248,7 +248,7 @@ func TestIntegration_ResizeHandling(t *testing.T) {
 
 // TestIntegration_CompactModeToggle tests toggling sidebar in compact mode
 func TestIntegration_CompactModeToggle(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 
 	// Set compact mode
 	app.width = 80
@@ -260,37 +260,37 @@ func TestIntegration_CompactModeToggle(t *testing.T) {
 		t.Fatal("Expected compact mode")
 	}
 
-	// Initial state: sidebar not visible
-	if app.sidebarVisible {
-		t.Error("Sidebar should not be visible initially")
+	// Initial state: sidebar visible (default from persistent storage)
+	if !app.sidebarVisible {
+		t.Error("Sidebar should be visible initially")
 	}
 
-	// Press ctrl+x s to toggle sidebar
+	// Press ctrl+x s to hide sidebar
 	msg := tea.KeyPressMsg{Text: "ctrl+x"}
 	_, _ = app.Update(msg)
 	msg = tea.KeyPressMsg{Text: "s"}
 	_, _ = app.Update(msg)
 
-	// Sidebar should now be visible
-	if !app.sidebarVisible {
-		t.Error("Sidebar should be visible after toggle")
+	// Sidebar should now be hidden
+	if app.sidebarVisible {
+		t.Error("Sidebar should be hidden after toggle")
 	}
 
-	// Press ctrl+x s again to hide
+	// Press ctrl+x s again to show
 	msg = tea.KeyPressMsg{Text: "ctrl+x"}
 	_, _ = app.Update(msg)
 	msg = tea.KeyPressMsg{Text: "s"}
 	_, _ = app.Update(msg)
 
-	// Sidebar should be hidden
-	if app.sidebarVisible {
-		t.Error("Sidebar should be hidden after second toggle")
+	// Sidebar should be visible
+	if !app.sidebarVisible {
+		t.Error("Sidebar should be visible after second toggle")
 	}
 }
 
 // TestIntegration_AgentOutputAppend tests appending to agent output
 func TestIntegration_AgentOutputAppend(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -306,7 +306,7 @@ func TestIntegration_AgentOutputAppend(t *testing.T) {
 
 // TestIntegration_EventHandling tests event message handling
 func TestIntegration_EventHandling(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)
@@ -329,7 +329,7 @@ func TestIntegration_EventHandling(t *testing.T) {
 
 // TestIntegration_AllMessageTypes tests that all message types render correctly together
 func TestIntegration_AllMessageTypes(t *testing.T) {
-	app := NewApp(context.Background(), nil, "test-session", "/tmp", nil, nil, nil)
+	app := NewApp(context.Background(), nil, "test-session", "/tmp", t.TempDir(), nil, nil, nil)
 	app.width = 120
 	app.height = 40
 	app.layout = CalculateLayout(120, 40)

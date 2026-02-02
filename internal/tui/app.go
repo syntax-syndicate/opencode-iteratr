@@ -13,6 +13,7 @@ import (
 	"github.com/mark3labs/iteratr/internal/git"
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/iteratr/internal/session"
+	"github.com/mark3labs/iteratr/internal/state"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
 	"github.com/nats-io/nats.go"
 )
@@ -24,6 +25,12 @@ type Orchestrator interface {
 	CancelPause()
 	Resume()
 	IsPaused() bool
+}
+
+// loadUIState loads the UI state from persistent storage.
+// Returns default state if loading fails.
+func loadUIState(dataDir string) *state.UIState {
+	return state.Load(dataDir)
 }
 
 // App is the main Bubbletea model that manages the TUI application.
@@ -48,6 +55,7 @@ type App struct {
 	// State
 	logsVisible       bool      // Toggle for logs modal overlay
 	sidebarVisible    bool      // Toggle for sidebar visibility in compact mode
+	sidebarUserHidden bool      // True if user manually hid sidebar (vs auto-hidden)
 	iteration         int       // Current iteration number (for note tagging)
 	queueDepth        int       // Number of messages waiting in orchestrator queue
 	modifiedFileCount int       // Number of files modified in current iteration
@@ -56,6 +64,7 @@ type App struct {
 	store             *session.Store
 	sessionName       string
 	workDir           string // Working directory for agent (needed for subagent modal)
+	dataDir           string // Data directory for persistent storage
 	nc                *nats.Conn
 	ctx               context.Context
 	width             int
@@ -67,30 +76,36 @@ type App struct {
 }
 
 // NewApp creates a new TUI application with the given session store and NATS connection.
-func NewApp(ctx context.Context, store *session.Store, sessionName, workDir string, nc *nats.Conn, sendChan chan string, orch Orchestrator) *App {
+func NewApp(ctx context.Context, store *session.Store, sessionName, workDir, dataDir string, nc *nats.Conn, sendChan chan string, orch Orchestrator) *App {
 	agent := NewAgentOutput()
 	sidebar := NewSidebar()
+
+	// Load UI state from persistent storage
+	uiState := loadUIState(dataDir)
+
 	return &App{
-		store:          store,
-		sessionName:    sessionName,
-		workDir:        workDir,
-		nc:             nc,
-		ctx:            ctx,
-		sendChan:       sendChan,
-		orchestrator:   orch,
-		sidebarVisible: false, // Sidebar hidden by default in compact mode
-		dashboard:      NewDashboard(agent, sidebar),
-		logs:           NewLogViewer(),
-		agent:          agent,
-		status:         NewStatusBar(sessionName),
-		sidebar:        sidebar,
-		dialog:         NewDialog(),
-		taskModal:      NewTaskModal(),
-		noteModal:      NewNoteModal(),
-		noteInputModal: NewNoteInputModal(),
-		taskInputModal: NewTaskInputModal(),
-		eventChan:      make(chan session.Event, 1000), // Buffered channel for events (needs capacity for large task batches)
-		layoutDirty:    true,                           // Calculate layout on first render
+		store:             store,
+		sessionName:       sessionName,
+		workDir:           workDir,
+		dataDir:           dataDir,
+		nc:                nc,
+		ctx:               ctx,
+		sendChan:          sendChan,
+		orchestrator:      orch,
+		sidebarVisible:    uiState.Sidebar.Visible, // Load from persistent state
+		sidebarUserHidden: false,                   // Initialize as not user-hidden
+		dashboard:         NewDashboard(agent, sidebar),
+		logs:              NewLogViewer(),
+		agent:             agent,
+		status:            NewStatusBar(sessionName),
+		sidebar:           sidebar,
+		dialog:            NewDialog(),
+		taskModal:         NewTaskModal(),
+		noteModal:         NewNoteModal(),
+		noteInputModal:    NewNoteInputModal(),
+		taskInputModal:    NewTaskInputModal(),
+		eventChan:         make(chan session.Event, 1000), // Buffered channel for events (needs capacity for large task batches)
+		layoutDirty:       true,                           // Calculate layout on first render
 	}
 }
 
