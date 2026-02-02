@@ -152,7 +152,7 @@ func TestDashboard_RenderProgressIndicator(t *testing.T) {
 // TestDashboard_RenderCurrentTask removed - renderCurrentTask() method no longer exists
 // Current task is now shown in StatusBar component
 
-func TestDashboard_UpdateState(t *testing.T) {
+func TestDashboard_SetState(t *testing.T) {
 	d := NewDashboard(nil, NewSidebar())
 
 	state := &session.State{
@@ -160,7 +160,7 @@ func TestDashboard_UpdateState(t *testing.T) {
 		Tasks:   map[string]*session.Task{},
 	}
 
-	d.UpdateState(state)
+	d.SetState(state)
 
 	if d.state != state {
 		t.Error("state was not updated")
@@ -180,10 +180,10 @@ func TestDashboard_SetIteration(t *testing.T) {
 	}
 }
 
-func TestDashboard_UpdateSize(t *testing.T) {
+func TestDashboard_SetSize(t *testing.T) {
 	d := NewDashboard(nil, NewSidebar())
 
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	if d.width != 100 {
 		t.Errorf("width: got %d, want 100", d.width)
@@ -215,7 +215,7 @@ func TestDashboard_UserInputMsgOnEnter(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Set focus to input pane
 	d.focusPane = FocusInput
@@ -272,7 +272,7 @@ func TestDashboard_EmptyInputNoMessage(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Set focus to input pane
 	d.focusPane = FocusInput
@@ -299,7 +299,7 @@ func TestDashboard_InputFocusWithIKey(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Initially focus should be on agent
 	if d.focusPane != FocusAgent {
@@ -329,7 +329,7 @@ func TestDashboard_InputFocusFromTasksPane(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Set focus to tasks pane
 	d.focusPane = FocusTasks
@@ -351,7 +351,7 @@ func TestDashboard_InputBlurWithEscape(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Focus input
 	d.focusPane = FocusInput
@@ -391,7 +391,7 @@ func TestDashboard_InputFocusIdempotent(t *testing.T) {
 	// Create a new agent output and dashboard
 	agentOutput := NewAgentOutput()
 	d := NewDashboard(agentOutput, NewSidebar())
-	d.UpdateSize(100, 50)
+	d.SetSize(100, 50)
 
 	// Focus input once
 	iKey := tea.KeyPressMsg{Text: "i"}

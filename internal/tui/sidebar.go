@@ -694,11 +694,6 @@ func (s *Sidebar) updateContent() {
 	s.notesScrollList.SetItems(noteItems)
 }
 
-// Legacy methods for backward compatibility
-func (s *Sidebar) SetFocused(focused bool)                  { s.SetFocus(focused) }
-func (s *Sidebar) UpdateSize(width, height int) tea.Cmd     { s.SetSize(width, height); return nil }
-func (s *Sidebar) UpdateState(state *session.State) tea.Cmd { s.SetState(state); return nil }
-
 // GetTaskByID returns a task by ID using O(1) lookup via taskIndex.
 // Returns nil if task not found.
 func (s *Sidebar) GetTaskByID(id string) *session.Task {

@@ -184,14 +184,6 @@ func (d *Dashboard) SetSize(width, height int) {
 	}
 }
 
-// UpdateSize updates the dashboard dimensions (legacy method for backward compatibility).
-func (d *Dashboard) UpdateSize(width, height int) tea.Cmd {
-	d.SetSize(width, height)
-	// Note: sidebar sizing is handled by App.propagateSizes() directly
-	// since Dashboard shares the same Sidebar instance with App.
-	return nil
-}
-
 // SetIteration sets the current iteration number.
 func (d *Dashboard) SetIteration(n int) tea.Cmd {
 	d.iteration = n
@@ -205,14 +197,6 @@ func (d *Dashboard) SetState(state *session.State) {
 	if state != nil {
 		d.sessionName = state.Session
 	}
-}
-
-// UpdateState updates the dashboard with new session state (legacy method for backward compatibility).
-func (d *Dashboard) UpdateState(state *session.State) tea.Cmd {
-	d.SetState(state)
-	// Note: sidebar state is propagated by App directly via a.sidebar.SetState()
-	// since Dashboard shares the same Sidebar instance with App.
-	return nil
 }
 
 // SetFocus sets the focus state of the dashboard (implements Focusable interface).

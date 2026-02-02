@@ -163,7 +163,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Propagate state updates to all components
 		a.status.SetState(msg.State)
 		a.sidebar.SetState(msg.State)
-		a.dashboard.UpdateState(msg.State)
+		a.dashboard.SetState(msg.State)
 		a.logs.SetState(msg.State)
 		return a, a.status.Tick()
 
