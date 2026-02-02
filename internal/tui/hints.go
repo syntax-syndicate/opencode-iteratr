@@ -7,25 +7,23 @@ import (
 // Standard key representations for consistent hints across the app.
 // Use arrow symbols (↑↓) as primary, with j/k mentioned as backup where applicable.
 const (
-	KeyUpDown    = "↑/↓"    // Arrow keys for navigation
-	KeyUpDownJK  = "↑↓/jk"  // Arrows with vim backup
-	KeyArrows    = "arrows" // Generic arrow reference
-	KeyEnter     = "enter"
-	KeySpace     = "space"
-	KeyEsc       = "esc"
-	KeyTab       = "tab"
-	KeyCtrlC     = "ctrl+c"
-	KeyCtrlX     = "ctrl+x"   // Prefix modifier key
-	KeyCtrlXL    = "ctrl+x l" // Toggle logs
-	KeyCtrlXS    = "ctrl+x s" // Toggle sidebar
-	KeyCtrlXN    = "ctrl+x n" // Create note
-	KeyCtrlXT    = "ctrl+x t" // Create task
-	KeyCtrlXP    = "ctrl+x p" // Pause/resume
-	KeyCtrlEnter = "ctrl+enter"
-	KeyPgUpDown  = "pgup/pgdn"
-	KeyHomeEnd   = "home/end"
-	KeyI         = "i"
-	KeyBackspace = "backspace"
+	KeyUpDown   = "↑/↓"    // Arrow keys for navigation
+	KeyUpDownJK = "↑↓/jk"  // Arrows with vim backup
+	KeyArrows   = "arrows" // Generic arrow reference
+	KeyEnter    = "enter"
+	KeySpace    = "space"
+	KeyEsc      = "esc"
+	KeyTab      = "tab"
+	KeyCtrlC    = "ctrl+c"
+	KeyCtrlX    = "ctrl+x"   // Prefix modifier key
+	KeyCtrlXL   = "ctrl+x l" // Toggle logs
+	KeyCtrlXS   = "ctrl+x s" // Toggle sidebar
+	KeyCtrlXN   = "ctrl+x n" // Create note
+	KeyCtrlXT   = "ctrl+x t" // Create task
+	KeyCtrlXP   = "ctrl+x p" // Pause/resume
+	KeyPgUpDown = "pgup/pgdn"
+	KeyHomeEnd  = "home/end"
+	KeyI        = "i"
 )
 
 // RenderHint renders a single key-description pair.
@@ -63,12 +61,6 @@ func RenderHintBar(pairs ...string) string {
 
 // Common hint bar presets for consistency.
 
-// HintScroll returns hints for scrollable viewports.
-// "up/down scroll . pgup/pgdn page"
-func HintScroll() string {
-	return RenderHintBar(KeyUpDown, "scroll", KeyPgUpDown, "page")
-}
-
 // HintScrollWithVim returns hints for scrollable viewports with vim keys.
 // "up/down/jk scroll . pgup/pgdn page"
 func HintScrollWithVim() string {
@@ -76,9 +68,9 @@ func HintScrollWithVim() string {
 }
 
 // HintModal returns standard modal hints.
-// "tab cycle . ctrl+enter submit . esc close"
+// "tab cycle . enter submit . esc close"
 func HintModal() string {
-	return RenderHintBar(KeyTab, "cycle", KeyCtrlEnter, "submit", KeyEsc, "close")
+	return RenderHintBar(KeyTab, "cycle", KeyEnter, "submit", KeyEsc, "close")
 }
 
 // HintLogs returns hints for the log viewer modal.
@@ -98,20 +90,8 @@ func HintInputBlurred() string {
 	return RenderHint(KeyI, "type message")
 }
 
-// HintTaskNav returns hints for task list navigation.
-// "up/down/jk nav . enter open"
-func HintTaskNav() string {
-	return RenderHintBar(KeyUpDownJK, "nav", KeyEnter, "open")
-}
-
 // HintStatus returns hints for the status bar.
 // "ctrl+x p pause . ctrl+x l logs . ctrl+c quit"
 func HintStatus() string {
 	return RenderHintBar(KeyCtrlXP, "pause", KeyCtrlXL, "logs", KeyCtrlC, "quit")
-}
-
-// HintAgentViewport returns hints for the agent output viewport.
-// "up/down/jk scroll . space expand . pgup/pgdn page"
-func HintAgentViewport() string {
-	return RenderHintBar(KeyUpDownJK, "scroll", KeySpace, "expand", KeyPgUpDown, "page")
 }
