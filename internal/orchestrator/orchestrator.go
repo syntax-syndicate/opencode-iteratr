@@ -698,7 +698,7 @@ func (o *Orchestrator) Run() error {
 		}
 
 		// Check if session_complete was signaled by checking session state
-		state, err := o.store.LoadState(o.ctx, o.cfg.SessionName)
+		state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
 		if err != nil {
 			logger.Error("Failed to load session state: %v", err)
 			return fmt.Errorf("failed to load session state: %w", err)
@@ -708,10 +708,48 @@ func (o *Orchestrator) Run() error {
 			// Send completion message to TUI to show dialog
 			if o.tuiProgram != nil {
 				o.tuiProgram.Send(tui.SessionCompleteMsg{})
-				// Wait for TUI to quit (user dismisses dialog)
-				<-o.tuiDone
 			}
-			break
+			// Continue processing user messages after completion
+			// If agent restarts session, resume normal iteration
+		postCompletionLoop:
+			for {
+				select {
+				case <-o.tuiDone:
+					break postCompletionLoop
+				case <-o.ctx.Done():
+					return nil
+				case userMsg := <-o.sendChan:
+					logger.Info("Processing user message after completion")
+					if o.tuiProgram != nil {
+						o.tuiProgram.Send(tui.QueuedMessageProcessingMsg{Text: userMsg})
+					}
+					if err := o.runner.SendMessages(o.ctx, []string{userMsg}); err != nil {
+						logger.Error("Failed to send user message: %v", err)
+					}
+					// Reload state and refresh TUI (task list may have changed)
+					state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
+					if err == nil {
+						if o.tuiProgram != nil {
+							o.tuiProgram.Send(tui.StateUpdateMsg{State: state})
+						}
+						// Check if session was restarted (agent added tasks and marked incomplete)
+						if !state.Complete {
+							logger.Info("Session restarted, resuming iterations")
+							break postCompletionLoop
+						}
+					}
+				}
+			}
+			// Only exit main loop if session is still complete
+			// If restarted, continue iterating
+			state, err = o.store.LoadState(o.ctx, o.cfg.SessionName)
+			if err != nil {
+				logger.Error("Failed to load session state after post-completion processing: %v", err)
+				break
+			}
+			if state.Complete {
+				break
+			}
 		}
 
 		// After iteration completes, process ALL queued user messages
