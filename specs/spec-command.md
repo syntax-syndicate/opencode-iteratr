@@ -11,16 +11,17 @@ Developer wants to create a well-structured spec without manually writing markdo
 ## Requirements
 
 ### Wizard Flow
-1. **Title Input** - Single-line text, slug format validation (lowercase alphanumeric + hyphens)
+1. **Title Input** - Single-line text, human-readable name (e.g., "My Feature Name")
 2. **Description Textarea** - Multi-line, no limit, hint: "provide as much detail as possible"
 3. **Model Selector** - Reuse from build wizard (`internal/tui/wizard/model_selector.go`)
 4. **Agent Phase** - Auto-start after model selection, interact via question tool until finish-spec called
 5. **Wait for Agent Stop** - Agent session ends, MCP server shut down
-6. **Save Spec** - Write content to `{spec_dir}/{slug}.md`, update README.md
-7. **Next Steps** - View/Start Build/Exit buttons
+6. **Review Spec** - Show generated spec in viewport, allow editing before save (reuse TemplateEditorStep pattern)
+7. **Save Spec** - Write content to `{spec_dir}/{slug}.md`, update README.md
+8. **Next Steps** - Start Build/Exit buttons
 
 ### Agent Phase UI
-- Spinner with status text while agent thinking (e.g., "Agent is analyzing...")
+- Spinner while agent thinking: reuse `tui.NewDefaultSpinner()` from `internal/tui/anim.go` (same as status bar)
 - Agent text output hidden from user
 - Questions displayed one at a time (not batch)
 - Show "Question X of Y" counter
@@ -67,18 +68,14 @@ Parameters:
   content: string   // Full spec markdown content (required, only parameter)
 
 Behavior:
-- Use wizard title (passed from wizard, NOT extracted from content)
 - Validate content: check for "## Overview" and "## Tasks" headings (case-insensitive, level 2 headings)
   - If either missing: return error listing which sections are missing
-- Slugify title (spaces->hyphens, lowercase, transliterate accents)
-- Check if file exists at {spec_dir}/{slug}.md
-  - If exists: return error with message asking agent to confirm overwrite or choose new name
-- Save to {spec_dir}/{slug}.md
-- Update README.md with spec entry (see README section)
-- Return success message with file path
+- Send content to UI via channel (like ask-questions pattern)
+- Block until UI confirms (user reviews, optionally edits, then saves)
+- Return success message to agent
 
-Note: The wizard title is set in step 1 and passed to MCP server during initialization. The
-finish-spec handler receives it via server state, NOT by parsing content.
+Note: File saving and README update happen in wizard after user review, not in MCP handler.
+The wizard handles slugifying title and checking for existing files.
 ```
 
 ### README.md Update
@@ -91,13 +88,21 @@ finish-spec handler receives it via server state, NOT by parsing content.
   - Date: Current date in YYYY-MM-DD format
 - Create README with header + table if missing
 
+### Review Spec Step
+Reuse `TemplateEditorStep` pattern from build wizard:
+- Show generated spec in scrollable viewport with markdown syntax highlighting
+- Hint bar: `↑↓ scroll` | `e edit` | `tab buttons` | `esc back`
+- Press `e` to open in $EDITOR, content reloads on return
+- Only show `e edit` hint if editor available
+- Save button confirms and proceeds to save
+- Back button shows warning "This will discard the spec and restart the interview", then restarts agent session
+
 ### Completion Screen
 Buttons after spec saved:
-- **View**: Open in $EDITOR using `github.com/charmbracelet/x/editor` with `tea.ExecProcess` (only show if $EDITOR set)
 - **Start Build**: Execute `iteratr build --spec <path>` directly
 - **Exit**: Return to shell
 
-Note: If $EDITOR is not set, View button is hidden and spec path is displayed in the success message.
+Show success message with spec path.
 
 ### Configuration
 - `spec_dir` in iteratr.yml (default: `./specs`)
@@ -106,9 +111,10 @@ Note: If $EDITOR is not set, View button is hidden and spec path is displayed in
 ### Error Handling
 - opencode acp start failure: show error message, exit wizard
 - Agent ends without calling finish-spec: discard everything, show error
-- File exists on save: MCP returns error, agent should ask user to confirm overwrite or provide new name
+- File exists on save (review step): show confirmation modal "Overwrite existing spec?"
 - ESC during questions: go back to previous question if not on first, otherwise show cancel confirmation
 - ESC during spinner: show cancel confirmation modal
+- ESC during review: show cancel confirmation modal
 
 ### Agent Prompt
 ```
@@ -130,22 +136,77 @@ Description: {description}
 ### New Files
 - `cmd/iteratr/spec.go` - Cobra command setup
 - `internal/tui/specwizard/wizard.go` - Main wizard model with step management
-- `internal/tui/specwizard/title_step.go` - Title input step (slug validation)
-- `internal/tui/specwizard/description_step.go` - Textarea step (reuse textarea patterns from template_editor.go)
+- `internal/tui/specwizard/title_step.go` - Title input step (human-readable name)
+- `internal/tui/specwizard/description_step.go` - Textarea step
 - `internal/tui/specwizard/agent_phase.go` - Agent interaction view with spinner + question handling
-- `internal/tui/specwizard/completion_step.go` - Final actions view with View/Build/Exit buttons
+- `internal/tui/specwizard/review_step.go` - Spec review with viewport + edit (adapts TemplateEditorStep)
+- `internal/tui/specwizard/completion_step.go` - Final actions view with Build/Exit buttons
 - `internal/tui/specwizard/question_view.go` - Single question component with tab navigation, radio buttons, custom input
 - `internal/specmcp/server.go` - MCP HTTP server (pattern from internal/mcpserver/server.go)
 - `internal/specmcp/tools.go` - Tool registration for ask-questions and finish-spec
 - `internal/specmcp/handlers.go` - Tool handler implementations with channel-based question/answer flow
 
 ### Reused Components
-**Directly reuse these existing components from build wizard:**
+**Directly reuse these existing components:**
+- `internal/tui/anim.go` - Spinner (NewDefaultSpinner, same as status bar uses)
 - `internal/tui/wizard/model_selector.go` - Model selection step (call NewModelSelectorStep())
+- `internal/tui/wizard/template_editor.go` - Pattern for review step (viewport + edit + hint bar)
 - `internal/tui/wizard/button_bar.go` - Navigation buttons with focus management (NewButtonBar, Focus/Blur methods)
-- `internal/tui/wizard/styles.go` - Theme and styling helpers
+- `internal/tui/wizard/styles.go` - Theme and styling helpers (renderHintBar, highlightTemplate)
 - `internal/agent/runner.go` - ACP spawning (create stateless runner, no session store)
 - `internal/agent/acp.go` - ACP protocol implementation
+
+### File Tree
+```
+cmd/iteratr/
+├── build.go                    # existing - reference for cobra command pattern
+├── spec.go                     # NEW - spec subcommand
+
+internal/
+├── config/
+│   └── config.go               # existing - add SpecDir field
+├── tui/
+│   ├── anim.go                 # existing - reuse NewDefaultSpinner()
+│   ├── wizard/
+│   │   ├── wizard.go           # existing - reference for step management pattern
+│   │   ├── model_selector.go   # existing - reuse directly
+│   │   ├── template_editor.go  # existing - pattern for review_step.go
+│   │   ├── button_bar.go       # existing - reuse directly
+│   │   └── styles.go           # existing - reuse renderHintBar, highlightTemplate
+│   └── specwizard/             # NEW directory
+│       ├── wizard.go           # main model, step enum, RunWizard()
+│       ├── title_step.go       # textinput for human-readable title
+│       ├── description_step.go # textarea for feature description
+│       ├── agent_phase.go      # spinner + question handling + MCP coordination
+│       ├── question_view.go    # single question with options + navigation
+│       ├── review_step.go      # viewport + edit for spec review
+│       └── completion_step.go  # Build/Exit buttons
+├── specmcp/                    # NEW directory
+│   ├── server.go               # MCP HTTP server with channels
+│   ├── tools.go                # ask-questions, finish-spec registration
+│   └── handlers.go             # tool handlers with channel blocking
+├── mcpserver/
+│   └── server.go               # existing - reference for MCP server pattern
+└── agent/
+    ├── acp.go                  # existing - reference for ACP protocol
+    └── runner.go               # existing - reference for process spawning
+```
+
+### Key Code References
+| Pattern | File | Line | Usage |
+|---------|------|------|-------|
+| Cobra command | `cmd/iteratr/build.go` | 33-48 | Copy for spec.go command structure |
+| Wizard entry | `internal/tui/wizard/wizard.go` | 55-89 | RunWizard pattern with tea.NewProgram |
+| Step management | `internal/tui/wizard/wizard.go` | 29-53 | Step enum, result struct, component fields |
+| MCP server start | `internal/mcpserver/server.go` | 38-80 | Random port, mcp-go setup, stateless HTTP |
+| Tool registration | `internal/mcpserver/tools.go` | - | AddTool pattern with schema |
+| Spinner usage | `internal/tui/status.go` | 54, 134-137 | NewDefaultSpinner, conditional View() |
+| Viewport + edit | `internal/tui/wizard/template_editor.go` | 44-71, 149-190 | viewport setup, openEditor pattern |
+| Hint bar | `internal/tui/wizard/template_editor.go` | 201-216 | renderHintBar with conditional edit |
+| Button bar | `internal/tui/wizard/button_bar.go` | - | NewButtonBar, Focus/Blur, Render |
+| ACP session/new | `internal/agent/acp.go` | 165-216 | Create session with MCP servers array |
+| ACP session/prompt | `internal/agent/acp.go` | 622-800 | Send prompt, handle notifications |
+| ACP process spawn | `internal/agent/runner.go` | - | exec.Command("opencode", "acp") pattern |
 
 ### Data Flow
 ```
@@ -168,13 +229,15 @@ User selects/types answer ----------> Send answer back via channel -> MCP return
                                                   |
                                     Agent continues thinking/asking more questions
                                                   |
-Agent calls finish-spec ------------> Validate content -> Save {spec_dir}/{slug}.md
-                                                  |
-                                    Update README.md with new entry
+Agent calls finish-spec ------------> Validate content -> Send content to UI via channel
                                                   |
                                     session/prompt returns with stopReason -> Clean shutdown
                                                   |
-                                    Completion screen: View / Build / Exit
+                                    Review screen: viewport + edit hint bar + Save/Back buttons
+                                                  |
+User reviews/edits ------------------> Press Save -> Write {spec_dir}/{slug}.md + Update README.md
+                                                  |
+                                    Completion screen: Build / Exit
 ```
 
 ### Code Examples
@@ -202,27 +265,27 @@ type Server struct {
 	specTitle string // Title from wizard step 1
 	specDir   string // From config
 	
-	// Channels for question/answer flow
-	questionCh chan QuestionRequest
-	answerCh   chan AnswerResponse
+	// Channels for UI communication (per-request response channel pattern)
+	questionCh    chan QuestionRequest
+	specContentCh chan SpecContentRequest
 }
 
 type QuestionRequest struct {
 	Questions []Question
-	ResultCh  chan []interface{} // Return answers here (string or []string per question)
+	ResultCh  chan []interface{} // Handler blocks on this; UI sends answers here
 }
 
-type AnswerResponse struct {
-	Answers []interface{} // Each element is string (single-select) or []string (multi-select)
-	Err     error
+type SpecContentRequest struct {
+	Content  string
+	ResultCh chan error // Handler blocks on this; UI sends nil on save success
 }
 
 func New(specTitle, specDir string) *Server {
 	return &Server{
-		specTitle:  specTitle,
-		specDir:    specDir,
-		questionCh: make(chan QuestionRequest, 1),
-		answerCh:   make(chan AnswerResponse, 1),
+		specTitle:     specTitle,
+		specDir:       specDir,
+		questionCh:    make(chan QuestionRequest, 1),
+		specContentCh: make(chan SpecContentRequest, 1),
 	}
 }
 
@@ -267,9 +330,9 @@ func (s *Server) QuestionChan() <-chan QuestionRequest {
 	return s.questionCh
 }
 
-// SendAnswers sends answers back to waiting MCP handler
-func (s *Server) SendAnswers(answers []interface{}, err error) {
-	s.answerCh <- AnswerResponse{Answers: answers, Err: err}
+// SpecContentChan returns channel for receiving spec content from finish-spec handler
+func (s *Server) SpecContentChan() <-chan SpecContentRequest {
+	return s.specContentCh
 }
 ```
 
@@ -564,11 +627,9 @@ func (q *QuestionView) Update(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		q.optionSelector, cmd = q.optionSelector.Update(msg)
 		
-		// Check if "Type your own" was selected
+		// Show/hide custom input based on selection
 		selected := q.optionSelector.SelectedLabels()
-		if len(selected) > 0 && selected[0] == "Type your own answer" {
-			q.showCustom = true
-		}
+		q.showCustom = len(selected) > 0 && selected[0] == "Type your own answer"
 		
 		return cmd
 	} else if q.focusIndex == 1 && q.showCustom {
@@ -935,9 +996,9 @@ Default: `./specs`, env: `ITERATR_SPEC_DIR`
 ```
 +- Spec Wizard - Step 1 of 3: Name --------------------+
 |                                                      |
-|  Enter spec name (lowercase, hyphens only):          |
+|  Enter spec name:                                    |
 |  +------------------------------------------------+  |
-|  | my-feature-name                                |  |
+|  | User Authentication                            |  |
 |  +------------------------------------------------+  |
 |                                                      |
 |                          [ Cancel ]  [ Next -> ]     |
@@ -992,31 +1053,50 @@ Default: `./specs`, env: `ITERATR_SPEC_DIR`
 +------------------------------------------------------+
 ```
 
+### Review Spec
+```
++- Spec Wizard - Review Spec --------------------------+
+|                                                      |
+|  # User Authentication                               |
+|                                                      |
+|  ## Overview                                         |
+|  Add user authentication with email/password login   |
+|  and session management.                             |
+|                                                      |
+|  ## User Story                                       |
+|  As a user, I want to securely log in...             |
+|  ...                                                 |
+|                                                      |
+|  ↑↓ scroll | e edit | tab buttons | esc back         |
+|                          [ <- Back ]  [ Save ]       |
++------------------------------------------------------+
+```
+
 ### Completion
 ```
 +- Spec Wizard - Complete -----------------------------+
 |                                                      |
-|  [check] Spec saved to specs/my-feature-name.md      |
+|  [check] Spec saved to specs/user-authentication.md  |
 |  [check] Updated specs/README.md                     |
 |                                                      |
 |                                                      |
-|          [ View ]  [ Start Build ]  [ Exit ]         |
+|                    [ Start Build ]  [ Exit ]         |
 +------------------------------------------------------+
 ```
 
 ## Tasks
 
 ### Tracer Bullet: End-to-End Skeleton
-**Goal**: Get minimal working flow from title input -> agent prompt -> spec saved, proving all pieces connect.
+**Goal**: Get minimal working flow from title input -> agent prompt -> spec received, proving ACP + MCP pieces connect. Review step added later.
 
 - [ ] Create `cmd/iteratr/spec.go` with RunE calling wizard.Run()
 - [ ] Create `internal/tui/specwizard/wizard.go` with hardcoded 1-step flow (title input only)
 - [ ] Create `internal/specmcp/server.go` with minimal Start() returning port
-- [ ] Create `internal/specmcp/handlers.go` with finish-spec handler that prints content and saves to file
+- [ ] Create `internal/specmcp/handlers.go` with finish-spec handler that validates and sends content via channel
 - [ ] Spawn opencode acp, send initialize + session/new with mcpServers array (copy pattern from internal/agent/acp.go)
 - [ ] Send hardcoded prompt via session/prompt request
 - [ ] Verify agent calls finish-spec tool and content appears in handler
-- [ ] Save content to `./specs/test-{timestamp}.md` to avoid conflicts
+- [ ] For tracer bullet: save directly to `./specs/test-{timestamp}.md` (review step added in task 15)
 - [ ] Run: `iteratr spec` -> type title -> see agent run -> see file created
 - [ ] Verify workflow end-to-end, then clean up test files
 - [ ] Proceed to full implementation with all wizard steps
@@ -1025,10 +1105,10 @@ Default: `./specs`, env: `ITERATR_SPEC_DIR`
 - [ ] Add `spec_dir` field to Config struct with default `./specs`, env: ITERATR_SPEC_DIR
 
 ### 2. MCP Server Foundation
-- [ ] Implement Server struct with question/answer channels (see code example above)
+- [ ] Implement Server struct with questionCh and specContentCh channels (see code example above)
 - [ ] Implement Start() with random port selection (copy pattern from internal/mcpserver)
 - [ ] Implement Stop() with clean HTTP server shutdown
-- [ ] Add QuestionChan() and SendAnswers() methods for UI communication
+- [ ] Add QuestionChan() and SpecContentChan() methods for UI communication
 
 ### 3. MCP Tool Registration
 - [ ] Register ask-questions tool with schema matching OpenCode question tool
@@ -1036,15 +1116,13 @@ Default: `./specs`, env: `ITERATR_SPEC_DIR`
 
 ### 4. Ask Questions Handler
 - [ ] Parse questions array from MCP request arguments
-- [ ] Send QuestionRequest to questionCh with result channel
-- [ ] Block waiting for answers from answerCh
+- [ ] Send QuestionRequest to questionCh with ResultCh for response
+- [ ] Block waiting for answers on ResultCh
 - [ ] Return answers as JSON array to agent
 - [ ] Handle context cancellation
 
 ### 5. Finish Spec Handler
 - [ ] Extract content parameter (validate non-empty)
-- [ ] Use s.specTitle from server state (NOT parsed from content)
-- [ ] Slugify title (lowercase, spaces->hyphens, transliterate accents: github.com/gosimple/slug)
 - [ ] Validate content has required sections:
 ```go
 func validateSpecContent(content string) error {
@@ -1058,11 +1136,10 @@ func validateSpecContent(content string) error {
     return nil
 }
 ```
-- [ ] Check if file exists at {spec_dir}/{slug}.md
-  - If exists: return error message asking agent to confirm or choose new name
-- [ ] Write content to file with proper permissions (0644)
-- [ ] Call updateREADME(specDir, slug, title, description) helper (see task 6)
-- [ ] Return success with file path
+- [ ] If validation fails: return error to agent (agent can retry)
+- [ ] Send SpecContentRequest to specContentCh with ResultCh for confirmation
+- [ ] Block waiting for confirmation on ResultCh (user reviews/edits in UI)
+- [ ] Return success message to agent
 
 ### 6. README Update Logic
 - [ ] Implement updateREADME(specDir, slug, title, description string) function
@@ -1070,14 +1147,14 @@ func validateSpecContent(content string) error {
 - [ ] Look for `<!-- SPECS -->` marker
 - [ ] If found: insert new row after marker
 - [ ] If not found: append marker + table header + new row
-- [ ] Table format: `| [Title](slug.md) | Description | Date |`
+- [ ] Table format: `| [Name](slug.md) | Description | Date |`
   - Title: Link to spec file
   - Description: First line of wizard description (up to 100 chars, trim if needed)
   - Date: time.Now().Format("2006-01-02")
 - [ ] Handle edge cases: description with newlines (use first line only)
 
 ### 7. Wizard Framework
-- [ ] Create wizard.go with step enum (title, description, model, agent, completion)
+- [ ] Create wizard.go with step enum (title, description, model, agent, review, completion)
 - [ ] Implement Init() initializing title step
 - [ ] Implement Update() with step navigation (reuse patterns from build wizard)
 - [ ] Implement View() with modal rendering (copy from build wizard)
@@ -1086,16 +1163,12 @@ func validateSpecContent(content string) error {
 
 ### 8. Title Input Step
 - [ ] Create title_step.go with textinput.Model
-- [ ] Add real-time slug validation using regex pattern:
+- [ ] Validate non-empty and reasonable length:
 ```go
-var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-func validateSlug(s string) error {
+func validateTitle(s string) error {
+    s = strings.TrimSpace(s)
     if s == "" {
         return fmt.Errorf("title cannot be empty")
-    }
-    if !slugPattern.MatchString(s) {
-        return fmt.Errorf("use only lowercase letters, numbers, and hyphens (no spaces, cannot start/end with hyphen)")
     }
     if len(s) > 100 {
         return fmt.Errorf("title too long (max 100 characters)")
@@ -1103,8 +1176,7 @@ func validateSlug(s string) error {
     return nil
 }
 ```
-- [ ] Show validation error if invalid characters typed
-- [ ] Render with hint: "lowercase letters, numbers, hyphens only"
+- [ ] Render with hint: "e.g., 'User Authentication' or 'API Rate Limiting'"
 
 ### 9. Description Textarea Step
 - [ ] Create description_step.go with textarea.Model (copy pattern from template_editor.go)
@@ -1120,7 +1192,8 @@ func validateSlug(s string) error {
 - [ ] Pass wizard title and description to agent phase for MCP server initialization
 
 ### 11. Agent Phase Component
-- [ ] Create agent_phase.go with spinner, status text, question state management
+- [ ] Create agent_phase.go with question state management
+- [ ] Use `tui.NewDefaultSpinner()` for thinking indicator (same spinner as status bar)
 - [ ] Add state fields:
   - questions []Question - all questions received from agent
   - answers []QuestionAnswer - parallel array storing answer for each question
@@ -1230,7 +1303,7 @@ Make the spec extremely concise. Sacrifice grammar for the sake of concision.`,
   - Format answers for MCP: build []interface{} where each element is:
     - string for single-select (answer.Value as string)
     - []string for multi-select (answer.Value as []string)
-  - Send formatted answers via mcpServer.SendAnswers()
+  - Send formatted answers to `questionRequest.ResultCh` (unblocks MCP handler)
   - Set waitingForAgent = true, return to spinner view while agent processes
 
 Example answer formatting:
@@ -1249,47 +1322,38 @@ func formatAnswersForMCP(answers []QuestionAnswer) []interface{} {
 ```
 
 ### 14. Agent Completion Handling
-- [ ] Handle agent stop message (end of session)
-- [ ] Shut down MCP server via Stop()
-- [ ] Verify spec file was saved (check file exists)
-- [ ] Advance to completion step with spec path
+- [ ] Handle SpecContentRequest from specContentCh (agent called finish-spec)
+- [ ] Store spec content, advance to review step
+- [ ] Shut down MCP server via Stop() after review step completes
 
-### 15. Completion Step
+### 15. Review Step
+- [ ] Create review_step.go adapting TemplateEditorStep pattern
+- [ ] Show spec content in scrollable viewport with markdown highlighting (reuse highlightTemplate from styles.go)
+- [ ] Hint bar: `↑↓ scroll | e edit | tab buttons | esc back`
+- [ ] Press `e` to open in $EDITOR (same pattern as template_editor.go openEditor())
+- [ ] Only show `e edit` hint if editor available
+- [ ] Back button: show warning modal "This will discard the spec and restart the interview. Continue?" (Yes restarts agent session)
+- [ ] Save button: 
+  - Slugify title (github.com/gosimple/slug)
+  - Check if file exists, prompt for overwrite confirmation if so
+  - Write content to {spec_dir}/{slug}.md (0644 permissions)
+  - Call updateREADME() helper (task 6)
+  - Advance to completion step
+- [ ] Track if content was edited for potential future use
+
+### 16. Completion Step
 - [ ] Create completion_step.go with success message, file path display
-- [ ] Add three buttons: View | Start Build | Exit (reuse ButtonBar with 3 buttons)
-- [ ] View button: use `github.com/charmbracelet/x/editor` package with `tea.ExecProcess` (same pattern as template_editor.go):
-```go
-import "github.com/charmbracelet/x/editor"
-
-func (c *CompletionStep) openInEditor() tea.Cmd {
-    // editor.Command checks $EDITOR, $VISUAL, and falls back to sensible defaults
-    cmd, err := editor.Command("iteratr", c.specPath)
-    if err != nil {
-        // No editor available - show path instead
-        return func() tea.Msg {
-            return ShowMessageMsg{msg: fmt.Sprintf("Spec saved to: %s", c.specPath)}
-        }
-    }
-    
-    // Execute editor - suspends TUI, restores after editor exits
-    return tea.ExecProcess(cmd, func(err error) tea.Msg {
-        if err != nil {
-            return ShowMessageMsg{msg: fmt.Sprintf("Editor error: %v\nSpec saved to: %s", err, c.specPath)}
-        }
-        return EditorClosedMsg{}
-    })
-}
-```
-- [ ] Only show View button if editor is available (check `os.Getenv("EDITOR") != ""`)
+- [ ] Add two buttons: Start Build | Exit (reuse ButtonBar)
 - [ ] Start Build button: exec `iteratr build --spec {path}` directly, exit wizard
 - [ ] Exit button: return tea.Quit
 - [ ] Implement tab navigation between buttons
 
-### 16. Cancellation & Error Handling
+### 17. Cancellation & Error Handling
 - [ ] Add ESC handler in question view:
   - If on first question: show cancel confirmation modal
   - If on question 2+: treat as Back button (go to previous question)
 - [ ] Add ESC handler during spinner/agent thinking: show cancel confirmation modal
+- [ ] Add ESC handler in review step: show cancel confirmation modal
 - [ ] Confirmation modal: "Cancel spec creation?" with Yes/No buttons (reuse ButtonBar)
 - [ ] On Yes: send session/cancel notification, stop MCP server, discard progress, exit wizard
 - [ ] Handle agent early termination (ends without calling finish-spec): show error, exit
@@ -1297,7 +1361,7 @@ func (c *CompletionStep) openInEditor() tea.Cmd {
 - [ ] Handle opencode not installed: show error with install link, exit wizard
 - [ ] Handle finish-spec validation failure: error is returned to agent, agent can retry
 
-### 17. Integration & Polish
+### 18. Integration & Polish
 - [ ] Wire wizard.Run() into cmd/iteratr/spec.go
 - [ ] Add wizard to root command
 - [ ] Ensure spec_dir created if doesn't exist
@@ -1316,6 +1380,4 @@ func (c *CompletionStep) openInEditor() tea.Cmd {
 
 ## Open Questions
 
-1. Should finish-spec support a `confirmed_overwrite: bool` param, or require agent to call with different name?
-2. Should README migration from old format be a separate command?
-3. Future: support for templates (different spec formats for different project types)?
+None.
