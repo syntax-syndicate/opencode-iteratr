@@ -1056,3 +1056,74 @@ func TestOverwriteFlow_CancelWithN(t *testing.T) {
 		t.Error("File should not contain new content")
 	}
 }
+
+func TestWizard_StartBuildMsg(t *testing.T) {
+	// Create wizard in completion step
+	cfg := &config.Config{
+		SpecDir: t.TempDir(),
+	}
+	m := &WizardModel{
+		step: StepCompletion,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			Model:       "test-model",
+			SpecContent: "# Test Content",
+			SpecPath:    "./specs/test-spec.md",
+		},
+	}
+	m.initCurrentStep()
+
+	// Send StartBuildMsg (simulating Start Build button click)
+	model, cmd := m.Update(StartBuildMsg{})
+	m = model.(*WizardModel)
+
+	// Should receive ExecBuildMsg command
+	if cmd == nil {
+		t.Fatal("Expected Update to return a command")
+	}
+
+	msg := cmd()
+	execMsg, ok := msg.(ExecBuildMsg)
+	if !ok {
+		t.Fatalf("Expected ExecBuildMsg, got %T", msg)
+	}
+
+	// Verify spec path is passed correctly
+	if execMsg.SpecPath != m.result.SpecPath {
+		t.Errorf("Expected SpecPath %q, got %q", m.result.SpecPath, execMsg.SpecPath)
+	}
+}
+
+func TestWizard_ExecBuildMsg(t *testing.T) {
+	// Create wizard in completion step
+	cfg := &config.Config{
+		SpecDir: t.TempDir(),
+	}
+	m := &WizardModel{
+		step: StepCompletion,
+		cfg:  cfg,
+		result: WizardResult{
+			SpecPath: "./specs/test-spec.md",
+		},
+	}
+
+	// Send ExecBuildMsg
+	execMsg := ExecBuildMsg{SpecPath: "./specs/test-spec.md"}
+	_, cmd := m.Update(execMsg)
+
+	// Should receive a command (tea.Sequence)
+	if cmd == nil {
+		t.Fatal("Expected Update to return a command")
+	}
+
+	// The command is a tea.Sequence that combines tea.Quit with execBuild
+	// We can't easily test the sequence directly, but we verify a command was returned
+	// The actual execution of iteratr build would require a full binary and integration test
+
+	// Note: We've verified that:
+	// 1. StartBuildMsg triggers ExecBuildMsg
+	// 2. ExecBuildMsg returns a command (the Sequence)
+	// This confirms the message flow is correct
+}

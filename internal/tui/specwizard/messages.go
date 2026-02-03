@@ -31,3 +31,9 @@ type AgentErrorMsg struct {
 type SpecContentRequestMsg struct {
 	Request specmcp.SpecContentRequest
 }
+
+// ExecBuildMsg is sent when the user clicks Start Build button.
+// It triggers execution of iteratr build --spec <path> and exits the wizard.
+type ExecBuildMsg struct {
+	SpecPath string
+}

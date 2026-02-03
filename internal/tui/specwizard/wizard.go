@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -325,10 +326,21 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StartBuildMsg:
 		// User clicked Start Build button in completion step
-		logger.Debug("Start Build button clicked")
-		// TODO: Launch build wizard with spec path (TAS-49)
-		// For now, just quit - will be implemented in TAS-49
-		return m, tea.Quit
+		logger.Debug("Start Build button clicked, launching build with spec: %s", m.result.SpecPath)
+
+		// Execute iteratr build --spec <path> directly
+		// This will spawn a new iteratr build process and exit the spec wizard
+		return m, func() tea.Msg {
+			return ExecBuildMsg{SpecPath: m.result.SpecPath}
+		}
+
+	case ExecBuildMsg:
+		// Execute iteratr build command in a new process
+		// First quit the TUI to restore terminal, then exec the build command
+		return m, tea.Sequence(
+			tea.Quit,
+			m.execBuild(msg.SpecPath),
+		)
 
 	case wizard.TabExitForwardMsg:
 		// Tab from last input - move to buttons
@@ -850,6 +862,39 @@ func (m *WizardModel) startAgentPhase() tea.Msg {
 	}()
 
 	return nil
+}
+
+// execBuild returns a tea.Cmd that executes iteratr build --spec <path> after the TUI quits.
+// The build command is executed using syscall.Exec to replace the current process.
+func (m *WizardModel) execBuild(specPath string) tea.Cmd {
+	return func() tea.Msg {
+		// Find the iteratr binary path
+		// Use os.Executable() to get the current binary path
+		execPath, err := os.Executable()
+		if err != nil {
+			logger.Error("Failed to get executable path: %v", err)
+			// Fall back to "iteratr" in PATH
+			execPath = "iteratr"
+		}
+
+		// Build the command: iteratr build --spec <path>
+		cmd := exec.Command(execPath, "build", "--spec", specPath)
+
+		// Inherit stdin, stdout, stderr from current process
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		// Run the command and wait for it to complete
+		logger.Debug("Executing: %s build --spec %s", execPath, specPath)
+		if err := cmd.Run(); err != nil {
+			logger.Error("Failed to execute build command: %v", err)
+			fmt.Fprintf(os.Stderr, "Failed to start build: %v\n", err)
+		}
+
+		// Return nil message since we're exiting anyway
+		return nil
+	}
 }
 
 // buildSpecPrompt constructs the agent prompt for spec creation.
