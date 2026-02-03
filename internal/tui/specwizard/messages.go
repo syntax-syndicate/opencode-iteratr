@@ -19,3 +19,8 @@ type SpecContentReceivedMsg struct {
 type SpecSavedMsg struct {
 	Path string
 }
+
+// AgentErrorMsg is sent when there's an error starting or running the agent.
+type AgentErrorMsg struct {
+	Err error
+}

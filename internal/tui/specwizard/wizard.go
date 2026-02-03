@@ -1,12 +1,17 @@
 package specwizard
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/agent"
 	"github.com/mark3labs/iteratr/internal/config"
+	"github.com/mark3labs/iteratr/internal/logger"
+	"github.com/mark3labs/iteratr/internal/specmcp"
 	"github.com/mark3labs/iteratr/internal/tui/theme"
 	"github.com/mark3labs/iteratr/internal/tui/wizard"
 )
@@ -39,6 +44,7 @@ type WizardModel struct {
 	width     int          // Terminal width
 	height    int          // Terminal height
 	cfg       *config.Config
+	ctx       context.Context // Context for ACP operations
 
 	// Step components
 	titleStep       *TitleStep
@@ -51,15 +57,22 @@ type WizardModel struct {
 	// Button bar with focus tracking
 	buttonBar     *wizard.ButtonBar
 	buttonFocused bool // True if buttons have focus (vs step content)
+
+	// Agent infrastructure
+	mcpServer   *specmcp.Server
+	agentRunner *agent.Runner
 }
 
 // Run is the entry point for the spec wizard.
 // It creates a standalone BubbleTea program, runs it, and returns any error.
 func Run(cfg *config.Config) error {
+	ctx := context.Background()
+
 	m := &WizardModel{
 		step:      StepTitle,
 		cancelled: false,
 		cfg:       cfg,
+		ctx:       ctx,
 	}
 
 	p := tea.NewProgram(m)
@@ -75,6 +88,14 @@ func Run(cfg *config.Config) error {
 
 	if wizModel.cancelled {
 		return fmt.Errorf("wizard cancelled by user")
+	}
+
+	// Clean up agent resources
+	if wizModel.agentRunner != nil {
+		wizModel.agentRunner.Stop()
+	}
+	if wizModel.mcpServer != nil {
+		_ = wizModel.mcpServer.Stop()
 	}
 
 	return nil
@@ -174,8 +195,7 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.step = StepAgent
 		m.buttonFocused = false
 		m.initCurrentStep()
-		// TODO: Start agent phase (spawn ACP, MCP server)
-		return m, nil
+		return m, m.startAgentPhase
 
 	case SpecContentReceivedMsg:
 		// Spec content received from agent, advance to review
@@ -192,6 +212,13 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.buttonFocused = false
 		m.initCurrentStep()
 		return m, nil
+
+	case AgentErrorMsg:
+		// Agent failed to start or encountered error
+		logger.Error("Agent error: %v", msg.Err)
+		// For now, just log and quit - TODO: show error to user
+		m.cancelled = true
+		return m, tea.Quit
 
 	case wizard.TabExitForwardMsg:
 		// Tab from last input - move to buttons
@@ -258,9 +285,10 @@ func (m *WizardModel) initCurrentStep() {
 	case StepModel:
 		m.modelStep = wizard.NewModelSelectorStep()
 	case StepAgent:
-		// TODO: Initialize agent phase (requires MCP server start)
-		// For now, create placeholder that will be replaced when MCP server starts
-		m.agentStep = nil
+		// Agent phase initialized by startAgentPhase(), but create placeholder if needed
+		if m.agentStep == nil && m.mcpServer != nil {
+			m.agentStep = NewAgentPhase(m.mcpServer)
+		}
 	case StepReview:
 		// TODO: Initialize review step
 		m.reviewStep = NewReviewStep(m.result.SpecContent, m.cfg)
@@ -519,4 +547,124 @@ func (m *WizardModel) blurStepContent() {
 			m.descriptionStep.Blur()
 		}
 	}
+}
+
+// startAgentPhase initializes the MCP server, ACP subprocess, and sends the initial prompt.
+func (m *WizardModel) startAgentPhase() tea.Msg {
+	// Start MCP server
+	logger.Debug("Starting MCP server for spec wizard")
+	m.mcpServer = specmcp.New(m.result.Title, m.cfg.SpecDir)
+	port, err := m.mcpServer.Start(m.ctx)
+	if err != nil {
+		logger.Error("Failed to start MCP server: %v", err)
+		return AgentErrorMsg{Err: fmt.Errorf("failed to start MCP server: %w", err)}
+	}
+	logger.Debug("MCP server started on port %d", port)
+
+	// Initialize agent phase component with MCP server
+	m.agentStep = NewAgentPhase(m.mcpServer)
+	if m.width > 0 && m.height > 0 {
+		m.agentStep.SetSize(m.width, m.height)
+	}
+
+	// Build MCP server URL
+	mcpServerURL := fmt.Sprintf("http://localhost:%d/mcp", port)
+
+	// Get current working directory
+	workDir, err := os.Getwd()
+	if err != nil {
+		logger.Error("Failed to get working directory: %v", err)
+		return AgentErrorMsg{Err: fmt.Errorf("failed to get working directory: %w", err)}
+	}
+
+	// Create agent runner
+	logger.Debug("Creating agent runner")
+	m.agentRunner = agent.NewRunner(agent.RunnerConfig{
+		Model:        m.result.Model,
+		WorkDir:      workDir,
+		SessionName:  "spec-wizard",
+		NATSPort:     0, // Not using NATS for spec wizard
+		MCPServerURL: mcpServerURL,
+		OnText: func(text string) {
+			// Agent text output - not shown in spec wizard
+			logger.Debug("Agent text: %s", text)
+		},
+		OnToolCall: func(event agent.ToolCallEvent) {
+			// Tool call events - not shown in spec wizard
+			logger.Debug("Agent tool call: %s [%s]", event.Title, event.Status)
+		},
+		OnThinking: func(content string) {
+			// Thinking output - not shown in spec wizard
+			logger.Debug("Agent thinking: %s", content)
+		},
+		OnFinish: func(event agent.FinishEvent) {
+			logger.Debug("Agent finished: %s", event.StopReason)
+		},
+		OnFileChange: func(change agent.FileChange) {
+			// File changes not relevant in spec wizard
+		},
+	})
+
+	// Start ACP subprocess
+	logger.Debug("Starting ACP subprocess")
+	if err := m.agentRunner.Start(m.ctx); err != nil {
+		logger.Error("Failed to start ACP: %v", err)
+		return AgentErrorMsg{Err: fmt.Errorf("failed to start ACP: %w", err)}
+	}
+
+	// Build spec prompt
+	prompt := buildSpecPrompt(m.result.Title, m.result.Description)
+	logger.Debug("Sending spec prompt (%d bytes)", len(prompt))
+
+	// Send prompt in goroutine to avoid blocking
+	go func() {
+		err := m.agentRunner.RunIteration(m.ctx, prompt, "")
+		if err != nil {
+			logger.Error("Agent iteration failed: %v", err)
+			// Error will be handled via OnFinish callback
+		}
+	}()
+
+	return nil
+}
+
+// buildSpecPrompt constructs the agent prompt for spec creation.
+func buildSpecPrompt(title, description string) string {
+	specFormat := `# [Title]
+
+## Overview
+Brief description of the feature
+
+## User Story
+Who benefits and why
+
+## Requirements
+Detailed requirements
+
+## Technical Implementation
+Implementation details
+
+## Tasks
+Byte-sized implementation tasks
+
+## Out of Scope
+What's not included in v1`
+
+	return fmt.Sprintf(`You are helping create a feature specification.
+
+Feature: %s
+Description: %s
+
+Follow the user instructions and interview me in detail using the ask-questions 
+tool about literally anything: technical implementation, UI & UX, concerns, 
+tradeoffs, edge cases, dependencies, testing, etc. Be very in-depth and continue 
+interviewing me continually until you have enough information. Then write the 
+complete spec using the finish-spec tool.
+
+The spec MUST follow this format:
+
+%s
+
+Make the spec extremely concise. Sacrifice grammar for the sake of concision.`,
+		title, description, specFormat)
 }
