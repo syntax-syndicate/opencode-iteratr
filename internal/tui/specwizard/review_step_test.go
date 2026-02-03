@@ -496,3 +496,114 @@ func TestReviewStep_ConfirmationModalBlocksInput(t *testing.T) {
 		t.Error("Expected modal to still be shown")
 	}
 }
+
+func TestReviewStep_ExternalEditorKeyPress(t *testing.T) {
+	tests := []struct {
+		name      string
+		editorSet bool
+		key       string
+		expectCmd bool
+		cmdType   string
+	}{
+		{
+			name:      "e key with EDITOR set triggers editor",
+			editorSet: true,
+			key:       "e",
+			expectCmd: true,
+		},
+		{
+			name:      "e key without EDITOR does nothing",
+			editorSet: false,
+			key:       "e",
+			expectCmd: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up EDITOR env var
+			if tt.editorSet {
+				if err := os.Setenv("EDITOR", "vim"); err != nil {
+					t.Fatalf("Failed to set EDITOR: %v", err)
+				}
+			} else {
+				_ = os.Unsetenv("EDITOR")
+			}
+			defer func() {
+				_ = os.Unsetenv("EDITOR")
+			}()
+
+			content := "# Test Spec\n\nSome content."
+			cfg := &config.Config{}
+			step := NewReviewStep(content, cfg)
+			step.SetSize(80, 20)
+
+			// Press 'e' key
+			cmd := step.Update(tea.KeyPressMsg{Text: tt.key})
+
+			if tt.expectCmd {
+				if cmd == nil {
+					t.Error("Expected command from 'e' key when EDITOR is set")
+				}
+			} else {
+				if cmd != nil {
+					t.Error("Expected no command from 'e' key when EDITOR is not set")
+				}
+			}
+		})
+	}
+}
+
+func TestReviewStep_ExternalEditorWorkflow(t *testing.T) {
+	// Set EDITOR
+	if err := os.Setenv("EDITOR", "cat"); err != nil {
+		t.Fatalf("Failed to set EDITOR: %v", err)
+	}
+	defer func() {
+		_ = os.Unsetenv("EDITOR")
+	}()
+
+	content := "# Original Spec\n\nOriginal content."
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 20)
+
+	// Verify initial state
+	if step.WasEdited() {
+		t.Error("Expected WasEdited() to be false initially")
+	}
+	if step.Content() != content {
+		t.Errorf("Expected content %q, got %q", content, step.Content())
+	}
+
+	// Simulate pressing 'e' to open editor
+	cmd := step.Update(tea.KeyPressMsg{Text: "e"})
+	if cmd == nil {
+		t.Fatal("Expected command from 'e' key")
+	}
+
+	// Verify tmpFile was created
+	if step.tmpFile == "" {
+		t.Error("Expected tmpFile to be set after opening editor")
+	}
+
+	// Simulate editor returning with edited content
+	editedContent := "# Edited Spec\n\nEdited content via external editor."
+	cmd = step.Update(SpecEditedMsg{Content: editedContent})
+	if cmd != nil {
+		t.Error("Expected no command from SpecEditedMsg")
+	}
+
+	// Verify content was updated
+	if step.Content() != editedContent {
+		t.Errorf("Expected content %q after edit, got %q", editedContent, step.Content())
+	}
+	if !step.WasEdited() {
+		t.Error("Expected WasEdited() to be true after editing")
+	}
+
+	// Verify tmpFile was cleaned up
+	if step.tmpFile != "" {
+		t.Error("Expected tmpFile to be cleared after editing")
+	}
+}
