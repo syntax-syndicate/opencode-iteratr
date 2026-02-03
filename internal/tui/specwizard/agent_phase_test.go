@@ -113,6 +113,131 @@ func TestAgentPhase_NextQuestion(t *testing.T) {
 	assert.Equal(t, 1, phase.currentIndex, "should advance to next question")
 	assert.NotNil(t, phase.questionView, "should still have question view")
 	assert.Nil(t, cmd)
+
+	// Verify answer was saved
+	assert.Equal(t, "Option 1", phase.answers[0].Value)
+	assert.False(t, phase.answers[0].IsMulti)
+}
+
+func TestAgentPhase_NextQuestion_ValidationFails(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Setup with 2 questions
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Question 1?",
+				Header:   "Q1",
+				Options:  []specmcp.Option{{Label: "Option 1", Description: ""}},
+				Multiple: false,
+			},
+			{
+				Question: "Question 2?",
+				Header:   "Q2",
+				Options:  []specmcp.Option{{Label: "Option 2", Description: ""}},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}, 1),
+	}
+
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+	assert.Equal(t, 0, phase.currentIndex)
+
+	// Don't answer first question - leave it empty
+
+	// Try to navigate to next question
+	phase, cmd := phase.Update(NextQuestionMsg{})
+
+	// Should stay on same question
+	assert.Equal(t, 0, phase.currentIndex, "should stay on current question")
+	assert.NotNil(t, phase.questionView, "should still have question view")
+
+	// Should return error command
+	assert.NotNil(t, cmd, "should return error command")
+
+	// Execute command and verify it returns ShowErrorMsg
+	msg := cmd()
+	errorMsg, ok := msg.(ShowErrorMsg)
+	assert.True(t, ok, "command should return ShowErrorMsg")
+	assert.Contains(t, errorMsg.err, "Please select an answer", "error should mention selection")
+}
+
+func TestAgentPhase_NextQuestion_CustomTextEmpty(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Setup with 1 question
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Question 1?",
+				Header:   "Q1",
+				Options:  []specmcp.Option{{Label: "Option 1", Description: ""}},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}, 1),
+	}
+
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+
+	// Select "Type your own answer" but leave custom text empty
+	lastIdx := len(phase.questionView.optionSelector.items) - 1
+	phase.questionView.optionSelector.items[lastIdx].selected = true
+	phase.questionView.showCustom = true
+	phase.questionView.customInput.SetValue("") // Empty custom text
+
+	// Try to navigate to next question
+	phase, cmd := phase.Update(NextQuestionMsg{})
+
+	// Should stay on same question
+	assert.Equal(t, 0, phase.currentIndex, "should stay on current question")
+
+	// Should return error command
+	assert.NotNil(t, cmd, "should return error command")
+
+	// Execute command and verify it returns ShowErrorMsg
+	msg := cmd()
+	errorMsg, ok := msg.(ShowErrorMsg)
+	assert.True(t, ok, "command should return ShowErrorMsg")
+	assert.Contains(t, errorMsg.err, "Please select an answer", "error should mention missing text")
+}
+
+func TestAgentPhase_NextQuestion_AtLastQuestion(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Setup with 1 question (already at last)
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Question 1?",
+				Header:   "Q1",
+				Options:  []specmcp.Option{{Label: "Option 1", Description: ""}},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}, 1),
+	}
+
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+	assert.Equal(t, 0, phase.currentIndex)
+
+	// Answer the question
+	phase.questionView.optionSelector.items[0].selected = true
+
+	// Try to navigate to next question (should stay at last)
+	phase, cmd := phase.Update(NextQuestionMsg{})
+
+	// Should stay at index 0 (last question)
+	assert.Equal(t, 0, phase.currentIndex, "should stay at last question")
+	assert.NotNil(t, phase.questionView, "should still have question view")
+	assert.Nil(t, cmd)
+
+	// Verify answer was still saved
+	assert.Equal(t, "Option 1", phase.answers[0].Value)
 }
 
 func TestAgentPhase_PrevQuestion(t *testing.T) {
