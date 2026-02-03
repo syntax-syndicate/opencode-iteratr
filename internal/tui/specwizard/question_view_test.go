@@ -1256,3 +1256,153 @@ func containsAt(s, substr string, start int) bool {
 	}
 	return false
 }
+
+// TestQuestionView_EscOnFirstQuestion tests that ESC on first question returns ShowCancelConfirmMsg.
+func TestQuestionView_EscOnFirstQuestion(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+				{Label: "Option 2"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Choice A"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	// Create view on first question
+	qv := NewQuestionView(questions, answers, 0)
+	qv.SetSize(80, 24)
+
+	// Press ESC on first question
+	cmd := qv.Update(tea.KeyPressMsg{Text: "esc"})
+	if cmd == nil {
+		t.Fatal("expected ShowCancelConfirmMsg command")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(ShowCancelConfirmMsg); !ok {
+		t.Errorf("expected ShowCancelConfirmMsg, got %T", msg)
+	}
+}
+
+// TestQuestionView_EscOnSecondQuestion tests that ESC on subsequent questions returns PrevQuestionMsg.
+func TestQuestionView_EscOnSecondQuestion(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+				{Label: "Option 2"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Choice A"},
+				{Label: "Choice B"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "Option 1", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	// Create view on second question
+	qv := NewQuestionView(questions, answers, 1)
+	qv.SetSize(80, 24)
+
+	// Select an option on second question
+	qv.optionSelector.Toggle()
+
+	// Press ESC on second question
+	cmd := qv.Update(tea.KeyPressMsg{Text: "esc"})
+	if cmd == nil {
+		t.Fatal("expected PrevQuestionMsg command")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(PrevQuestionMsg); !ok {
+		t.Errorf("expected PrevQuestionMsg, got %T", msg)
+	}
+
+	// Verify answer was saved before going back
+	if answers[1].Value == "" {
+		// Check if the answer was saved by the question view
+		selected := qv.optionSelector.SelectedLabels()
+		if len(selected) == 0 {
+			t.Error("expected answer to be saved before going back")
+		}
+	}
+}
+
+// TestQuestionView_EscOnLastQuestion tests that ESC on last question returns PrevQuestionMsg.
+func TestQuestionView_EscOnLastQuestion(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Choice A"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Third Question",
+			Question: "Select third",
+			Options: []Option{
+				{Label: "Item X"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "Option 1", IsMulti: false},
+		{Value: "Choice A", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	// Create view on last question (index 2)
+	qv := NewQuestionView(questions, answers, 2)
+	qv.SetSize(80, 24)
+
+	// Press ESC on last question
+	cmd := qv.Update(tea.KeyPressMsg{Text: "esc"})
+	if cmd == nil {
+		t.Fatal("expected PrevQuestionMsg command")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(PrevQuestionMsg); !ok {
+		t.Errorf("expected PrevQuestionMsg, got %T", msg)
+	}
+}

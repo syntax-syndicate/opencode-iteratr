@@ -255,6 +255,11 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 		logger.Warn("Validation error: %s", msg.err)
 		return a, nil
 
+	case ShowCancelConfirmMsg:
+		// ESC pressed on first question: show cancel confirmation modal
+		a.showConfirmCancel = true
+		return a, nil
+
 	default:
 		// Handle keyboard input during waiting state
 		if a.waitingForAgent {

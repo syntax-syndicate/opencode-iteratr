@@ -37,3 +37,7 @@ type SpecContentRequestMsg struct {
 type ExecBuildMsg struct {
 	SpecPath string
 }
+
+// ShowCancelConfirmMsg is sent when ESC is pressed on the first question.
+// It triggers the agent phase to show the cancel confirmation modal.
+type ShowCancelConfirmMsg struct{}

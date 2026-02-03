@@ -1017,3 +1017,33 @@ func TestAgentPhase_EscDuringQuestions_NotHandled(t *testing.T) {
 	updated, _ := phase.Update(tea.KeyPressMsg{Text: "esc"})
 	assert.False(t, updated.showConfirmCancel, "ESC during questions should not show cancel modal")
 }
+
+func TestAgentPhase_ShowCancelConfirmMsg(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Set up question view (simulate receiving questions)
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Test question?",
+				Header:   "Test",
+				Options: []specmcp.Option{
+					{Label: "Option 1", Description: "First option"},
+				},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}),
+	}
+
+	// Process question request
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+	require.NotNil(t, phase.questionView, "question view should be created")
+	require.False(t, phase.waitingForAgent, "should not be waiting for agent")
+	require.False(t, phase.showConfirmCancel, "cancel modal should not be shown initially")
+
+	// Send ShowCancelConfirmMsg (simulating ESC on first question)
+	updated, _ := phase.Update(ShowCancelConfirmMsg{})
+	assert.True(t, updated.showConfirmCancel, "ShowCancelConfirmMsg should show cancel modal")
+}

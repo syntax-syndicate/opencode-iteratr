@@ -460,6 +460,16 @@ func (q *QuestionView) Update(msg tea.Msg) tea.Cmd {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "esc":
+			if q.currentIndex > 0 {
+				// Not on first question: go back to previous question
+				q.saveCurrentAnswer()
+				return func() tea.Msg { return PrevQuestionMsg{} }
+			}
+			// On first question: return a message to show cancel confirmation
+			// This will be handled by the parent (agent phase)
+			return func() tea.Msg { return ShowCancelConfirmMsg{} }
+
 		case "tab":
 			q.focusIndex++
 			// Skip custom input if not visible
