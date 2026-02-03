@@ -2,14 +2,12 @@ package specmcp
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
 // TestServerStartRandomPort verifies that Start() selects a random available port.
 func TestServerStartRandomPort(t *testing.T) {
-	// Skip this test for now since registerTools() is not yet implemented
-	t.Skip("Skipping until tool registration is implemented")
-
 	server := New("Test Spec", "./specs")
 	ctx := context.Background()
 
@@ -23,7 +21,7 @@ func TestServerStartRandomPort(t *testing.T) {
 	}
 
 	// Verify URL is constructed correctly
-	expectedURL := "http://localhost:" + string(rune(port)) + "/mcp"
+	expectedURL := fmt.Sprintf("http://localhost:%d/mcp", port)
 	if server.URL() != expectedURL {
 		t.Errorf("URL mismatch: got %s, want %s", server.URL(), expectedURL)
 	}
@@ -36,8 +34,6 @@ func TestServerStartRandomPort(t *testing.T) {
 
 // TestServerDoubleStart verifies that calling Start() twice returns an error.
 func TestServerDoubleStart(t *testing.T) {
-	t.Skip("Skipping until tool registration is implemented")
-
 	server := New("Test Spec", "./specs")
 	ctx := context.Background()
 
