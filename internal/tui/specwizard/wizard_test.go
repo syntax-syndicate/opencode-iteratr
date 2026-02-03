@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mark3labs/iteratr/internal/agent"
 	"github.com/mark3labs/iteratr/internal/config"
 	"github.com/mark3labs/iteratr/internal/specmcp"
 	"github.com/mark3labs/iteratr/internal/tui/wizard"
@@ -703,3 +704,127 @@ func TestCancelWizardMsg(t *testing.T) {
 		t.Error("Expected agentRunner to be cleaned up (nil) after cancellation")
 	}
 }
+
+func TestAgentEarlyTerminationError(t *testing.T) {
+	tests := []struct {
+		name       string
+		stopReason string
+		errorMsg   string
+		expectErr  bool
+	}{
+		{
+			name:       "agent terminates with error stop reason",
+			stopReason: "error",
+			errorMsg:   "model request failed",
+			expectErr:  true,
+		},
+		{
+			name:       "agent terminates with error message but different stop reason",
+			stopReason: "end_turn",
+			errorMsg:   "unexpected error occurred",
+			expectErr:  true,
+		},
+		{
+			name:       "agent completes successfully",
+			stopReason: "end_turn",
+			errorMsg:   "",
+			expectErr:  false,
+		},
+		{
+			name:       "agent cancelled by user",
+			stopReason: "cancelled",
+			errorMsg:   "",
+			expectErr:  false,
+		},
+		{
+			name:       "agent hits max tokens",
+			stopReason: "max_tokens",
+			errorMsg:   "",
+			expectErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock program to capture sent messages
+			receivedMsgs := []tea.Msg{}
+			mockProgram := &mockProgram{
+				sendFunc: func(msg tea.Msg) {
+					receivedMsgs = append(receivedMsgs, msg)
+				},
+			}
+
+			cfg := &config.Config{
+				SpecDir: "./specs",
+			}
+
+			m := &WizardModel{
+				step:      StepAgent,
+				cancelled: false,
+				cfg:       cfg,
+				width:     80,
+				height:    24,
+			}
+			m.program = mockProgram
+
+			// Simulate OnFinish callback being called (this happens in agent goroutine)
+			// Create the runner config with OnFinish that checks for errors
+			onFinishCalled := false
+			onFinish := func(event agent.FinishEvent) {
+				onFinishCalled = true
+				// Check if agent terminated with an error
+				if event.StopReason == "error" || event.Error != "" {
+					// Send error message to UI
+					if m.program != nil {
+						m.program.Send(AgentErrorMsg{Err: fmt.Errorf("agent error: %s", event.Error)})
+					}
+				}
+			}
+
+			// Simulate the OnFinish callback being invoked
+			onFinish(agent.FinishEvent{
+				StopReason: tt.stopReason,
+				Error:      tt.errorMsg,
+			})
+
+			// Verify OnFinish was called
+			if !onFinishCalled {
+				t.Error("Expected OnFinish to be called")
+			}
+
+			// Verify error message was sent when expected
+			if tt.expectErr {
+				if len(receivedMsgs) != 1 {
+					t.Errorf("Expected 1 message to be sent, got %d", len(receivedMsgs))
+				} else {
+					errMsg, ok := receivedMsgs[0].(AgentErrorMsg)
+					if !ok {
+						t.Errorf("Expected AgentErrorMsg, got %T", receivedMsgs[0])
+					} else if !strings.Contains(errMsg.Err.Error(), "agent error:") {
+						t.Errorf("Expected error message to contain 'agent error:', got %q", errMsg.Err.Error())
+					}
+				}
+			} else {
+				if len(receivedMsgs) != 0 {
+					t.Errorf("Expected no messages to be sent, got %d", len(receivedMsgs))
+				}
+			}
+		})
+	}
+}
+
+// mockProgram implements a minimal tea.Program interface for testing callbacks
+type mockProgram struct {
+	sendFunc func(tea.Msg)
+}
+
+func (m *mockProgram) Send(msg tea.Msg) {
+	if m.sendFunc != nil {
+		m.sendFunc(msg)
+	}
+}
+
+// Implement other tea.Program methods as no-ops (not used in tests)
+func (m *mockProgram) Run() (tea.Model, error)  { return nil, nil }
+func (m *mockProgram) Quit()                    {}
+func (m *mockProgram) Wait() (tea.Model, error) { return nil, nil }

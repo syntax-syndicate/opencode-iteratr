@@ -27,6 +27,12 @@ const (
 	StepCompletion  = 5 // Success screen with Build/Exit
 )
 
+// ProgramSender is an interface for sending messages to the Bubbletea program.
+// This allows for easier testing by mocking the Send method.
+type ProgramSender interface {
+	Send(tea.Msg)
+}
+
 // WizardResult holds the accumulated data from the wizard flow.
 type WizardResult struct {
 	Title       string // User-provided spec title
@@ -63,6 +69,9 @@ type WizardModel struct {
 	mcpServer   *specmcp.Server
 	agentRunner *agent.Runner
 	agentError  *error // Error from agent startup or runtime
+
+	// Program reference for sending messages from callbacks
+	program ProgramSender
 }
 
 // Run is the entry point for the spec wizard.
@@ -78,6 +87,7 @@ func Run(cfg *config.Config) error {
 	}
 
 	p := tea.NewProgram(m)
+	m.program = p // Store program reference for callbacks
 	finalModel, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("wizard failed: %w", err)
@@ -771,7 +781,14 @@ func (m *WizardModel) startAgentPhase() tea.Msg {
 			logger.Debug("Agent thinking: %s", content)
 		},
 		OnFinish: func(event agent.FinishEvent) {
-			logger.Debug("Agent finished: %s", event.StopReason)
+			logger.Debug("Agent finished: %s (error: %s)", event.StopReason, event.Error)
+			// Check if agent terminated with an error
+			if event.StopReason == "error" || event.Error != "" {
+				// Send error message to UI
+				if m.program != nil {
+					m.program.Send(AgentErrorMsg{Err: fmt.Errorf("agent error: %s", event.Error)})
+				}
+			}
 		},
 		OnFileChange: func(change agent.FileChange) {
 			// File changes not relevant in spec wizard
