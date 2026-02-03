@@ -2,6 +2,8 @@ package specmcp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -67,11 +69,126 @@ func (s *Server) registerTools() error {
 	return nil
 }
 
-// handleAskQuestions handles the ask-questions tool call.
-// Implementation will be added in a future task.
+// handleAskQuestions handles the ask-questions tool call from the agent.
+// This handler parses questions, sends them to the UI via channel, and blocks until answers are received.
 func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// TODO: Implement in TAS-16
-	return mcp.NewToolResultError("ask-questions handler not yet implemented"), nil
+	// Extract arguments
+	args := request.GetArguments()
+	if args == nil {
+		return mcp.NewToolResultError("no arguments provided"), nil
+	}
+
+	// Extract questions array
+	questionsRaw, ok := args["questions"]
+	if !ok {
+		return mcp.NewToolResultError("missing 'questions' parameter"), nil
+	}
+
+	// Type assert to []any (mcp-go returns arrays as []any)
+	questionsArray, ok := questionsRaw.([]any)
+	if !ok {
+		return mcp.NewToolResultError("'questions' is not an array"), nil
+	}
+
+	if len(questionsArray) == 0 {
+		return mcp.NewToolResultError("at least one question is required"), nil
+	}
+
+	// Parse each question
+	questions := make([]Question, 0, len(questionsArray))
+	for i, qRaw := range questionsArray {
+		// Convert to map[string]any
+		qMap, ok := qRaw.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d is not an object", i)), nil
+		}
+
+		// Extract question (required)
+		questionText, ok := qMap["question"].(string)
+		if !ok || questionText == "" {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d missing or empty 'question' field", i)), nil
+		}
+
+		// Extract header (required)
+		header, ok := qMap["header"].(string)
+		if !ok || header == "" {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d missing or empty 'header' field", i)), nil
+		}
+
+		// Extract options array (required)
+		optionsRaw, ok := qMap["options"]
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d missing 'options' field", i)), nil
+		}
+
+		optionsArray, ok := optionsRaw.([]any)
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d 'options' is not an array", i)), nil
+		}
+
+		if len(optionsArray) == 0 {
+			return mcp.NewToolResultError(fmt.Sprintf("question %d must have at least one option", i)), nil
+		}
+
+		// Parse options
+		options := make([]Option, 0, len(optionsArray))
+		for j, optRaw := range optionsArray {
+			optMap, ok := optRaw.(map[string]any)
+			if !ok {
+				return mcp.NewToolResultError(fmt.Sprintf("question %d option %d is not an object", i, j)), nil
+			}
+
+			// Extract label (required)
+			label, ok := optMap["label"].(string)
+			if !ok || label == "" {
+				return mcp.NewToolResultError(fmt.Sprintf("question %d option %d missing or empty 'label' field", i, j)), nil
+			}
+
+			// Extract description (optional)
+			description := ""
+			if desc, ok := optMap["description"].(string); ok {
+				description = desc
+			}
+
+			options = append(options, Option{
+				Label:       label,
+				Description: description,
+			})
+		}
+
+		// Extract multiple flag (optional, defaults to false)
+		multiple := false
+		if multipleVal, ok := qMap["multiple"].(bool); ok {
+			multiple = multipleVal
+		}
+
+		questions = append(questions, Question{
+			Question: questionText,
+			Header:   header,
+			Options:  options,
+			Multiple: multiple,
+		})
+	}
+
+	// Send questions to UI and block for answers
+	resultCh := make(chan []interface{}, 1)
+	s.questionCh <- QuestionRequest{
+		Questions: questions,
+		ResultCh:  resultCh,
+	}
+
+	// Block until answers received from UI or context cancelled
+	select {
+	case answers := <-resultCh:
+		// Return answers as JSON array (each element is string or []string)
+		answersJSON, err := json.Marshal(answers)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal answers: %v", err)), nil
+		}
+		return mcp.NewToolResultText(string(answersJSON)), nil
+	case <-ctx.Done():
+		return mcp.NewToolResultError("cancelled"), nil
+	}
 }
 
 // handleFinishSpec handles the finish-spec tool call.

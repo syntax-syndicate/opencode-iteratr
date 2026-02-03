@@ -81,20 +81,14 @@ func TestFinishSpecHandlerSuccess(t *testing.T) {
 	}
 
 	// Start a goroutine to handle the channel request
-	done := make(chan bool)
 	go func() {
-		select {
-		case specReq := <-server.SpecContentChan():
-			// Verify content was received
-			if specReq.Content != "# Test Spec\n\nThis is a test spec." {
-				t.Errorf("Expected content to match, got: %s", specReq.Content)
-			}
-			// Simulate successful save
-			specReq.ResultCh <- nil
-			done <- true
-		case <-done:
-			return
+		specReq := <-server.SpecContentChan()
+		// Verify content was received
+		if specReq.Content != "# Test Spec\n\nThis is a test spec." {
+			t.Errorf("Expected content to match, got: %s", specReq.Content)
 		}
+		// Simulate successful save
+		specReq.ResultCh <- nil
 	}()
 
 	// Call handler
@@ -114,8 +108,6 @@ func TestFinishSpecHandlerSuccess(t *testing.T) {
 	if text != "Spec saved successfully" {
 		t.Errorf("Expected 'Spec saved successfully', got '%s'", text)
 	}
-
-	close(done)
 }
 
 // TestServerStop verifies that Stop() shuts down the server cleanly.
@@ -258,16 +250,10 @@ func TestFinishSpecHandlerSaveError(t *testing.T) {
 	}
 
 	// Start a goroutine to simulate save error
-	done := make(chan bool)
 	go func() {
-		select {
-		case specReq := <-server.SpecContentChan():
-			// Simulate save error
-			specReq.ResultCh <- fmt.Errorf("failed to write file")
-			done <- true
-		case <-done:
-			return
-		}
+		specReq := <-server.SpecContentChan()
+		// Simulate save error
+		specReq.ResultCh <- fmt.Errorf("failed to write file")
 	}()
 
 	// Call handler
@@ -287,6 +273,351 @@ func TestFinishSpecHandlerSaveError(t *testing.T) {
 	if text != "failed to write file" {
 		t.Errorf("Expected 'failed to write file', got '%s'", text)
 	}
+}
 
-	close(done)
+// TestAskQuestionsHandlerSuccess tests successful ask-questions tool call with single-select.
+func TestAskQuestionsHandlerSuccess(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with single-select question
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "What type of feature is this?",
+						"header":   "Feature Type",
+						"options": []any{
+							map[string]any{
+								"label":       "New Feature",
+								"description": "Brand new functionality",
+							},
+							map[string]any{
+								"label":       "Enhancement",
+								"description": "Improve existing feature",
+							},
+						},
+						"multiple": false,
+					},
+				},
+			},
+		},
+	}
+
+	// Start a goroutine to handle the channel request
+	go func() {
+		questionReq := <-server.QuestionChan()
+		// Verify questions were received correctly
+		if len(questionReq.Questions) != 1 {
+			t.Errorf("Expected 1 question, got %d", len(questionReq.Questions))
+		}
+		q := questionReq.Questions[0]
+		if q.Question != "What type of feature is this?" {
+			t.Errorf("Unexpected question text: %s", q.Question)
+		}
+		if q.Header != "Feature Type" {
+			t.Errorf("Unexpected header: %s", q.Header)
+		}
+		if len(q.Options) != 2 {
+			t.Errorf("Expected 2 options, got %d", len(q.Options))
+		}
+		if q.Multiple {
+			t.Error("Expected single-select question")
+		}
+		// Send answer back
+		questionReq.ResultCh <- []interface{}{"New Feature"}
+	}()
+
+	// Call handler
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify result
+	if result.IsError {
+		t.Fatalf("Expected success result, got error: %s", extractText(result))
+	}
+
+	// Verify answers are returned as JSON
+	text := extractText(result)
+	if text != `["New Feature"]` {
+		t.Errorf("Expected '[\"New Feature\"]', got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerMultiSelect tests ask-questions with multi-select question.
+func TestAskQuestionsHandlerMultiSelect(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with multi-select question
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "Which components will this affect?",
+						"header":   "Affected Components",
+						"options": []any{
+							map[string]any{
+								"label":       "Frontend",
+								"description": "UI components",
+							},
+							map[string]any{
+								"label":       "Backend",
+								"description": "API and services",
+							},
+							map[string]any{
+								"label":       "Database",
+								"description": "Schema changes",
+							},
+						},
+						"multiple": true,
+					},
+				},
+			},
+		},
+	}
+
+	// Start a goroutine to handle the channel request
+	go func() {
+		questionReq := <-server.QuestionChan()
+		// Verify it's multi-select
+		if !questionReq.Questions[0].Multiple {
+			t.Error("Expected multi-select question")
+		}
+		// Send multiple answers back
+		questionReq.ResultCh <- []interface{}{[]string{"Frontend", "Backend"}}
+	}()
+
+	// Call handler
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify result
+	if result.IsError {
+		t.Fatalf("Expected success result, got error: %s", extractText(result))
+	}
+
+	// Verify answers are returned as JSON with array
+	text := extractText(result)
+	if text != `[["Frontend","Backend"]]` {
+		t.Errorf("Expected '[[\"Frontend\",\"Backend\"]]', got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerMissingQuestions tests ask-questions with missing questions parameter.
+func TestAskQuestionsHandlerMissingQuestions(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request without questions
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      "ask-questions",
+			Arguments: map[string]any{},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify error result
+	if !result.IsError {
+		t.Fatal("Expected error result")
+	}
+
+	text := extractText(result)
+	if text != "missing 'questions' parameter" {
+		t.Errorf("Expected 'missing 'questions' parameter', got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerEmptyQuestionsArray tests ask-questions with empty questions array.
+func TestAskQuestionsHandlerEmptyQuestionsArray(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with empty questions array
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify error result
+	if !result.IsError {
+		t.Fatal("Expected error result")
+	}
+
+	text := extractText(result)
+	if text != "at least one question is required" {
+		t.Errorf("Expected 'at least one question is required', got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerInvalidQuestion tests ask-questions with missing required fields.
+func TestAskQuestionsHandlerInvalidQuestion(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with question missing header
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "What is this?",
+						"options": []any{
+							map[string]any{
+								"label":       "Option A",
+								"description": "First option",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify error result
+	if !result.IsError {
+		t.Fatal("Expected error result")
+	}
+
+	text := extractText(result)
+	if text != "question 0 missing or empty 'header' field" {
+		t.Errorf("Expected error about missing header, got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerEmptyOptions tests ask-questions with empty options array.
+func TestAskQuestionsHandlerEmptyOptions(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with empty options
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "What is this?",
+						"header":   "Question",
+						"options":  []any{},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify error result
+	if !result.IsError {
+		t.Fatal("Expected error result")
+	}
+
+	text := extractText(result)
+	if text != "question 0 must have at least one option" {
+		t.Errorf("Expected error about empty options, got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerMultipleQuestions tests ask-questions with multiple questions.
+func TestAskQuestionsHandlerMultipleQuestions(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request with two questions
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "First question?",
+						"header":   "Q1",
+						"options": []any{
+							map[string]any{
+								"label":       "A",
+								"description": "Option A",
+							},
+						},
+					},
+					map[string]any{
+						"question": "Second question?",
+						"header":   "Q2",
+						"options": []any{
+							map[string]any{
+								"label":       "B",
+								"description": "Option B",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Start a goroutine to handle the channel request
+	go func() {
+		questionReq := <-server.QuestionChan()
+		// Verify both questions were received
+		if len(questionReq.Questions) != 2 {
+			t.Errorf("Expected 2 questions, got %d", len(questionReq.Questions))
+		}
+		// Send answers for both questions
+		questionReq.ResultCh <- []interface{}{"A", "B"}
+	}()
+
+	// Call handler
+	ctx := context.Background()
+	result, err := server.handleAskQuestions(ctx, req)
+
+	if err != nil {
+		t.Fatalf("handleAskQuestions returned error: %v", err)
+	}
+
+	// Verify result
+	if result.IsError {
+		t.Fatalf("Expected success result, got error: %s", extractText(result))
+	}
+
+	// Verify both answers are returned
+	text := extractText(result)
+	if text != `["A","B"]` {
+		t.Errorf("Expected '[\"A\",\"B\"]', got '%s'", text)
+	}
 }
