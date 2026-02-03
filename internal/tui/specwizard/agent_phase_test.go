@@ -265,16 +265,153 @@ func TestAgentPhase_PrevQuestion(t *testing.T) {
 
 	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
 
-	// Go to second question
+	// Answer first question with "Option 1"
 	phase.questionView.optionSelector.items[0].selected = true
 	phase, _ = phase.Update(NextQuestionMsg{})
 	assert.Equal(t, 1, phase.currentIndex)
 
-	// Go back to first question
+	// Verify first answer was saved
+	assert.Equal(t, "Option 1", phase.answers[0].Value, "first answer should be saved")
+
+	// Answer second question with "Option 2"
+	phase.questionView.optionSelector.items[0].selected = true
+
+	// Go back to first question - should save second answer
 	phase, cmd := phase.Update(PrevQuestionMsg{})
 	assert.Equal(t, 0, phase.currentIndex, "should go back to previous question")
 	assert.NotNil(t, phase.questionView, "should still have question view")
 	assert.Nil(t, cmd)
+
+	// Verify second answer was saved even though we went back
+	assert.Equal(t, "Option 2", phase.answers[1].Value, "second answer should be saved when going back")
+
+	// Verify first answer is still intact
+	assert.Equal(t, "Option 1", phase.answers[0].Value, "first answer should still be intact")
+
+	// Verify first answer is restored in the question view
+	selected := phase.questionView.optionSelector.SelectedLabels()
+	assert.Equal(t, 1, len(selected), "should have one selected option")
+	assert.Equal(t, "Option 1", selected[0], "previously selected answer should be restored")
+}
+
+func TestAgentPhase_PrevQuestionMultiSelect(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Setup with 2 multi-select questions
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Select colors",
+				Header:   "Colors",
+				Options: []specmcp.Option{
+					{Label: "Red", Description: ""},
+					{Label: "Blue", Description: ""},
+					{Label: "Green", Description: ""},
+				},
+				Multiple: true,
+			},
+			{
+				Question: "Select features",
+				Header:   "Features",
+				Options: []specmcp.Option{
+					{Label: "Feature A", Description: ""},
+					{Label: "Feature B", Description: ""},
+				},
+				Multiple: true,
+			},
+		},
+		ResultCh: make(chan []interface{}, 1),
+	}
+
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+
+	// Answer first question with multiple selections
+	phase.questionView.optionSelector.items[0].selected = true // Red
+	phase.questionView.optionSelector.items[2].selected = true // Green
+	phase, _ = phase.Update(NextQuestionMsg{})
+
+	// Verify first answer was saved as multi-select
+	assert.True(t, phase.answers[0].IsMulti, "first answer should be multi-select")
+	firstAnswer, ok := phase.answers[0].Value.([]string)
+	assert.True(t, ok, "first answer value should be []string")
+	assert.Equal(t, 2, len(firstAnswer), "should have saved 2 selections")
+	assert.Contains(t, firstAnswer, "Red")
+	assert.Contains(t, firstAnswer, "Green")
+
+	// Answer second question with one selection
+	phase.questionView.optionSelector.items[1].selected = true // Feature B
+
+	// Go back to first question - should save second answer
+	phase, _ = phase.Update(PrevQuestionMsg{})
+	assert.Equal(t, 0, phase.currentIndex, "should go back to previous question")
+
+	// Verify second answer was saved
+	assert.True(t, phase.answers[1].IsMulti, "second answer should be multi-select")
+	secondAnswer, ok := phase.answers[1].Value.([]string)
+	assert.True(t, ok, "second answer value should be []string")
+	assert.Equal(t, 1, len(secondAnswer), "should have saved 1 selection")
+	assert.Equal(t, "Feature B", secondAnswer[0])
+
+	// Verify first answer is still intact and restored in question view
+	selected := phase.questionView.optionSelector.SelectedLabels()
+	assert.Equal(t, 2, len(selected), "should have two selected options")
+	assert.Contains(t, selected, "Red", "previously selected Red should be restored")
+	assert.Contains(t, selected, "Green", "previously selected Green should be restored")
+}
+
+func TestAgentPhase_PrevQuestionCustomText(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Setup with 2 questions
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "What is your name?",
+				Header:   "Name",
+				Options:  []specmcp.Option{{Label: "John", Description: ""}},
+				Multiple: false,
+			},
+			{
+				Question: "What is your role?",
+				Header:   "Role",
+				Options:  []specmcp.Option{{Label: "Developer", Description: ""}},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}, 1),
+	}
+
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+
+	// Answer first question with custom text
+	lastIdx := len(phase.questionView.optionSelector.items) - 1
+	phase.questionView.optionSelector.items[lastIdx].selected = true // "Type your own answer"
+	phase.questionView.customInput.SetValue("Alice")
+	phase.questionView.showCustom = true
+	phase, _ = phase.Update(NextQuestionMsg{})
+
+	// Verify first answer was saved as custom text
+	assert.False(t, phase.answers[0].IsMulti, "first answer should be single-select")
+	assert.Equal(t, "Alice", phase.answers[0].Value, "should have saved custom text")
+
+	// Answer second question with regular option
+	phase.questionView.optionSelector.items[0].selected = true
+
+	// Go back to first question - should save second answer
+	phase, _ = phase.Update(PrevQuestionMsg{})
+	assert.Equal(t, 0, phase.currentIndex, "should go back to previous question")
+
+	// Verify second answer was saved
+	assert.Equal(t, "Developer", phase.answers[1].Value, "second answer should be saved")
+
+	// Verify first custom answer is restored in question view
+	assert.True(t, phase.questionView.showCustom, "custom input should be shown")
+	assert.Equal(t, "Alice", phase.questionView.customInput.Value(), "custom text should be restored")
+	selected := phase.questionView.optionSelector.SelectedLabels()
+	assert.Equal(t, 1, len(selected), "should have one selected option")
+	assert.Equal(t, "Type your own answer", selected[0], "custom option should be selected")
 }
 
 func TestAgentPhase_SubmitAnswers(t *testing.T) {
