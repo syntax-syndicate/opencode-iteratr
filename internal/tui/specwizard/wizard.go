@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/gosimple/slug"
 	"github.com/mark3labs/iteratr/internal/agent"
 	"github.com/mark3labs/iteratr/internal/config"
 	"github.com/mark3labs/iteratr/internal/logger"
@@ -274,8 +276,35 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 
+	case CheckFileExistsMsg:
+		// Check if spec file exists before saving
+		logger.Debug("Checking if spec file exists")
+
+		// Generate file path
+		slugTitle := slug.Make(m.result.Title)
+		if slugTitle == "" {
+			slugTitle = "unnamed-spec"
+		}
+		specPath := filepath.Join(m.cfg.SpecDir, slugTitle+".md")
+
+		// Check if file exists
+		if _, err := os.Stat(specPath); err == nil {
+			// File exists - show overwrite confirmation in review step
+			logger.Debug("File %s already exists, showing overwrite confirmation", specPath)
+			if m.reviewStep != nil {
+				m.reviewStep.showConfirmOverwrite = true
+			}
+			return m, nil
+		}
+
+		// File doesn't exist - proceed with save
+		logger.Debug("File doesn't exist, proceeding with save")
+		return m, func() tea.Msg {
+			return SaveSpecMsg{}
+		}
+
 	case SaveSpecMsg:
-		// User clicked Save button in review step
+		// User clicked Save button in review step (or confirmed overwrite)
 		logger.Debug("Save spec button clicked")
 
 		// Save spec to file and update README

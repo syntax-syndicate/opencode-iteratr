@@ -320,7 +320,7 @@ func TestReviewStep_ButtonActivation(t *testing.T) {
 		{
 			name:          "activate save button",
 			focusedButton: 1,
-			expectedMsg:   "SaveSpecMsg",
+			expectedMsg:   "CheckFileExistsMsg",
 			expectModal:   false,
 		},
 	}
@@ -352,13 +352,13 @@ func TestReviewStep_ButtonActivation(t *testing.T) {
 					t.Error("Expected nil command when showing modal")
 				}
 			} else {
-				// Should return SaveSpecMsg
+				// Should return CheckFileExistsMsg (file existence check happens first)
 				if cmd == nil {
 					t.Fatal("Expected command from save button")
 				}
 				msg := cmd()
-				if _, ok := msg.(SaveSpecMsg); !ok {
-					t.Errorf("Expected SaveSpecMsg, got %T", msg)
+				if _, ok := msg.(CheckFileExistsMsg); !ok {
+					t.Errorf("Expected CheckFileExistsMsg, got %T", msg)
 				}
 			}
 		})
@@ -670,5 +670,85 @@ func TestReviewStep_EscInButtons(t *testing.T) {
 	// Should not return a command
 	if cmd != nil {
 		t.Error("Expected no command from ESC key in buttons")
+	}
+}
+
+func TestReviewStep_OverwriteConfirmationYes(t *testing.T) {
+	content := "# Test Spec"
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 30)
+
+	// Simulate file exists by showing overwrite confirmation
+	step.showConfirmOverwrite = true
+
+	// Press Y to confirm overwrite
+	cmd := step.Update(tea.KeyPressMsg{Text: "Y"})
+
+	// Should return SaveSpecMsg
+	if cmd == nil {
+		t.Fatal("Expected command after confirming overwrite")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(SaveSpecMsg); !ok {
+		t.Errorf("Expected SaveSpecMsg after confirming overwrite, got %T", msg)
+	}
+
+	// Modal should be hidden
+	if step.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation modal to be hidden")
+	}
+}
+
+func TestReviewStep_OverwriteConfirmationNo(t *testing.T) {
+	content := "# Test Spec"
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 30)
+
+	// Simulate file exists by showing overwrite confirmation
+	step.showConfirmOverwrite = true
+
+	// Press N to cancel overwrite
+	cmd := step.Update(tea.KeyPressMsg{Text: "n"})
+
+	// Should not return SaveSpecMsg
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(SaveSpecMsg); ok {
+			t.Error("Expected no SaveSpecMsg after canceling overwrite")
+		}
+	}
+
+	// Modal should be hidden
+	if step.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation modal to be hidden")
+	}
+}
+
+func TestReviewStep_OverwriteConfirmationESC(t *testing.T) {
+	content := "# Test Spec"
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 30)
+
+	// Simulate file exists by showing overwrite confirmation
+	step.showConfirmOverwrite = true
+
+	// Press ESC to cancel overwrite
+	cmd := step.Update(tea.KeyPressMsg{Text: "esc"})
+
+	// Should not return SaveSpecMsg
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(SaveSpecMsg); ok {
+			t.Error("Expected no SaveSpecMsg after pressing ESC")
+		}
+	}
+
+	// Modal should be hidden
+	if step.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation modal to be hidden after ESC")
 	}
 }

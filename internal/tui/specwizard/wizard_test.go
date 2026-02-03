@@ -2,6 +2,8 @@ package specwizard
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -828,3 +830,229 @@ func (m *mockProgram) Send(msg tea.Msg) {
 func (m *mockProgram) Run() (tea.Model, error)  { return nil, nil }
 func (m *mockProgram) Quit()                    {}
 func (m *mockProgram) Wait() (tea.Model, error) { return nil, nil }
+
+func TestCheckFileExistsMsg_FileDoesNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SpecDir: tmpDir}
+
+	// Create wizard in review step
+	m := &WizardModel{
+		step: StepReview,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			SpecContent: "# Test Spec\n\n## Overview\n\n## Tasks",
+		},
+	}
+	m.reviewStep = NewReviewStep(m.result.SpecContent, cfg)
+
+	// Send CheckFileExistsMsg
+	updatedModel, cmd := m.Update(CheckFileExistsMsg{})
+
+	// Should proceed with save since file doesn't exist
+	if cmd == nil {
+		t.Fatal("Expected command from CheckFileExistsMsg")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(SaveSpecMsg); !ok {
+		t.Errorf("Expected SaveSpecMsg when file doesn't exist, got %T", msg)
+	}
+
+	// Overwrite confirmation should not be shown
+	if m.reviewStep.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation not to be shown")
+	}
+
+	// Verify model returned
+	if updatedModel == nil {
+		t.Error("Expected non-nil model")
+	}
+}
+
+func TestCheckFileExistsMsg_FileExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SpecDir: tmpDir}
+
+	// Create existing spec file
+	existingPath := filepath.Join(tmpDir, "test-spec.md")
+	if err := os.WriteFile(existingPath, []byte("Old content"), 0644); err != nil {
+		t.Fatalf("Failed to create existing file: %v", err)
+	}
+
+	// Create wizard in review step
+	m := &WizardModel{
+		step: StepReview,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			SpecContent: "# Test Spec\n\n## Overview\n\n## Tasks",
+		},
+	}
+	m.reviewStep = NewReviewStep(m.result.SpecContent, cfg)
+
+	// Send CheckFileExistsMsg
+	updatedModel, cmd := m.Update(CheckFileExistsMsg{})
+
+	// Should show overwrite confirmation since file exists
+	if cmd != nil {
+		t.Error("Expected no command when file exists (should show confirmation modal)")
+	}
+
+	// Overwrite confirmation should be shown
+	if !m.reviewStep.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation to be shown")
+	}
+
+	// Verify model returned
+	if updatedModel == nil {
+		t.Error("Expected non-nil model")
+	}
+}
+
+func TestOverwriteFlow_ConfirmYes(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SpecDir: tmpDir}
+
+	// Create existing spec file
+	existingPath := filepath.Join(tmpDir, "test-spec.md")
+	oldContent := "# Old Spec\n\nOld content"
+	if err := os.WriteFile(existingPath, []byte(oldContent), 0644); err != nil {
+		t.Fatalf("Failed to create existing file: %v", err)
+	}
+
+	// Create wizard in review step
+	m := &WizardModel{
+		step: StepReview,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			SpecContent: "# New Spec\n\n## Overview\n\nNew content\n\n## Tasks",
+		},
+	}
+	m.reviewStep = NewReviewStep(m.result.SpecContent, cfg)
+
+	// Step 1: Check if file exists
+	_, cmd := m.Update(CheckFileExistsMsg{})
+	if cmd != nil {
+		t.Error("Expected no command, should show overwrite modal")
+	}
+	if !m.reviewStep.showConfirmOverwrite {
+		t.Fatal("Expected overwrite confirmation to be shown")
+	}
+
+	// Step 2: Confirm overwrite by sending Y key to review step
+	cmd = m.reviewStep.Update(tea.KeyPressMsg{Text: "Y"})
+	if cmd == nil {
+		t.Fatal("Expected command after pressing Y")
+	}
+
+	// Should get SaveSpecMsg
+	msg := cmd()
+	if _, ok := msg.(SaveSpecMsg); !ok {
+		t.Fatalf("Expected SaveSpecMsg after confirming overwrite, got %T", msg)
+	}
+
+	// Modal should be hidden
+	if m.reviewStep.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation to be hidden after confirming")
+	}
+
+	// Step 3: Handle SaveSpecMsg in wizard
+	updatedModel, cmd := m.Update(msg)
+	if cmd == nil {
+		t.Fatal("Expected command from SaveSpecMsg")
+	}
+
+	// Should advance to completion step
+	resultMsg := cmd()
+	savedMsg, ok := resultMsg.(SpecSavedMsg)
+	if !ok {
+		t.Fatalf("Expected SpecSavedMsg, got %T", resultMsg)
+	}
+
+	// Verify file was overwritten with new content
+	actualContent, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("Failed to read saved file: %v", err)
+	}
+
+	if !strings.Contains(string(actualContent), "New content") {
+		t.Error("Expected file to be overwritten with new content")
+	}
+	if strings.Contains(string(actualContent), "Old content") {
+		t.Error("File should not contain old content")
+	}
+
+	// Verify path is correct
+	if savedMsg.Path != existingPath {
+		t.Errorf("Expected path %q, got %q", existingPath, savedMsg.Path)
+	}
+
+	// Verify model returned
+	if updatedModel == nil {
+		t.Error("Expected non-nil model")
+	}
+}
+
+func TestOverwriteFlow_CancelWithN(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{SpecDir: tmpDir}
+
+	// Create existing spec file
+	existingPath := filepath.Join(tmpDir, "test-spec.md")
+	oldContent := "# Old Spec\n\nOld content"
+	if err := os.WriteFile(existingPath, []byte(oldContent), 0644); err != nil {
+		t.Fatalf("Failed to create existing file: %v", err)
+	}
+
+	// Create wizard in review step
+	m := &WizardModel{
+		step: StepReview,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			SpecContent: "# New Spec\n\n## Overview\n\nNew content\n\n## Tasks",
+		},
+	}
+	m.reviewStep = NewReviewStep(m.result.SpecContent, cfg)
+
+	// Step 1: Check if file exists
+	_, _ = m.Update(CheckFileExistsMsg{})
+	if !m.reviewStep.showConfirmOverwrite {
+		t.Fatal("Expected overwrite confirmation to be shown")
+	}
+
+	// Step 2: Cancel overwrite by pressing N
+	cmd := m.reviewStep.Update(tea.KeyPressMsg{Text: "n"})
+
+	// Should not get SaveSpecMsg
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(SaveSpecMsg); ok {
+			t.Error("Expected no SaveSpecMsg after canceling")
+		}
+	}
+
+	// Modal should be hidden
+	if m.reviewStep.showConfirmOverwrite {
+		t.Error("Expected overwrite confirmation to be hidden after canceling")
+	}
+
+	// Verify file was NOT overwritten
+	actualContent, err := os.ReadFile(existingPath)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	if !strings.Contains(string(actualContent), "Old content") {
+		t.Error("Expected file to still contain old content")
+	}
+	if strings.Contains(string(actualContent), "New content") {
+		t.Error("File should not contain new content")
+	}
+}

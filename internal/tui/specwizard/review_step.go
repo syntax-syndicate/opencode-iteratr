@@ -16,16 +16,17 @@ import (
 
 // ReviewStep handles the spec review and editing step with markdown rendering.
 type ReviewStep struct {
-	viewport           viewport.Model // Scrollable viewport for spec display
-	content            string         // Raw spec markdown content
-	cfg                *config.Config
-	width              int    // Available width
-	height             int    // Available height
-	tmpFile            string // Path to temp file for editing
-	edited             bool   // True if user edited via external editor
-	buttonBar          *wizard.ButtonBar
-	buttonFocused      bool // True if buttons have focus
-	showConfirmRestart bool // True if restart confirmation modal is visible
+	viewport             viewport.Model // Scrollable viewport for spec display
+	content              string         // Raw spec markdown content
+	cfg                  *config.Config
+	width                int    // Available width
+	height               int    // Available height
+	tmpFile              string // Path to temp file for editing
+	edited               bool   // True if user edited via external editor
+	buttonBar            *wizard.ButtonBar
+	buttonFocused        bool // True if buttons have focus
+	showConfirmRestart   bool // True if restart confirmation modal is visible
+	showConfirmOverwrite bool // True if overwrite confirmation modal is visible
 }
 
 // NewReviewStep creates a new review step.
@@ -122,7 +123,27 @@ func (s *ReviewStep) SetSize(width, height int) {
 
 // Update handles messages for the review step.
 func (s *ReviewStep) Update(msg tea.Msg) tea.Cmd {
-	// Handle confirmation modal
+	// Handle overwrite confirmation modal
+	if s.showConfirmOverwrite {
+		switch msg := msg.(type) {
+		case tea.KeyPressMsg:
+			switch msg.String() {
+			case "y", "Y":
+				// Confirm overwrite - proceed with save
+				s.showConfirmOverwrite = false
+				return func() tea.Msg {
+					return SaveSpecMsg{}
+				}
+			case "n", "N", "esc":
+				// Cancel overwrite
+				s.showConfirmOverwrite = false
+				return nil
+			}
+		}
+		return nil
+	}
+
+	// Handle restart confirmation modal
 	if s.showConfirmRestart {
 		switch msg := msg.(type) {
 		case tea.KeyPressMsg:
@@ -267,7 +288,12 @@ func (s *ReviewStep) openEditor() tea.Cmd {
 
 // View renders the review step.
 func (s *ReviewStep) View() string {
-	// If showing confirmation modal, render it as overlay
+	// If showing overwrite confirmation modal, render it as overlay
+	if s.showConfirmOverwrite {
+		return s.renderOverwriteConfirmationModal()
+	}
+
+	// If showing restart confirmation modal, render it as overlay
 	if s.showConfirmRestart {
 		return s.renderConfirmationModal()
 	}
@@ -303,6 +329,14 @@ func (s *ReviewStep) View() string {
 	b.WriteString(hintBar)
 
 	return b.String()
+}
+
+// renderOverwriteConfirmationModal renders the file overwrite confirmation modal.
+func (s *ReviewStep) renderOverwriteConfirmationModal() string {
+	return RenderConfirmationModal(
+		"Overwrite Existing Spec?",
+		"A spec file with this name already exists. Overwrite it?",
+	)
 }
 
 // renderConfirmationModal renders the restart confirmation modal.
@@ -364,9 +398,9 @@ func (s *ReviewStep) activateButton(btnID wizard.ButtonID) tea.Cmd {
 		s.showConfirmRestart = true
 		return nil
 	case wizard.ButtonNext:
-		// Save button - trigger save
+		// Save button - check if file exists first
 		return func() tea.Msg {
-			return SaveSpecMsg{}
+			return CheckFileExistsMsg{}
 		}
 	}
 	return nil
@@ -379,6 +413,9 @@ type SpecEditedMsg struct {
 
 // RestartWizardMsg is sent when the user confirms restarting the wizard.
 type RestartWizardMsg struct{}
+
+// CheckFileExistsMsg is sent when the user clicks the Save button to check if file exists.
+type CheckFileExistsMsg struct{}
 
 // SaveSpecMsg is sent when the user clicks the Save button.
 type SaveSpecMsg struct{}
