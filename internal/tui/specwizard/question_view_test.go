@@ -1176,3 +1176,83 @@ func TestQuestionView_EmptyAnswerHandling(t *testing.T) {
 		t.Errorf("Q2 restored: expected no selection, got %v", selected2)
 	}
 }
+
+// TestQuestionView_QuestionCounter tests that the question counter is displayed correctly.
+func TestQuestionView_QuestionCounter(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+				{Label: "Option 2"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Choice A"},
+				{Label: "Choice B"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Third Question",
+			Question: "Select third",
+			Options: []Option{
+				{Label: "Item A"},
+				{Label: "Item B"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+		{Value: "", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	// Test first question shows "Question 1 of 3"
+	qv1 := NewQuestionView(questions, answers, 0)
+	qv1.SetSize(80, 24)
+	view1 := qv1.View()
+	if !contains(view1, "Question 1 of 3") {
+		t.Errorf("expected question counter 'Question 1 of 3' in view, got:\n%s", view1)
+	}
+
+	// Test second question shows "Question 2 of 3"
+	qv2 := NewQuestionView(questions, answers, 1)
+	qv2.SetSize(80, 24)
+	view2 := qv2.View()
+	if !contains(view2, "Question 2 of 3") {
+		t.Errorf("expected question counter 'Question 2 of 3' in view, got:\n%s", view2)
+	}
+
+	// Test third question shows "Question 3 of 3"
+	qv3 := NewQuestionView(questions, answers, 2)
+	qv3.SetSize(80, 24)
+	view3 := qv3.View()
+	if !contains(view3, "Question 3 of 3") {
+		t.Errorf("expected question counter 'Question 3 of 3' in view, got:\n%s", view3)
+	}
+}
+
+// contains is a helper function to check if a string contains a substring.
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsAt(s, substr, 0))
+}
+
+func containsAt(s, substr string, start int) bool {
+	if start+len(substr) > len(s) {
+		return false
+	}
+	for i := start; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
