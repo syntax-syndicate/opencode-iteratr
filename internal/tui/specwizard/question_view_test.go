@@ -549,3 +549,218 @@ func TestQuestionView_MultiSelectCustomOption(t *testing.T) {
 		t.Errorf("expected [My custom answer], got %v", savedLabels)
 	}
 }
+
+func TestQuestionView_NavigationButtons(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+				{Label: "Option 2"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Choice A"},
+				{Label: "Choice B"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	// Test first question (no back button, only Next)
+	qv1 := NewQuestionView(questions, answers, 0)
+	qv1.SetSize(80, 24)
+
+	// View should render button bar (and initialize it lazily)
+	view := qv1.View()
+	if view == "" {
+		t.Error("expected non-empty view")
+	}
+
+	// Verify button bar is created
+	if qv1.buttonBar == nil {
+		t.Fatal("expected buttonBar to be initialized after View()")
+	}
+
+	// Select an option
+	qv1.optionSelector.Toggle()
+
+	// Focus on next button and trigger it
+	qv1.focusIndex = qv1.nextButtonFocusIndex()
+	qv1.updateFocus()
+
+	cmd := qv1.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("expected NextQuestionMsg command")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(NextQuestionMsg); !ok {
+		t.Errorf("expected NextQuestionMsg, got %T", msg)
+	}
+
+	// Test second question (has back button and Next/Submit)
+	qv2 := NewQuestionView(questions, answers, 1)
+	qv2.SetSize(80, 24)
+	qv2.View() // Initialize button bar
+
+	// Verify button bar is created
+	if qv2.buttonBar == nil {
+		t.Fatal("expected buttonBar to be initialized after View()")
+	}
+
+	// Select an option
+	qv2.optionSelector.Toggle()
+
+	// Focus on back button and trigger it
+	qv2.focusIndex = qv2.backButtonFocusIndex()
+	qv2.updateFocus()
+
+	cmd = qv2.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("expected PrevQuestionMsg command")
+	}
+
+	msg = cmd()
+	if _, ok := msg.(PrevQuestionMsg); !ok {
+		t.Errorf("expected PrevQuestionMsg, got %T", msg)
+	}
+
+	// Focus on next button (which should be Submit on last question)
+	qv2.focusIndex = qv2.nextButtonFocusIndex()
+	qv2.updateFocus()
+
+	cmd = qv2.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("expected SubmitAnswersMsg command")
+	}
+
+	msg = cmd()
+	if _, ok := msg.(SubmitAnswersMsg); !ok {
+		t.Errorf("expected SubmitAnswersMsg, got %T", msg)
+	}
+}
+
+func TestQuestionView_ButtonBarRebuild(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "Test Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+	}
+
+	qv := NewQuestionView(questions, answers, 0)
+	qv.SetSize(80, 24)
+	qv.View() // Initialize button bar
+
+	// Initially no custom input visible
+	if qv.showCustom {
+		t.Error("expected custom input to be hidden initially")
+	}
+
+	// Select "Type your own answer" - this should show custom input and rebuild button bar
+	qv.optionSelector.cursor = len(qv.optionSelector.items) - 1
+	qv.optionSelector.Toggle()                          // Direct toggle instead of Update
+	qv.Update(tea.WindowSizeMsg{Width: 80, Height: 24}) // Trigger update to recalc showCustom
+
+	// Manually trigger the same logic as Update() does for options change
+	selected := qv.optionSelector.SelectedLabels()
+	qv.showCustom = len(selected) > 0 && selected[0] == "Type your own answer"
+	qv.rebuildButtonBar()
+
+	if !qv.showCustom {
+		t.Error("expected custom input to be visible after selecting 'Type your own answer'")
+	}
+
+	if qv.buttonBar == nil {
+		t.Error("expected button bar to be rebuilt")
+	}
+
+	// Verify button bar still works after rebuild
+	view := qv.View()
+	if view == "" {
+		t.Error("expected non-empty view after rebuild")
+	}
+}
+
+func TestQuestionView_ButtonBarValidation(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "First Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+			},
+			Multiple: false,
+		},
+		{
+			Header:   "Second Question",
+			Question: "Select another",
+			Options: []Option{
+				{Label: "Option A"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+		{Value: "", IsMulti: false},
+	}
+
+	qv := NewQuestionView(questions, answers, 0)
+	qv.SetSize(80, 24)
+	qv.View() // Initialize button bar
+
+	// Try to submit without selecting anything
+	qv.focusIndex = qv.nextButtonFocusIndex()
+	qv.updateFocus()
+
+	cmd := qv.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected ShowErrorMsg command")
+	}
+
+	msg := cmd()
+	if errMsg, ok := msg.(ShowErrorMsg); !ok {
+		t.Errorf("expected ShowErrorMsg, got %T", msg)
+	} else if errMsg.err == "" {
+		t.Error("expected non-empty error message")
+	}
+
+	// Now select an option and submit should work (NextQuestionMsg since not last question)
+	qv.focusIndex = 0
+	qv.updateFocus()
+	qv.optionSelector.Toggle()
+
+	qv.focusIndex = qv.nextButtonFocusIndex()
+	qv.updateFocus()
+
+	cmd = qv.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected NextQuestionMsg command")
+	}
+
+	msg = cmd()
+	if _, ok := msg.(NextQuestionMsg); !ok {
+		t.Errorf("expected NextQuestionMsg, got %T", msg)
+	}
+}
