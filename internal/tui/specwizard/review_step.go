@@ -147,6 +147,11 @@ func (s *ReviewStep) Update(msg tea.Msg) tea.Cmd {
 		switch msg := msg.(type) {
 		case tea.KeyPressMsg:
 			switch msg.String() {
+			case "esc":
+				// ESC returns focus to viewport
+				s.buttonFocused = false
+				s.buttonBar.Blur()
+				return nil
 			case "tab", "right":
 				if !s.buttonBar.FocusNext() {
 					// Wrapped around - move focus back to viewport
@@ -172,6 +177,10 @@ func (s *ReviewStep) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "esc":
+			// ESC key shows restart confirmation modal
+			s.showConfirmRestart = true
+			return nil
 		case "e":
 			// Open external editor if $EDITOR is set
 			if os.Getenv("EDITOR") != "" {

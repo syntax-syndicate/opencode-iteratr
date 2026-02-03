@@ -607,3 +607,68 @@ func TestReviewStep_ExternalEditorWorkflow(t *testing.T) {
 		t.Error("Expected tmpFile to be cleared after editing")
 	}
 }
+
+func TestReviewStep_EscInViewport(t *testing.T) {
+	content := "# Test Spec"
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 20)
+
+	// Initially viewport has focus
+	if step.buttonFocused {
+		t.Error("Expected viewport to have focus initially")
+	}
+
+	// Press ESC key
+	cmd := step.Update(tea.KeyPressMsg{Text: "esc"})
+
+	// Should show restart confirmation modal
+	if !step.showConfirmRestart {
+		t.Error("Expected ESC in viewport to show restart confirmation modal")
+	}
+
+	// Should not return a command
+	if cmd != nil {
+		t.Error("Expected no command from ESC key in viewport")
+	}
+}
+
+func TestReviewStep_EscInButtons(t *testing.T) {
+	content := "# Test Spec"
+	cfg := &config.Config{}
+	step := NewReviewStep(content, cfg)
+	step.SetSize(80, 20)
+
+	// Focus buttons first
+	step.buttonFocused = true
+	step.buttonBar.FocusFirst()
+
+	// Verify buttons are focused
+	if !step.buttonFocused {
+		t.Fatal("Expected buttons to be focused")
+	}
+	if !step.buttonBar.IsFocused() {
+		t.Fatal("Expected button bar to be focused")
+	}
+
+	// Press ESC key
+	cmd := step.Update(tea.KeyPressMsg{Text: "esc"})
+
+	// Should blur buttons and return focus to viewport
+	if step.buttonFocused {
+		t.Error("Expected ESC in buttons to return focus to viewport")
+	}
+	if step.buttonBar.IsFocused() {
+		t.Error("Expected button bar to be blurred")
+	}
+
+	// Should not show confirmation modal
+	if step.showConfirmRestart {
+		t.Error("Expected ESC in buttons to not show confirmation modal")
+	}
+
+	// Should not return a command
+	if cmd != nil {
+		t.Error("Expected no command from ESC key in buttons")
+	}
+}
