@@ -248,6 +248,13 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		logger.Debug("Save spec button clicked")
 		return m, nil
 
+	case StartBuildMsg:
+		// User clicked Start Build button in completion step
+		logger.Debug("Start Build button clicked")
+		// TODO: Launch build wizard with spec path (TAS-49)
+		// For now, just quit - will be implemented in TAS-49
+		return m, tea.Quit
+
 	case wizard.TabExitForwardMsg:
 		// Tab from last input - move to buttons
 		m.buttonFocused = true
