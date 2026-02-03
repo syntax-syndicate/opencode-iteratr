@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/config"
+	"github.com/mark3labs/iteratr/internal/tui/wizard"
 )
 
 func TestBuildSpecPrompt(t *testing.T) {
@@ -508,4 +509,58 @@ func TestSaveSpecMsg(t *testing.T) {
 	}
 
 	// Note: Actual save functionality will be tested in TAS-47
+}
+
+func TestModelSelectorIntegration(t *testing.T) {
+	cfg := &config.Config{
+		Model:   "claude-3-5-sonnet-20241022",
+		SpecDir: "./specs",
+	}
+
+	// Create wizard at model step
+	m := &WizardModel{
+		step:      StepModel,
+		cancelled: false,
+		cfg:       cfg,
+		width:     80,
+		height:    24,
+		result: WizardResult{
+			Title:       "Test Feature",
+			Description: "Test description",
+		},
+	}
+
+	// Initialize model step
+	m.initCurrentStep()
+
+	// Verify model step was initialized
+	if m.modelStep == nil {
+		t.Fatal("Expected modelStep to be initialized")
+	}
+
+	// Send ModelSelectedMsg
+	selectedModel := "claude-3-5-sonnet-20241022"
+	updatedModel, cmd := m.Update(wizard.ModelSelectedMsg{ModelID: selectedModel})
+
+	wizModel := updatedModel.(*WizardModel)
+
+	// Should advance to agent step
+	if wizModel.step != StepAgent {
+		t.Errorf("Expected step to be StepAgent, got %v", wizModel.step)
+	}
+
+	// Should store selected model
+	if wizModel.result.Model != selectedModel {
+		t.Errorf("Expected model to be %q, got %q", selectedModel, wizModel.result.Model)
+	}
+
+	// Should clear button focus
+	if wizModel.buttonFocused {
+		t.Error("Expected button focus to be cleared")
+	}
+
+	// Should return startAgentPhase command
+	if cmd == nil {
+		t.Error("Expected startAgentPhase command to be returned")
+	}
 }
