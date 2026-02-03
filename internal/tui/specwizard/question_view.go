@@ -131,7 +131,8 @@ func (q QuestionOptions) Update(msg tea.Msg) (QuestionOptions, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
+		key := msg.String()
+		switch key {
 		case "up", "k":
 			q.CursorUp()
 		case "down", "j":
