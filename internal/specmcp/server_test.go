@@ -118,6 +118,69 @@ func TestFinishSpecHandlerSuccess(t *testing.T) {
 	close(done)
 }
 
+// TestServerStop verifies that Stop() shuts down the server cleanly.
+func TestServerStop(t *testing.T) {
+	server := New("Test Spec", "./specs")
+	ctx := context.Background()
+
+	port, err := server.Start(ctx)
+	if err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+
+	if port <= 0 {
+		t.Fatalf("Invalid port: %d", port)
+	}
+
+	// Stop the server
+	err = server.Stop()
+	if err != nil {
+		t.Errorf("Stop() returned error: %v", err)
+	}
+
+	// Verify server state is cleared
+	if server.httpServer != nil {
+		t.Error("httpServer should be nil after Stop()")
+	}
+	if server.mcpServer != nil {
+		t.Error("mcpServer should be nil after Stop()")
+	}
+}
+
+// TestServerStopWithoutStart verifies that Stop() is safe to call without Start().
+func TestServerStopWithoutStart(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Stop should be safe even if server was never started
+	err := server.Stop()
+	if err != nil {
+		t.Errorf("Stop() returned error when called without Start(): %v", err)
+	}
+}
+
+// TestServerDoubleStop verifies that calling Stop() twice is safe.
+func TestServerDoubleStop(t *testing.T) {
+	server := New("Test Spec", "./specs")
+	ctx := context.Background()
+
+	_, err := server.Start(ctx)
+	if err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+
+	// First stop
+	err = server.Stop()
+	if err != nil {
+		t.Errorf("First Stop() returned error: %v", err)
+	}
+
+	// Second stop should be safe (no-op)
+	err = server.Stop()
+	if err != nil {
+		t.Errorf("Second Stop() returned error: %v", err)
+	}
+}
+
 // TestFinishSpecHandlerMissingContent tests finish-spec with missing content parameter.
 func TestFinishSpecHandlerMissingContent(t *testing.T) {
 	server := New("Test Spec", "./specs")
