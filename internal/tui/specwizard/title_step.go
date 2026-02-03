@@ -1,0 +1,171 @@
+package specwizard
+
+import (
+	"fmt"
+	"strings"
+
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/tui/theme"
+)
+
+// TitleStep handles the title input with validation.
+type TitleStep struct {
+	input  textinput.Model
+	width  int
+	height int
+	err    string // Validation error message
+}
+
+// NewTitleStep creates a new title input step.
+func NewTitleStep() *TitleStep {
+	ti := textinput.New()
+	ti.Placeholder = "e.g., 'User Authentication' or 'API Rate Limiting'"
+	ti.CharLimit = 100 // Enforce max length
+	ti.Focus()
+
+	return &TitleStep{
+		input: ti,
+	}
+}
+
+// validateTitle checks if the title is valid.
+func validateTitle(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return fmt.Errorf("title cannot be empty")
+	}
+	if len(s) > 100 {
+		return fmt.Errorf("title too long (max 100 characters)")
+	}
+	return nil
+}
+
+// Init initializes the title step.
+func (t *TitleStep) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+// Update handles messages for the title step.
+func (t *TitleStep) Update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		t.width = msg.Width
+		t.height = msg.Height
+		return nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			// Validate before proceeding
+			value := strings.TrimSpace(t.input.Value())
+			if err := validateTitle(value); err != nil {
+				t.err = err.Error()
+				return nil
+			}
+			// Clear error and notify completion
+			t.err = ""
+			return func() tea.Msg {
+				return TitleCompletedMsg{Title: value}
+			}
+		default:
+			// Clear error on any other input
+			if t.err != "" {
+				t.err = ""
+			}
+		}
+	}
+
+	var cmd tea.Cmd
+	t.input, cmd = t.input.Update(msg)
+	return cmd
+}
+
+// View renders the title step.
+func (t *TitleStep) View() tea.View {
+	var view tea.View
+	view.AltScreen = true
+
+	currentTheme := theme.Current()
+
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(currentTheme.Primary)).
+		MarginBottom(1)
+
+	title := titleStyle.Render("Spec Wizard - Step 1: Title")
+
+	// Instruction
+	instructionStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(currentTheme.FgBase)).
+		MarginBottom(1)
+
+	instruction := instructionStyle.Render("Enter a human-readable name for your feature:")
+
+	// Input box
+	inputStyle := lipgloss.NewStyle().
+		Width(60).
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(currentTheme.BorderDefault))
+
+	input := inputStyle.Render(t.input.View())
+
+	// Error message (if any)
+	errorText := ""
+	if t.err != "" {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(currentTheme.Error)).
+			Bold(true)
+		errorText = errorStyle.Render("✗ " + t.err)
+	}
+
+	// Hint
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(currentTheme.FgMuted)).
+		MarginTop(1)
+
+	hint := hintStyle.Render("enter to continue • esc to cancel")
+
+	// Combine all parts
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		instruction,
+		input,
+		errorText,
+		hint,
+	)
+
+	// Center on screen
+	centered := lipgloss.Place(
+		t.width,
+		t.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		content,
+	)
+
+	// Draw to canvas using ultraviolet
+	canvas := uv.NewScreenBuffer(t.width, t.height)
+	uv.NewStyledString(centered).Draw(canvas, uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: t.width, Y: t.height},
+	})
+
+	view.Content = lipgloss.NewLayer(canvas.Render())
+	return view
+}
+
+// GetTitle returns the current title value (trimmed).
+func (t *TitleStep) GetTitle() string {
+	return strings.TrimSpace(t.input.Value())
+}
+
+// TitleCompletedMsg is sent when the user completes the title input.
+type TitleCompletedMsg struct {
+	Title string
+}
