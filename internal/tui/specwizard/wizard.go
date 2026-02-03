@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -61,6 +62,7 @@ type WizardModel struct {
 	// Agent infrastructure
 	mcpServer   *specmcp.Server
 	agentRunner *agent.Runner
+	agentError  *error // Error from agent startup or runtime
 }
 
 // Run is the entry point for the spec wizard.
@@ -216,9 +218,9 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AgentErrorMsg:
 		// Agent failed to start or encountered error
 		logger.Error("Agent error: %v", msg.Err)
-		// For now, just log and quit - TODO: show error to user
-		m.cancelled = true
-		return m, tea.Quit
+		// Show error to user with helpful message
+		m.agentError = &msg.Err
+		return m, nil
 
 	case wizard.TabExitForwardMsg:
 		// Tab from last input - move to buttons
@@ -369,6 +371,11 @@ func (m *WizardModel) updateCurrentStepSize() {
 func (m *WizardModel) renderCurrentStep() string {
 	currentTheme := theme.Current()
 
+	// If there's an agent error, show error screen
+	if m.agentError != nil {
+		return m.renderErrorScreen(*m.agentError)
+	}
+
 	// Step title
 	var stepTitle string
 	switch m.step {
@@ -441,6 +448,96 @@ func (m *WizardModel) renderCurrentStep() string {
 		"",
 		hint,
 	)
+
+	return modalStyle.Render(content)
+}
+
+// renderErrorScreen renders an error screen with helpful troubleshooting info.
+func (m *WizardModel) renderErrorScreen(err error) string {
+	currentTheme := theme.Current()
+
+	// Parse error for user-friendly message
+	errorMsg := err.Error()
+	var helpText string
+
+	if strings.Contains(errorMsg, "failed to start opencode") ||
+		strings.Contains(errorMsg, "executable file not found") ||
+		strings.Contains(errorMsg, "no such file or directory") {
+		helpText = `opencode is not installed or not in PATH.
+
+Install opencode:
+  npm install -g opencode
+
+Verify installation:
+  opencode --version`
+	} else if strings.Contains(errorMsg, "failed to start MCP server") ||
+		strings.Contains(errorMsg, "failed to find available port") {
+		helpText = `Failed to start internal MCP server.
+
+Possible causes:
+  • No available ports (unlikely)
+  • System firewall blocking local connections
+  • Too many open files (check ulimit)
+
+Try restarting the wizard.`
+	} else if strings.Contains(errorMsg, "ACP initialize failed") ||
+		strings.Contains(errorMsg, "ACP new session failed") {
+		helpText = `Failed to initialize agent communication.
+
+Possible causes:
+  • opencode version mismatch
+  • Corrupted opencode installation
+
+Try reinstalling opencode:
+  npm install -g opencode`
+	} else {
+		// Generic error
+		helpText = `An unexpected error occurred.
+
+Please check the logs for more details.`
+	}
+
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(currentTheme.Error)).
+		MarginBottom(1)
+	title := titleStyle.Render("⚠ Agent Startup Failed")
+
+	// Error message
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(currentTheme.FgBase)).
+		MarginBottom(1)
+	errorText := errorStyle.Render(fmt.Sprintf("Error: %s", errorMsg))
+
+	// Help text
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(currentTheme.FgMuted)).
+		MarginBottom(1)
+	help := helpStyle.Render(helpText)
+
+	// Hint
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(currentTheme.FgMuted))
+	hint := hintStyle.Render("Press ESC or Ctrl+C to exit")
+
+	// Combine
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		errorText,
+		"",
+		help,
+		"",
+		hint,
+	)
+
+	// Modal styling
+	modalStyle := lipgloss.NewStyle().
+		Width(70).
+		Padding(2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(currentTheme.Error))
 
 	return modalStyle.Render(content)
 }
@@ -557,6 +654,7 @@ func (m *WizardModel) startAgentPhase() tea.Msg {
 	port, err := m.mcpServer.Start(m.ctx)
 	if err != nil {
 		logger.Error("Failed to start MCP server: %v", err)
+		// Add more context to help user troubleshoot
 		return AgentErrorMsg{Err: fmt.Errorf("failed to start MCP server: %w", err)}
 	}
 	logger.Debug("MCP server started on port %d", port)
@@ -609,7 +707,12 @@ func (m *WizardModel) startAgentPhase() tea.Msg {
 	logger.Debug("Starting ACP subprocess")
 	if err := m.agentRunner.Start(m.ctx); err != nil {
 		logger.Error("Failed to start ACP: %v", err)
-		return AgentErrorMsg{Err: fmt.Errorf("failed to start ACP: %w", err)}
+		// Check if it's an "executable not found" error for better messaging
+		if strings.Contains(err.Error(), "executable file not found") ||
+			strings.Contains(err.Error(), "no such file or directory") {
+			return AgentErrorMsg{Err: fmt.Errorf("failed to start opencode: executable file not found in $PATH")}
+		}
+		return AgentErrorMsg{Err: fmt.Errorf("failed to start opencode: %w", err)}
 	}
 
 	// Build spec prompt
