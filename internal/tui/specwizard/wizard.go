@@ -147,6 +147,13 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cancelled = true
 				return m, tea.Quit
 			}
+			// During agent step, only handle ESC at wizard level if agent isn't running
+			// If agent is running (agentStep exists and waitingForAgent or has questions),
+			// the agent step will handle ESC by showing confirmation modal
+			if m.step == StepAgent && m.agentStep != nil && (m.agentStep.waitingForAgent || m.agentStep.questionView != nil) {
+				// Pass through to agent step - it will show the cancel modal
+				break
+			}
 			// On other steps, go back
 			return m.goBack()
 		case "tab":
@@ -241,6 +248,21 @@ func (m *WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.initCurrentStep()
 		return m, nil
+
+	case CancelWizardMsg:
+		// User confirmed cancellation during agent phase
+		logger.Debug("Cancelling wizard from agent phase")
+		m.cancelled = true
+		// Clean up agent resources before quitting
+		if m.agentRunner != nil {
+			m.agentRunner.Stop()
+			m.agentRunner = nil
+		}
+		if m.mcpServer != nil {
+			_ = m.mcpServer.Stop()
+			m.mcpServer = nil
+		}
+		return m, tea.Quit
 
 	case SaveSpecMsg:
 		// User clicked Save button in review step

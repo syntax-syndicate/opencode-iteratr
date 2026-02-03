@@ -37,6 +37,9 @@ type AgentPhase struct {
 	specContentCh  <-chan specmcp.SpecContentRequest
 	currentSpecReq *specmcp.SpecContentRequest // Current pending spec content request
 
+	// Cancel confirmation modal
+	showConfirmCancel bool // True if cancel confirmation modal is visible
+
 	// Dimensions
 	width  int
 	height int
@@ -66,6 +69,26 @@ func (a *AgentPhase) Init() tea.Cmd {
 
 // Update handles messages for the agent phase.
 func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
+	// Handle cancel confirmation modal
+	if a.showConfirmCancel {
+		switch msg := msg.(type) {
+		case tea.KeyPressMsg:
+			switch msg.String() {
+			case "y", "Y":
+				// Confirm cancellation - return CancelWizardMsg
+				a.showConfirmCancel = false
+				return a, func() tea.Msg {
+					return CancelWizardMsg{}
+				}
+			case "n", "N", "esc":
+				// Cancel the cancellation (don't cancel)
+				a.showConfirmCancel = false
+				return a, nil
+			}
+		}
+		return a, nil
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
@@ -233,8 +256,18 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 		return a, nil
 
 	default:
-		// Update spinner if waiting
+		// Handle keyboard input during waiting state
 		if a.waitingForAgent {
+			switch msg := msg.(type) {
+			case tea.KeyPressMsg:
+				switch msg.String() {
+				case "esc":
+					// ESC during thinking shows cancel confirmation modal
+					a.showConfirmCancel = true
+					return a, nil
+				}
+			}
+			// Update spinner
 			cmd := a.spinner.Update(msg)
 			return a, cmd
 		}
@@ -253,6 +286,7 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 func (a *AgentPhase) View() string {
 	currentTheme := theme.Current()
 
+	var baseView string
 	if a.waitingForAgent {
 		// Show spinner
 		spinnerView := lipgloss.JoinHorizontal(
@@ -268,15 +302,70 @@ func (a *AgentPhase) View() string {
 			AlignVertical(lipgloss.Center).
 			Foreground(lipgloss.Color(currentTheme.FgMuted))
 
-		return centeredStyle.Render(spinnerView)
+		baseView = centeredStyle.Render(spinnerView)
+	} else if a.questionView != nil {
+		// Show question view
+		baseView = a.questionView.View()
+	} else {
+		baseView = "Initializing..."
 	}
 
-	// Show question view
-	if a.questionView != nil {
-		return a.questionView.View()
+	// If showing confirmation modal, overlay it on top
+	if a.showConfirmCancel {
+		modal := a.renderCancelConfirmationModal()
+		// Center modal overlay
+		overlay := lipgloss.Place(
+			a.width,
+			a.height,
+			lipgloss.Center,
+			lipgloss.Center,
+			modal,
+		)
+		return overlay
 	}
 
-	return "Initializing..."
+	return baseView
+}
+
+// renderCancelConfirmationModal renders the cancel confirmation modal.
+func (a *AgentPhase) renderCancelConfirmationModal() string {
+	t := theme.Current()
+
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(t.Warning)).
+		MarginBottom(1)
+	title := titleStyle.Render("⚠ Cancel Agent Interview?")
+
+	// Message
+	messageStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(t.FgBase)).
+		MarginBottom(1)
+	message := messageStyle.Render("This will stop the agent and return to the beginning.")
+
+	// Buttons
+	buttonStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(t.FgMuted))
+	buttons := buttonStyle.Render("Press Y to cancel, N or ESC to continue")
+
+	// Combine content
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		title,
+		message,
+		"",
+		buttons,
+	)
+
+	// Modal styling
+	modalStyle := lipgloss.NewStyle().
+		Width(50).
+		Padding(2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(t.Warning))
+
+	return modalStyle.Render(content)
 }
 
 // SetSize updates the size of the agent phase.
@@ -333,3 +422,6 @@ func ListenForQuestions(ctx context.Context, mcpServer *specmcp.Server) tea.Cmd 
 		}
 	}
 }
+
+// CancelWizardMsg is sent when the user confirms cancelling the wizard during agent phase.
+type CancelWizardMsg struct{}

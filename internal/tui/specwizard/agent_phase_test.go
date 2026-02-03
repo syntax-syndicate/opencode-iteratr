@@ -871,3 +871,149 @@ func TestAgentPhase_Init_StartsListeningForBothChannels(t *testing.T) {
 	cmd := phase.Init()
 	assert.NotNil(t, cmd, "init should return command")
 }
+
+func TestAgentPhase_EscDuringSpinner_ShowsCancelModal(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Start in waiting state
+	require.True(t, phase.waitingForAgent, "should be waiting for agent")
+	require.False(t, phase.showConfirmCancel, "modal should not be shown initially")
+
+	// Press ESC during spinner
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "esc"})
+	assert.Nil(t, cmd, "ESC should not return command")
+	assert.True(t, updated.showConfirmCancel, "ESC should show cancel confirmation modal")
+	assert.True(t, updated.waitingForAgent, "should still be waiting for agent")
+}
+
+func TestAgentPhase_CancelModal_YConfirms(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Press Y to confirm cancellation
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "y"})
+	require.NotNil(t, cmd, "Y should return command")
+
+	// Execute command and verify it returns CancelWizardMsg
+	msg := cmd()
+	cancelMsg, ok := msg.(CancelWizardMsg)
+	assert.True(t, ok, "Y should emit CancelWizardMsg")
+	assert.NotNil(t, cancelMsg, "CancelWizardMsg should not be nil")
+
+	// Modal should be hidden
+	assert.False(t, updated.showConfirmCancel, "modal should be hidden after confirmation")
+}
+
+func TestAgentPhase_CancelModal_CapitalYConfirms(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Press Y (capital) to confirm cancellation
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "Y"})
+	require.NotNil(t, cmd, "Y should return command")
+
+	// Execute command and verify it returns CancelWizardMsg
+	msg := cmd()
+	_, ok := msg.(CancelWizardMsg)
+	assert.True(t, ok, "Y should emit CancelWizardMsg")
+
+	// Modal should be hidden
+	assert.False(t, updated.showConfirmCancel, "modal should be hidden after confirmation")
+}
+
+func TestAgentPhase_CancelModal_NCancels(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Press N to cancel the cancellation
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "n"})
+	assert.Nil(t, cmd, "N should not return command")
+	assert.False(t, updated.showConfirmCancel, "modal should be hidden")
+}
+
+func TestAgentPhase_CancelModal_EscCancels(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Press ESC to cancel the cancellation
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "esc"})
+	assert.Nil(t, cmd, "ESC should not return command")
+	assert.False(t, updated.showConfirmCancel, "modal should be hidden")
+}
+
+func TestAgentPhase_CancelModal_BlocksOtherInput(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Press random key - should be ignored
+	updated, cmd := phase.Update(tea.KeyPressMsg{Text: "x"})
+	assert.Nil(t, cmd, "random key should not return command")
+	assert.True(t, updated.showConfirmCancel, "modal should still be shown")
+}
+
+func TestAgentPhase_View_ShowsModalWhenActive(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+	phase.width = 80
+	phase.height = 24
+
+	// Initially, should show spinner
+	view := phase.View()
+	assert.NotEmpty(t, view, "should render view")
+	assert.Contains(t, view, "Agent is analyzing requirements", "should show spinner text")
+
+	// Show cancel modal
+	phase.showConfirmCancel = true
+
+	// Should now show modal overlay
+	viewWithModal := phase.View()
+	assert.NotEmpty(t, viewWithModal, "should render view with modal")
+	assert.Contains(t, viewWithModal, "Cancel Agent Interview", "should show modal title")
+	assert.Contains(t, viewWithModal, "Press Y to cancel", "should show modal buttons")
+}
+
+func TestAgentPhase_EscDuringQuestions_NotHandled(t *testing.T) {
+	mcpServer := specmcp.New("test-spec", "./specs")
+	phase := NewAgentPhase(mcpServer)
+
+	// Set up question view (simulate receiving questions)
+	req := specmcp.QuestionRequest{
+		Questions: []specmcp.Question{
+			{
+				Question: "Test question?",
+				Header:   "Test",
+				Options: []specmcp.Option{
+					{Label: "Option 1", Description: "First option"},
+				},
+				Multiple: false,
+			},
+		},
+		ResultCh: make(chan []interface{}),
+	}
+
+	// Process question request
+	phase, _ = phase.Update(QuestionRequestMsg{Request: req})
+	require.NotNil(t, phase.questionView, "question view should be created")
+	require.False(t, phase.waitingForAgent, "should not be waiting for agent")
+
+	// Press ESC during questions - should not show modal
+	// (ESC during questions is handled by question view itself)
+	updated, _ := phase.Update(tea.KeyPressMsg{Text: "esc"})
+	assert.False(t, updated.showConfirmCancel, "ESC during questions should not show cancel modal")
+}

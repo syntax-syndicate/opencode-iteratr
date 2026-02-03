@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/config"
+	"github.com/mark3labs/iteratr/internal/specmcp"
 	"github.com/mark3labs/iteratr/internal/tui/wizard"
 )
 
@@ -657,5 +658,48 @@ func TestStartAgentPhaseErrorHandling(t *testing.T) {
 				t.Errorf("Expected error to contain %q, got %q", tt.expectErrType, msg.Err.Error())
 			}
 		})
+	}
+}
+
+func TestCancelWizardMsg(t *testing.T) {
+	cfg := &config.Config{
+		SpecDir: "./specs",
+	}
+
+	// Create wizard at agent step with mock MCP server
+	mcpServer := specmcp.New("test-spec", "./specs")
+	m := &WizardModel{
+		step:      StepAgent,
+		cancelled: false,
+		cfg:       cfg,
+		width:     80,
+		height:    24,
+		mcpServer: mcpServer,
+	}
+	m.agentStep = NewAgentPhase(mcpServer)
+
+	// Send CancelWizardMsg (simulating user confirming cancellation during agent phase)
+	updatedModel, cmd := m.Update(CancelWizardMsg{})
+
+	wizModel := updatedModel.(*WizardModel)
+
+	// Should set cancelled flag
+	if !wizModel.cancelled {
+		t.Error("Expected cancelled=true after CancelWizardMsg")
+	}
+
+	// Should return tea.Quit command
+	if cmd == nil {
+		t.Error("Expected CancelWizardMsg to return tea.Quit command")
+	}
+
+	// MCP server should be cleaned up (set to nil)
+	if wizModel.mcpServer != nil {
+		t.Error("Expected mcpServer to be cleaned up (nil) after cancellation")
+	}
+
+	// Agent runner should be cleaned up (set to nil)
+	if wizModel.agentRunner != nil {
+		t.Error("Expected agentRunner to be cleaned up (nil) after cancellation")
 	}
 }
