@@ -1057,6 +1057,58 @@ func TestOverwriteFlow_CancelWithN(t *testing.T) {
 	}
 }
 
+func TestWizard_SpecContentReceivedMsg(t *testing.T) {
+	// Create wizard in agent phase step
+	cfg := &config.Config{
+		SpecDir: t.TempDir(),
+	}
+	m := &WizardModel{
+		step: StepAgent,
+		cfg:  cfg,
+		result: WizardResult{
+			Title:       "Test Spec",
+			Description: "Test description",
+			Model:       "claude-sonnet-4-5",
+		},
+	}
+
+	// Send SpecContentReceivedMsg with spec content
+	testContent := "## Overview\n\nThis is a test spec.\n\n## Tasks\n\n- [ ] Task 1\n- [ ] Task 2"
+	msg := SpecContentReceivedMsg{Content: testContent}
+	updatedModel, cmd := m.Update(msg)
+	m = updatedModel.(*WizardModel)
+
+	// Should transition to review step
+	if m.step != StepReview {
+		t.Errorf("Expected step to be StepReview, got %v", m.step)
+	}
+
+	// Should store content in result
+	if m.result.SpecContent != testContent {
+		t.Errorf("Expected SpecContent to be %q, got %q", testContent, m.result.SpecContent)
+	}
+
+	// Should have initialized review step
+	if m.reviewStep == nil {
+		t.Error("Expected reviewStep to be initialized")
+	}
+
+	// Verify review step was initialized with the content
+	if m.reviewStep.content != testContent {
+		t.Errorf("Expected reviewStep.content to be %q, got %q", testContent, m.reviewStep.content)
+	}
+
+	// Should not return a command
+	if cmd != nil {
+		t.Error("Expected no command to be returned")
+	}
+
+	// Button focus should be reset
+	if m.buttonFocused {
+		t.Error("Expected buttonFocused to be false")
+	}
+}
+
 func TestWizard_StartBuildMsg(t *testing.T) {
 	// Create wizard in completion step
 	cfg := &config.Config{
