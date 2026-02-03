@@ -341,3 +341,38 @@ func TestQuestionView_SaveAndRestore(t *testing.T) {
 		t.Errorf("expected [Option 2] to be restored, got %v", selected)
 	}
 }
+
+func TestQuestionView_AutoAppendTypeYourOwn(t *testing.T) {
+	questions := []Question{
+		{
+			Header:   "Test Question",
+			Question: "Select one",
+			Options: []Option{
+				{Label: "Option 1"},
+				{Label: "Option 2"},
+			},
+			Multiple: false,
+		},
+	}
+
+	answers := []QuestionAnswer{
+		{Value: "", IsMulti: false},
+	}
+
+	qv := NewQuestionView(questions, answers, 0)
+
+	// Check that "Type your own answer" option was auto-appended
+	items := qv.optionSelector.items
+	if len(items) != 3 {
+		t.Errorf("expected 3 items (2 options + Type your own), got %d", len(items))
+	}
+
+	lastItem := items[len(items)-1]
+	if lastItem.label != "Type your own answer" {
+		t.Errorf("expected last item to be 'Type your own answer', got %q", lastItem.label)
+	}
+
+	if lastItem.description != "Enter custom text" {
+		t.Errorf("expected description 'Enter custom text', got %q", lastItem.description)
+	}
+}
