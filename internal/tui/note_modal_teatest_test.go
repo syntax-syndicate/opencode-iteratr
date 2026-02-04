@@ -299,7 +299,7 @@ func TestNoteModal_RenderAllNoteTypes(t *testing.T) {
 
 			// Verify golden file
 			goldenPath := filepath.Join("testdata", tc.goldenFile)
-			compareNoteModalGolden(t, goldenPath, rendered)
+			testfixtures.CompareGolden(t, goldenPath, rendered)
 		})
 	}
 }
@@ -328,7 +328,7 @@ func TestNoteModal_RenderLongContent(t *testing.T) {
 
 	// Verify golden file
 	goldenPath := filepath.Join("testdata", "note_modal_long_content.golden")
-	compareNoteModalGolden(t, goldenPath, rendered)
+	testfixtures.CompareGolden(t, goldenPath, rendered)
 }
 
 // TestNoteModal_RenderSmallScreen tests rendering with constrained dimensions
@@ -350,7 +350,7 @@ func TestNoteModal_RenderSmallScreen(t *testing.T) {
 
 	// Verify golden file
 	goldenPath := filepath.Join("testdata", "note_modal_small_screen.golden")
-	compareNoteModalGolden(t, goldenPath, rendered)
+	testfixtures.CompareGolden(t, goldenPath, rendered)
 }
 
 // TestNoteModal_RenderVerySmallScreen tests minimum dimension constraints
@@ -377,7 +377,7 @@ func TestNoteModal_RenderVerySmallScreen(t *testing.T) {
 
 	// Verify golden file
 	goldenPath := filepath.Join("testdata", "note_modal_very_small_screen.golden")
-	compareNoteModalGolden(t, goldenPath, rendered)
+	testfixtures.CompareGolden(t, goldenPath, rendered)
 }
 
 // TestNoteModal_RenderUnknownNoteType tests rendering with unknown note type
@@ -405,7 +405,7 @@ func TestNoteModal_RenderUnknownNoteType(t *testing.T) {
 
 	// Verify golden file
 	goldenPath := filepath.Join("testdata", "note_modal_unknown_type.golden")
-	compareNoteModalGolden(t, goldenPath, rendered)
+	testfixtures.CompareGolden(t, goldenPath, rendered)
 }
 
 // TestNoteModal_Centering tests that modal is centered on screen
@@ -435,7 +435,3 @@ func TestNoteModal_Centering(t *testing.T) {
 }
 
 // compareNoteModalGolden compares rendered output with golden file
-func compareNoteModalGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}

@@ -28,7 +28,7 @@ And some more text after the code.`,
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_text.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_User tests UserMessageItem in collapsed state (always expanded, same as expanded test)
@@ -43,7 +43,7 @@ func TestMessageCollapsed_User(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_user.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_Thinking tests ThinkingMessageItem in collapsed state
@@ -72,7 +72,7 @@ func TestMessageCollapsed_Thinking(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_thinking.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_Tool tests ToolMessageItem in collapsed state
@@ -106,7 +106,7 @@ func TestMessageCollapsed_Tool(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_tool.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_ToolWithDiff tests ToolMessageItem with file diff in collapsed state
@@ -140,7 +140,7 @@ func TestMessageCollapsed_ToolWithDiff(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_tool_diff.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_Info tests InfoMessageItem in collapsed state (always expanded, same as expanded test)
@@ -157,7 +157,7 @@ func TestMessageCollapsed_Info(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_info.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_Subagent tests SubagentMessageItem in collapsed state (always fully rendered)
@@ -177,7 +177,7 @@ func TestMessageCollapsed_Subagent(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_subagent.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageCollapsed_Divider tests DividerMessageItem in collapsed state (always expanded, same as expanded test)
@@ -192,12 +192,7 @@ func TestMessageCollapsed_Divider(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_collapsed_divider.golden")
-	compareGoldenCollapsed(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // compareGoldenCollapsed compares rendered output with golden file
-func compareGoldenCollapsed(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	// Reuse the same compareGolden function from messages_expanded_test.go
-	compareGolden(t, goldenPath, actual)
-}

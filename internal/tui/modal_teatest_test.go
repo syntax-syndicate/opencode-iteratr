@@ -327,7 +327,7 @@ func TestTaskModalGolden_InProgress(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_in_progress.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_Completed(t *testing.T) {
@@ -347,7 +347,7 @@ func TestTaskModalGolden_Completed(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_completed.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_Blocked(t *testing.T) {
@@ -367,7 +367,7 @@ func TestTaskModalGolden_Blocked(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_blocked.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_Remaining(t *testing.T) {
@@ -387,7 +387,7 @@ func TestTaskModalGolden_Remaining(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_remaining.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_Critical(t *testing.T) {
@@ -407,7 +407,7 @@ func TestTaskModalGolden_Critical(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_critical.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_Backlog(t *testing.T) {
@@ -427,7 +427,7 @@ func TestTaskModalGolden_Backlog(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_backlog.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_LongContent(t *testing.T) {
@@ -450,7 +450,7 @@ func TestTaskModalGolden_LongContent(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_long_content.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 func TestTaskModalGolden_NoDependencies(t *testing.T) {
@@ -470,7 +470,7 @@ func TestTaskModalGolden_NoDependencies(t *testing.T) {
 	require.NotEmpty(t, content, "content should not be empty")
 
 	goldenFile := filepath.Join("testdata", "task_modal_no_dependencies.golden")
-	compareGolden(t, goldenFile, content)
+	testfixtures.CompareGolden(t, goldenFile, content)
 }
 
 // compareGolden compares rendered output with golden file

@@ -28,7 +28,7 @@ And some more text after the code.`,
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_text.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_User tests UserMessageItem in expanded state (always expanded)
@@ -43,7 +43,7 @@ func TestMessageExpanded_User(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_user.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_Thinking tests ThinkingMessageItem in expanded state
@@ -72,7 +72,7 @@ func TestMessageExpanded_Thinking(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_thinking.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_Tool tests ToolMessageItem in expanded state
@@ -106,7 +106,7 @@ func TestMessageExpanded_Tool(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_tool.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_ToolWithDiff tests ToolMessageItem with file diff in expanded state
@@ -140,7 +140,7 @@ func TestMessageExpanded_ToolWithDiff(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_tool_diff.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_Info tests InfoMessageItem in expanded state (always expanded)
@@ -157,7 +157,7 @@ func TestMessageExpanded_Info(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_info.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_Subagent tests SubagentMessageItem in expanded state
@@ -177,7 +177,7 @@ func TestMessageExpanded_Subagent(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_subagent.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestMessageExpanded_Divider tests DividerMessageItem in expanded state (always expanded)
@@ -192,12 +192,8 @@ func TestMessageExpanded_Divider(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "message_expanded_divider.golden")
-	compareGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // compareGolden is deprecated - use testfixtures.CompareGolden instead
 // Kept for backwards compatibility with old test files
-func compareGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}

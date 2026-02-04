@@ -574,7 +574,7 @@ func TestNoteInputModal_RenderFocusStates_Teatest(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", tc.golden)
-			compareGoldenTeatest(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -622,7 +622,7 @@ func TestNoteInputModal_RenderAllNoteTypes_Teatest(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", "note_input_modal_type_"+tc.typ+"_teatest.golden")
-			compareGoldenTeatest(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -654,7 +654,7 @@ func TestNoteInputModal_RenderEmptyContent_Teatest(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "note_input_modal_empty_content_teatest.golden")
-	compareGoldenTeatest(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestNoteInputModal_InvisibleDoesNotRender_Teatest tests that invisible modal doesn't render
@@ -671,11 +671,6 @@ func TestNoteInputModal_InvisibleDoesNotRender_Teatest(t *testing.T) {
 }
 
 // compareGoldenTeatest compares rendered output with golden file
-func compareGoldenTeatest(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}
-
 // TestNoteInputModal_UnicodeText_Teatest tests textarea with various unicode characters
 func TestNoteInputModal_UnicodeText_Teatest(t *testing.T) {
 	t.Parallel()
@@ -869,7 +864,7 @@ func TestNoteInputModal_UnicodeGoldens_Teatest(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", tc.golden)
-			compareGoldenTeatest(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -1156,7 +1151,7 @@ func TestNoteInputModal_MultiLineGolden_Teatest(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", "note_input_modal_multiline_"+tc.name+"_teatest.golden")
-			compareGoldenTeatest(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -1292,7 +1287,7 @@ func TestNoteInputModal_VeryLongContentRendering_Teatest(t *testing.T) {
 
 	// Verify golden file for visual regression
 	goldenFile := filepath.Join("testdata", "note_input_modal_very_long_content_teatest.golden")
-	compareGoldenTeatest(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestNoteInputModal_VeryLongContentScrolling_Teatest tests scrolling behavior with very long content

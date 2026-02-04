@@ -668,11 +668,6 @@ func TestSidebar_NoteList_ScrollNotesMethod(t *testing.T) {
 // ============================================================================
 
 // compareSidebarGolden compares rendered output with golden file
-func compareSidebarGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}
-
 // TestSidebar_Render_WithTasks tests rendering sidebar with tasks
 func TestSidebar_Render_WithTasks(t *testing.T) {
 	sidebar := NewSidebar()
@@ -692,7 +687,7 @@ func TestSidebar_Render_WithTasks(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_with_tasks.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_WithNotes tests rendering sidebar with notes
@@ -714,7 +709,7 @@ func TestSidebar_Render_WithNotes(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_with_notes.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_FullState tests rendering sidebar with both tasks and notes
@@ -736,7 +731,7 @@ func TestSidebar_Render_FullState(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_full_state.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_EmptyState tests rendering sidebar with no tasks or notes
@@ -758,7 +753,7 @@ func TestSidebar_Render_EmptyState(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_empty_state.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_TasksFocused tests rendering sidebar with tasks panel focused
@@ -781,7 +776,7 @@ func TestSidebar_Render_TasksFocused(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_tasks_focused.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_NotesFocused tests rendering sidebar with notes panel focused
@@ -804,7 +799,7 @@ func TestSidebar_Render_NotesFocused(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_notes_focused.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_TaskStatuses tests rendering sidebar with various task statuses
@@ -837,7 +832,7 @@ func TestSidebar_Render_TaskStatuses(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_task_statuses.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_NoteTypes tests rendering sidebar with all note types
@@ -869,7 +864,7 @@ func TestSidebar_Render_NoteTypes(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_note_types.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_ActiveTask tests rendering sidebar with active task highlighted
@@ -892,7 +887,7 @@ func TestSidebar_Render_ActiveTask(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_active_task.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_ActiveNote tests rendering sidebar with active note highlighted
@@ -915,7 +910,7 @@ func TestSidebar_Render_ActiveNote(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_active_note.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestSidebar_Render_SmallScreen tests rendering sidebar on small screen
@@ -937,5 +932,5 @@ func TestSidebar_Render_SmallScreen(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "sidebar_small_screen.golden")
-	compareSidebarGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }

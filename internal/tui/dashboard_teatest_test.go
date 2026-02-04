@@ -672,7 +672,7 @@ func TestDashboard_RenderFocusAgent(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_focus_agent.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestDashboard_RenderFocusTasks tests rendering with Tasks pane focused
@@ -708,7 +708,7 @@ func TestDashboard_RenderFocusTasks(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_focus_tasks.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestDashboard_RenderFocusNotes tests rendering with Notes pane focused
@@ -744,7 +744,7 @@ func TestDashboard_RenderFocusNotes(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_focus_notes.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestDashboard_RenderFocusInput tests rendering with Input focused
@@ -785,7 +785,7 @@ func TestDashboard_RenderFocusInput(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_focus_input.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestDashboard_RenderEmptyState tests rendering with empty state
@@ -820,7 +820,7 @@ func TestDashboard_RenderEmptyState(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_empty_state.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestDashboard_RenderWithQueueDepth tests rendering with queue depth indicator
@@ -862,11 +862,7 @@ func TestDashboard_RenderWithQueueDepth(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "dashboard_queue_depth.golden")
-	compareDashboardGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // compareDashboardGolden compares rendered output with golden file
-func compareDashboardGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}

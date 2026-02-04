@@ -263,7 +263,7 @@ func TestModalPriorityMatrix_VisualVerification(t *testing.T) {
 
 			// Compare with golden file
 			goldenFile := filepath.Join("testdata", "modal_priority_"+tt.name+".golden")
-			compareGolden(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -432,7 +432,7 @@ func TestModalPriorityMatrix_RenderOrder(t *testing.T) {
 
 		// Compare with golden file
 		goldenFile := filepath.Join("testdata", "modal_priority_render_order.golden")
-		compareGolden(t, goldenFile, rendered)
+		testfixtures.CompareGolden(t, goldenFile, rendered)
 	})
 }
 
