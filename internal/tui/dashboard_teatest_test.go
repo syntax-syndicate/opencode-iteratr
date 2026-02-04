@@ -422,6 +422,220 @@ func TestDashboard_SetQueueDepth(t *testing.T) {
 	}
 }
 
+// --- Unit Tests (Migrated from dashboard_test.go) ---
+
+// TestDashboard_SetState tests that SetState propagates state correctly
+func TestDashboard_SetState(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+
+	state := testfixtures.StateWithTasks()
+	d.SetState(state)
+
+	if d.state != state {
+		t.Error("state was not updated")
+	}
+	if d.sessionName != testfixtures.FixedSessionName {
+		t.Errorf("session name: got %s, want %s", d.sessionName, testfixtures.FixedSessionName)
+	}
+}
+
+// TestDashboard_SetIteration tests that SetIteration updates iteration counter
+func TestDashboard_SetIteration(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+
+	d.SetIteration(10)
+
+	if d.iteration != 10 {
+		t.Errorf("iteration: got %d, want 10", d.iteration)
+	}
+}
+
+// TestDashboard_SetSize tests that SetSize updates width and height
+func TestDashboard_SetSize(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+
+	d.SetSize(100, 50)
+
+	if d.width != 100 {
+		t.Errorf("width: got %d, want 100", d.width)
+	}
+	if d.height != 50 {
+		t.Errorf("height: got %d, want 50", d.height)
+	}
+}
+
+// TestNewDashboard tests that NewDashboard initializes with correct defaults
+func TestNewDashboard(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+
+	if d == nil {
+		t.Fatal("expected non-nil dashboard")
+	}
+	if d.sessionName != "" {
+		t.Errorf("expected empty session name, got %s", d.sessionName)
+	}
+	if d.iteration != 0 {
+		t.Errorf("expected iteration 0, got %d", d.iteration)
+	}
+	if d.focusPane != FocusAgent {
+		t.Errorf("expected focusPane FocusAgent, got %v", d.focusPane)
+	}
+	if d.agentOutput == nil {
+		t.Error("expected non-nil agentOutput")
+	}
+	if d.sidebar == nil {
+		t.Error("expected non-nil sidebar")
+	}
+}
+
+// TestDashboard_UserInputMsgOnEnter tests that Enter key emits UserInputMsg
+func TestDashboard_UserInputMsgOnEnter(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+	d.SetSize(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	d.SetFocus(true)
+
+	// Focus input and set text
+	d.focusPane = FocusInput
+	d.inputFocused = true
+	agentOutput.SetInputFocused(true)
+	agentOutput.input.SetValue("test message")
+
+	// Verify input has text
+	if agentOutput.InputValue() != "test message" {
+		t.Errorf("expected input value 'test message', got %q", agentOutput.InputValue())
+	}
+
+	// Simulate Enter key press
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
+	cmdFunc := d.Update(enterKey)
+
+	// Verify cmd is not nil (UserInputMsg is returned)
+	if cmdFunc == nil {
+		t.Fatal("expected cmd to be non-nil (UserInputMsg should be emitted)")
+	}
+
+	// Execute the command to get the message
+	msg := cmdFunc()
+
+	// Verify the message is UserInputMsg
+	userMsg, ok := msg.(UserInputMsg)
+	if !ok {
+		t.Fatalf("expected UserInputMsg, got %T", msg)
+	}
+
+	// Verify the message contains the input text
+	if userMsg.Text != "test message" {
+		t.Errorf("expected UserInputMsg.Text 'test message', got %q", userMsg.Text)
+	}
+
+	// Verify input was reset
+	if agentOutput.InputValue() != "" {
+		t.Errorf("expected input to be reset, got %q", agentOutput.InputValue())
+	}
+
+	// Verify focus was returned to agent
+	if d.focusPane != FocusAgent {
+		t.Errorf("expected focusPane to be FocusAgent, got %v", d.focusPane)
+	}
+
+	// Verify input is unfocused
+	if agentOutput.input.Focused() {
+		t.Error("expected input to be unfocused after Enter")
+	}
+}
+
+// TestDashboard_EmptyInputNoMessage tests that empty input does not emit message
+func TestDashboard_EmptyInputNoMessage(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+	d.SetSize(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	d.SetFocus(true)
+
+	// Focus input but leave it empty
+	d.focusPane = FocusInput
+	d.inputFocused = true
+	agentOutput.SetInputFocused(true)
+
+	// Simulate Enter key press
+	enterKey := tea.KeyPressMsg{Code: tea.KeyEnter}
+	cmdFunc := d.Update(enterKey)
+
+	// Verify cmd is nil (no message emitted for empty input)
+	if cmdFunc != nil {
+		t.Error("expected cmd to be nil for empty input")
+	}
+
+	// Verify focus remains on input (empty input doesn't exit)
+	if d.focusPane != FocusInput {
+		t.Errorf("expected focusPane to remain FocusInput, got %v", d.focusPane)
+	}
+}
+
+// TestDashboard_InputBlurWithEscape tests that Escape key unfocuses input
+func TestDashboard_InputBlurWithEscape(t *testing.T) {
+	t.Parallel()
+
+	agentOutput := NewAgentOutput()
+	sidebar := NewSidebar()
+	d := NewDashboard(agentOutput, sidebar)
+	d.SetSize(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	d.SetFocus(true)
+
+	// Focus input and add text
+	d.focusPane = FocusInput
+	d.inputFocused = true
+	agentOutput.SetInputFocused(true)
+	agentOutput.input.SetValue("some text")
+
+	// Verify input is focused
+	if !agentOutput.input.Focused() {
+		t.Fatal("expected input to be focused before Escape")
+	}
+
+	// Press Escape key
+	escKey := tea.KeyPressMsg{Text: "esc"}
+	d.Update(escKey)
+
+	// Verify focus returned to agent
+	if d.focusPane != FocusAgent {
+		t.Errorf("expected focusPane to be FocusAgent after Escape, got %v", d.focusPane)
+	}
+	if agentOutput.input.Focused() {
+		t.Error("expected input to be unfocused after Escape")
+	}
+	if d.inputFocused {
+		t.Error("expected inputFocused to be false after Escape")
+	}
+
+	// Verify input text is preserved (Escape doesn't clear input)
+	if agentOutput.InputValue() != "some text" {
+		t.Errorf("expected input value 'some text' after Escape, got %q", agentOutput.InputValue())
+	}
+}
+
 // --- Visual Regression Tests ---
 
 // TestDashboard_RenderFocusAgent tests rendering with Agent pane focused
