@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/testfixtures"
 	"github.com/stretchr/testify/require"
@@ -474,3 +475,44 @@ func TestTaskModalGolden_NoDependencies(t *testing.T) {
 
 // compareGolden compares rendered output with golden file
 // Note: compareGolden is defined in messages_expanded_test.go and shared across golden file tests
+
+// --- TaskModal Command Execution Tests ---
+
+func TestTaskModal_Update_ReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:      "TAS-CMD-1",
+		Content: "Test command execution",
+		Status:  "in_progress",
+	}
+	modal.SetTask(task)
+
+	// Test that Update returns nil for all message types
+	testCases := []struct {
+		name string
+		msg  tea.Msg
+	}{
+		{"KeyPressMsg", tea.KeyPressMsg{Text: "enter"}},
+		{"KeyPressMsg esc", tea.KeyPressMsg{Text: "esc"}},
+		{"KeyPressMsg space", tea.KeyPressMsg{Text: " "}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := modal.Update(tc.msg)
+			require.Nil(t, cmd, "TaskModal.Update should always return nil")
+		})
+	}
+}
+
+func TestTaskModal_Update_WhenNotVisible(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	// Modal not visible, no task set
+
+	cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	require.Nil(t, cmd, "Update should return nil when modal not visible")
+}

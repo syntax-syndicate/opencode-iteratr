@@ -482,3 +482,84 @@ func compareSubagentGolden(t *testing.T, goldenPath, actual string) {
 	t.Helper()
 	testfixtures.CompareGolden(t, goldenPath, actual)
 }
+
+// --- SubagentModal Command Execution Tests ---
+
+func TestSubagentModal_Update_ForwardsToScrollList(t *testing.T) {
+	t.Parallel()
+
+	modal := NewSubagentModal("session-update-cmd", "test-agent", "/test/workdir")
+	modal.loading = false
+
+	// Add some messages to enable scrolling
+	for i := 0; i < 20; i++ {
+		modal.appendText(fmt.Sprintf("Message %d", i+1))
+	}
+
+	// Test that Update forwards to scrollList and may return commands
+	testCases := []struct {
+		name string
+		msg  tea.Msg
+	}{
+		{"KeyPress j", tea.KeyPressMsg{Text: "j"}},
+		{"KeyPress k", tea.KeyPressMsg{Text: "k"}},
+		{"KeyPress down", tea.KeyPressMsg{Text: "down"}},
+		{"KeyPress up", tea.KeyPressMsg{Text: "up"}},
+		{"KeyPress pgdown", tea.KeyPressMsg{Text: "pgdown"}},
+		{"KeyPress pgup", tea.KeyPressMsg{Text: "pgup"}},
+		{"KeyPress G", tea.KeyPressMsg{Text: "G"}},
+		{"KeyPress g", tea.KeyPressMsg{Text: "g"}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := modal.Update(tc.msg)
+			// ScrollList may or may not return a command
+			// We just verify Update doesn't panic
+			if cmd != nil {
+				msg := cmd()
+				_ = msg // Verify command can be executed
+			}
+		})
+	}
+}
+
+func TestSubagentModal_Update_WhenScrollListNil(t *testing.T) {
+	t.Parallel()
+
+	modal := NewSubagentModal("session-update-nil", "test-agent", "/test/workdir")
+	modal.scrollList = nil // Force nil scrollList
+
+	// Update should return nil without panicking
+	cmd := modal.Update(tea.KeyPressMsg{Text: "j"})
+	if cmd != nil {
+		t.Error("Update should return nil when scrollList is nil")
+	}
+}
+
+func TestSubagentModal_Update_CommandExecution(t *testing.T) {
+	t.Parallel()
+
+	modal := NewSubagentModal("session-update-exec", "test-agent", "/test/workdir")
+	modal.loading = false
+
+	// Add messages
+	for i := 0; i < 10; i++ {
+		modal.appendText(fmt.Sprintf("Line %d", i+1))
+	}
+
+	// Send a scroll command and verify it can be executed
+	cmd := modal.Update(tea.KeyPressMsg{Text: "j"})
+
+	// Execute command if returned
+	if cmd != nil {
+		msg := cmd()
+		// Verify it doesn't panic
+		_ = msg
+	}
+
+	// Modal should still be functional
+	if modal.scrollList == nil {
+		t.Error("scrollList should not be nil after Update")
+	}
+}

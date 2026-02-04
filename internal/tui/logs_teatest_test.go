@@ -680,3 +680,140 @@ func TestLogViewer_Rendering_ManyEvents(t *testing.T) {
 	content := logs.viewport.View()
 	require.NotEmpty(t, content, "Content should not be empty")
 }
+
+// --- LogViewer Command Execution Tests ---
+
+func TestLogViewer_Update_ReturnsCommandsFromViewport(t *testing.T) {
+	t.Parallel()
+
+	logs := NewLogViewer()
+	logs.SetSize(testfixtures.TestTermWidth, 10)
+	logs.SetFocus(true)
+
+	// Add many events to enable scrolling
+	for i := 0; i < 30; i++ {
+		event := session.Event{
+			ID:        fmt.Sprintf("%d", i+1),
+			Timestamp: testfixtures.FixedTime,
+			Session:   testfixtures.FixedSessionName,
+			Type:      "task",
+			Action:    "add",
+			Data:      fmt.Sprintf("Event %d", i+1),
+		}
+		logs.AddEvent(event)
+	}
+
+	// Test that Update forwards to viewport and may return commands
+	testCases := []struct {
+		name           string
+		msg            tea.Msg
+		expectCommand  bool
+		commandComment string
+	}{
+		{"KeyPress k", tea.KeyPressMsg{Text: "k"}, false, "viewport scrolling"},
+		{"KeyPress j", tea.KeyPressMsg{Text: "j"}, false, "viewport scrolling"},
+		{"KeyPress pgup", tea.KeyPressMsg{Text: "pgup"}, false, "page up"},
+		{"KeyPress pgdown", tea.KeyPressMsg{Text: "pgdown"}, false, "page down"},
+		{"KeyPress ctrl+u", tea.KeyPressMsg{Text: "ctrl+u"}, false, "half page up"},
+		{"KeyPress ctrl+d", tea.KeyPressMsg{Text: "ctrl+d"}, false, "half page down"},
+		{"KeyPress g", tea.KeyPressMsg{Text: "g"}, false, "goto top"},
+		{"KeyPress G", tea.KeyPressMsg{Text: "G"}, false, "goto bottom"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := logs.Update(tc.msg)
+			// Viewport may or may not return a command depending on state
+			// We just verify Update doesn't panic and returns a valid result
+			if cmd != nil {
+				// Command returned, verify it can be executed
+				msg := cmd()
+				_ = msg // Viewport commands typically return nil or viewport messages
+			}
+		})
+	}
+}
+
+func TestLogViewer_Update_WhenNotFocused(t *testing.T) {
+	t.Parallel()
+
+	logs := NewLogViewer()
+	logs.SetSize(testfixtures.TestTermWidth, 10)
+	logs.SetFocus(false) // Not focused
+
+	// Add events
+	for i := 0; i < 5; i++ {
+		event := session.Event{
+			ID:        fmt.Sprintf("%d", i+1),
+			Timestamp: testfixtures.FixedTime,
+			Session:   testfixtures.FixedSessionName,
+			Type:      "task",
+			Action:    "add",
+			Data:      fmt.Sprintf("Event %d", i+1),
+		}
+		logs.AddEvent(event)
+	}
+
+	// Update should still work when not focused (viewport handles it)
+	cmd := logs.Update(tea.KeyPressMsg{Text: "k"})
+	// Viewport handles focus state internally
+	_ = cmd
+}
+
+func TestLogViewer_AddEvent_ReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	logs := NewLogViewer()
+	logs.SetSize(testfixtures.TestTermWidth, 10)
+
+	event := session.Event{
+		ID:        "1",
+		Timestamp: testfixtures.FixedTime,
+		Session:   testfixtures.FixedSessionName,
+		Type:      "task",
+		Action:    "add",
+		Data:      "Test event",
+	}
+
+	// AddEvent should return nil (no command needed)
+	cmd := logs.AddEvent(event)
+	require.Nil(t, cmd, "AddEvent should return nil")
+
+	// Event should be added
+	require.Len(t, logs.events, 1, "Event should be added")
+}
+
+func TestLogViewer_Update_CommandExecution(t *testing.T) {
+	t.Parallel()
+
+	logs := NewLogViewer()
+	logs.SetSize(testfixtures.TestTermWidth, 10)
+	logs.SetFocus(true)
+
+	// Add events
+	for i := 0; i < 20; i++ {
+		event := session.Event{
+			ID:        fmt.Sprintf("%d", i+1),
+			Timestamp: testfixtures.FixedTime,
+			Session:   testfixtures.FixedSessionName,
+			Type:      "task",
+			Action:    "add",
+			Data:      fmt.Sprintf("Event %d", i+1),
+		}
+		logs.AddEvent(event)
+	}
+
+	// Send a key press and verify command can be executed
+	cmd := logs.Update(tea.KeyPressMsg{Text: "k"})
+
+	// Execute command if returned
+	if cmd != nil {
+		msg := cmd()
+		// Viewport commands typically return internal viewport messages or nil
+		// We just verify it doesn't panic
+		_ = msg
+	}
+
+	// Verify viewport state changed (scrolled up)
+	require.False(t, logs.viewport.AtBottom(), "Should have scrolled up from bottom")
+}

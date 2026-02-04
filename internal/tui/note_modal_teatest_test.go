@@ -103,6 +103,61 @@ func TestNoteModal_Update(t *testing.T) {
 	}
 }
 
+// --- NoteModal Command Execution Tests ---
+
+func TestNoteModal_Update_ReturnsNilForAllMessages(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Test that Update returns nil for all message types
+	testCases := []struct {
+		name string
+		msg  tea.Msg
+	}{
+		{"KeyPressMsg enter", tea.KeyPressMsg{Text: "enter"}},
+		{"KeyPressMsg esc", tea.KeyPressMsg{Text: "esc"}},
+		{"KeyPressMsg space", tea.KeyPressMsg{Text: " "}},
+		{"KeyPressMsg arrow", tea.KeyPressMsg{Text: "up"}},
+		{"WindowSizeMsg", tea.WindowSizeMsg{Width: 100, Height: 50}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := modal.Update(tc.msg)
+			if cmd != nil {
+				t.Errorf("NoteModal.Update should always return nil, got command for %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestNoteModal_Update_WhenNotVisible(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	// Modal not visible, no note set
+
+	cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd != nil {
+		t.Error("Update should return nil when modal not visible")
+	}
+}
+
+func TestNoteModal_Update_WhenNilNote(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	modal.visible = true // Force visible but keep note nil
+
+	cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd != nil {
+		t.Error("Update should return nil when note is nil")
+	}
+}
+
 // TestNoteModal_InvisibleDoesNotRender tests that invisible modal doesn't render
 func TestNoteModal_InvisibleDoesNotRender(t *testing.T) {
 	t.Parallel()
