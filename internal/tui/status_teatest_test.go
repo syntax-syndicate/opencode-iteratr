@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -664,6 +665,394 @@ func TestStatusBar_Render_SmallWidth(t *testing.T) {
 	sb.Draw(canvas, area)
 
 	compareStatusBarGolden(t, canvas, "small_width")
+}
+
+// TestStatusBar_PauseTransition_PausingToPaused tests PAUSING→PAUSED state transition
+func TestStatusBar_PauseTransition_PausingToPaused(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.SetState(testfixtures.StateWithTasks())
+
+	// Step 1: Request pause while agent is busy (PAUSING state)
+	cmd := sb.Update(PauseStateMsg{Paused: true})
+	if cmd != nil {
+		t.Error("Update should return nil for PauseStateMsg")
+	}
+	if !sb.paused {
+		t.Error("paused should be true after pause request")
+	}
+
+	// Verify working due to in_progress task
+	if !sb.working {
+		t.Fatal("working should be true with in_progress task")
+	}
+
+	// Initially agent is busy
+	sb.agentBusy = true
+	if !sb.paused || !sb.agentBusy {
+		t.Fatal("should be in PAUSING state (paused=true, agentBusy=true)")
+	}
+
+	// Step 2: Agent finishes work (PAUSED state)
+	cmd = sb.Update(AgentBusyMsg{Busy: false})
+	if cmd != nil {
+		t.Error("Update should return nil for AgentBusyMsg")
+	}
+	if sb.agentBusy {
+		t.Error("agentBusy should be false after agent finishes")
+	}
+
+	// Verify now in PAUSED state
+	if !sb.paused || sb.agentBusy {
+		t.Error("should be in PAUSED state (paused=true, agentBusy=false)")
+	}
+}
+
+// TestStatusBar_PauseTransition_CancelWhilePausing tests canceling pause during PAUSING
+func TestStatusBar_PauseTransition_CancelWhilePausing(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.SetState(testfixtures.StateWithTasks())
+
+	// Step 1: Request pause while agent is busy (PAUSING state)
+	sb.paused = true
+	sb.agentBusy = true
+
+	if !sb.paused || !sb.agentBusy {
+		t.Fatal("should be in PAUSING state")
+	}
+
+	// Step 2: Cancel pause request
+	cmd := sb.Update(PauseStateMsg{Paused: false})
+	if cmd != nil {
+		t.Error("Update should return nil for PauseStateMsg")
+	}
+	if sb.paused {
+		t.Error("paused should be false after cancel")
+	}
+
+	// Agent still working
+	if !sb.agentBusy {
+		t.Error("agentBusy should still be true")
+	}
+
+	// Verify back to working state (not paused, agent busy)
+	if sb.paused {
+		t.Error("should not be paused after cancel")
+	}
+}
+
+// TestStatusBar_PauseTransition_ResumeFromPaused tests resuming from PAUSED state
+func TestStatusBar_PauseTransition_ResumeFromPaused(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+
+	// Start in PAUSED state (agent idle, orchestrator blocked)
+	sb.paused = true
+	sb.agentBusy = false
+
+	if !sb.paused || sb.agentBusy {
+		t.Fatal("should be in PAUSED state")
+	}
+
+	// Resume
+	cmd := sb.Update(PauseStateMsg{Paused: false})
+	if cmd != nil {
+		t.Error("Update should return nil for PauseStateMsg")
+	}
+	if sb.paused {
+		t.Error("paused should be false after resume")
+	}
+	if sb.agentBusy {
+		t.Error("agentBusy should still be false")
+	}
+}
+
+// TestStatusBar_PauseTransition_MultipleToggleCycles tests rapid pause/resume cycles
+func TestStatusBar_PauseTransition_MultipleToggleCycles(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+
+	// Cycle 1: Pause → Resume
+	sb.Update(PauseStateMsg{Paused: true})
+	if !sb.paused {
+		t.Error("cycle 1: should be paused")
+	}
+
+	sb.Update(PauseStateMsg{Paused: false})
+	if sb.paused {
+		t.Error("cycle 1: should not be paused")
+	}
+
+	// Cycle 2: Pause → Resume
+	sb.Update(PauseStateMsg{Paused: true})
+	if !sb.paused {
+		t.Error("cycle 2: should be paused")
+	}
+
+	sb.Update(PauseStateMsg{Paused: false})
+	if sb.paused {
+		t.Error("cycle 2: should not be paused")
+	}
+
+	// Cycle 3: Pause → Resume
+	sb.Update(PauseStateMsg{Paused: true})
+	if !sb.paused {
+		t.Error("cycle 3: should be paused")
+	}
+
+	sb.Update(PauseStateMsg{Paused: false})
+	if sb.paused {
+		t.Error("cycle 3: should not be paused")
+	}
+}
+
+// TestStatusBar_PauseTransition_WithNoTasks tests pause state when no tasks exist
+func TestStatusBar_PauseTransition_WithNoTasks(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.SetState(testfixtures.EmptyState()) // No tasks
+
+	// Verify not working
+	if sb.working {
+		t.Fatal("should not be working with no tasks")
+	}
+
+	// Request pause (should work even with no tasks)
+	cmd := sb.Update(PauseStateMsg{Paused: true})
+	if cmd != nil {
+		t.Error("Update should return nil for PauseStateMsg")
+	}
+	if !sb.paused {
+		t.Error("should be paused even with no tasks")
+	}
+
+	// Since no work, should immediately be in PAUSED state (not PAUSING)
+	sb.agentBusy = false
+	if sb.working || sb.agentBusy {
+		t.Error("should not be working or agent busy with no tasks")
+	}
+
+	// Resume
+	sb.Update(PauseStateMsg{Paused: false})
+	if sb.paused {
+		t.Error("should not be paused after resume")
+	}
+}
+
+// TestStatusBar_PauseTransition_SpinnerStopsOnPaused tests spinner stops when transitioning to PAUSED
+func TestStatusBar_PauseTransition_SpinnerStopsOnPaused(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.SetState(testfixtures.StateWithTasks())
+
+	// Start working (spinner should be active)
+	if !sb.working {
+		t.Fatal("should be working with in_progress task")
+	}
+
+	// Start spinner tick
+	cmd := sb.Tick()
+	if cmd == nil {
+		t.Fatal("Tick should return command when working")
+	}
+	if !sb.ticking {
+		t.Fatal("ticking should be true after Tick")
+	}
+
+	// Request pause while working (PAUSING state)
+	sb.paused = true
+	sb.agentBusy = true
+
+	// Verify still working (spinner should continue during PAUSING)
+	if !sb.working {
+		t.Error("should still be working during PAUSING")
+	}
+
+	// Transition to PAUSED (agent finishes)
+	sb.Update(AgentBusyMsg{Busy: false})
+
+	// Now complete all tasks to stop working
+	state := testfixtures.StateWithTasks()
+	for _, task := range state.Tasks {
+		task.Status = "completed"
+	}
+	sb.SetState(state)
+
+	// Verify working stopped
+	if sb.working {
+		t.Error("working should stop when tasks complete")
+	}
+	if sb.ticking {
+		t.Error("ticking should stop when work stops")
+	}
+
+	// Tick should return nil
+	cmd = sb.Tick()
+	if cmd != nil {
+		t.Error("Tick should return nil when not working")
+	}
+}
+
+// TestStatusBar_PauseTransition_StateChangesDuringPause tests state changes while paused
+func TestStatusBar_PauseTransition_StateChangesDuringPause(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.SetState(testfixtures.StateWithTasks())
+
+	// Enter PAUSED state
+	sb.paused = true
+	sb.agentBusy = false
+
+	// Verify in PAUSED state
+	if !sb.paused || sb.agentBusy {
+		t.Fatal("should be in PAUSED state")
+	}
+
+	// Modify state while paused (complete a task)
+	state := testfixtures.StateWithTasks()
+	if task, ok := state.Tasks["TAS-1"]; ok {
+		task.Status = "completed" // Complete one task
+	}
+	sb.SetState(state)
+
+	// Should still have in_progress tasks
+	if !sb.working {
+		t.Error("should still be working with remaining in_progress task")
+	}
+
+	// Pause state should persist through state updates
+	if !sb.paused {
+		t.Error("paused should remain true during state update")
+	}
+}
+
+// TestStatusBar_PauseTransition_AgentBusyCyclesDuringPause tests agentBusy cycling during pause
+func TestStatusBar_PauseTransition_AgentBusyCyclesDuringPause(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+
+	// Start in PAUSING state
+	sb.paused = true
+	sb.agentBusy = true
+
+	// Agent finishes (PAUSED)
+	sb.Update(AgentBusyMsg{Busy: false})
+	if sb.agentBusy {
+		t.Error("agentBusy should be false")
+	}
+	if !sb.paused {
+		t.Error("paused should remain true")
+	}
+
+	// Agent starts again (hypothetical - shouldn't happen but test robustness)
+	sb.Update(AgentBusyMsg{Busy: true})
+	if !sb.agentBusy {
+		t.Error("agentBusy should be true")
+	}
+	if !sb.paused {
+		t.Error("paused should remain true")
+	}
+
+	// Agent finishes again (back to PAUSED)
+	sb.Update(AgentBusyMsg{Busy: false})
+	if sb.agentBusy {
+		t.Error("agentBusy should be false again")
+	}
+	if !sb.paused {
+		t.Error("paused should still be true")
+	}
+}
+
+// TestStatusBar_Render_PauseTransitionSequence tests visual output during pause transition
+func TestStatusBar_Render_PauseTransitionSequence(t *testing.T) {
+	t.Parallel()
+
+	sb := NewStatusBar(testfixtures.FixedSessionName)
+	sb.SetLayoutMode(LayoutDesktop)
+	sb.startedAt = testfixtures.FixedTime
+	sb.stoppedAt = testfixtures.FixedTime
+	sb.SetState(testfixtures.StateWithTasks())
+
+	// Test sequence: Working → PAUSING → PAUSED → Resumed
+
+	// State 1: Working (not paused)
+	sb.paused = false
+	sb.agentBusy = true
+	canvas1 := uv.NewScreenBuffer(150, 1)
+	area1 := uv.Rect(0, 0, 150, 1)
+	sb.Draw(canvas1, area1)
+
+	render1 := canvas1.Render()
+	if !contains(render1, "● 1") {
+		t.Error("working state should show in_progress task indicator")
+	}
+	if contains(render1, "PAUSING") || contains(render1, "PAUSED") {
+		t.Error("working state should not show pause indicators")
+	}
+
+	// State 2: PAUSING (pause requested, agent still busy)
+	sb.paused = true
+	sb.agentBusy = true
+	canvas2 := uv.NewScreenBuffer(150, 1)
+	area2 := uv.Rect(0, 0, 150, 1)
+	sb.Draw(canvas2, area2)
+
+	render2 := canvas2.Render()
+	if !contains(render2, "PAUSING") {
+		t.Error("PAUSING state should show PAUSING indicator")
+	}
+	if contains(render2, "⏸ PAUSED") {
+		t.Error("PAUSING state should not show static PAUSED icon")
+	}
+
+	// State 3: PAUSED (agent idle, orchestrator blocked)
+	sb.paused = true
+	sb.agentBusy = false
+	canvas3 := uv.NewScreenBuffer(150, 1)
+	area3 := uv.Rect(0, 0, 150, 1)
+	sb.Draw(canvas3, area3)
+
+	render3 := canvas3.Render()
+	if !contains(render3, "⏸ PAUSED") {
+		t.Error("PAUSED state should show PAUSED icon")
+	}
+	if contains(render3, "PAUSING") {
+		t.Error("PAUSED state should not show PAUSING indicator")
+	}
+
+	// State 4: Resumed (not paused, agent busy again)
+	sb.paused = false
+	sb.agentBusy = true
+	canvas4 := uv.NewScreenBuffer(150, 1)
+	area4 := uv.Rect(0, 0, 150, 1)
+	sb.Draw(canvas4, area4)
+
+	render4 := canvas4.Render()
+	if contains(render4, "PAUSING") || contains(render4, "PAUSED") {
+		t.Error("resumed state should not show pause indicators")
+	}
+}
+
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
 
 // compareStatusBarGolden compares rendered output against golden file
