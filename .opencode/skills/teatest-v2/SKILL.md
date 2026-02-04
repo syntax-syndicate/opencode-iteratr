@@ -15,7 +15,7 @@ Testing library for Bubble Tea v2 applications.
 ## Import
 
 ```go
-import "github.com/charmbracelet/x/exp/teatest/v2"
+import "charm.land/x/exp/teatest/v2"
 ```
 
 Requires `github.com/charmbracelet/bubbletea/v2`.

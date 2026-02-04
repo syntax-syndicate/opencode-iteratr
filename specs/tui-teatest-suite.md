@@ -95,6 +95,8 @@ internal/tui/
 
 ### Test Pattern Template
 ```go
+import "charm.land/x/exp/teatest/v2"
+
 func init() {
     lipgloss.SetColorProfile(termenv.Ascii)
 }
