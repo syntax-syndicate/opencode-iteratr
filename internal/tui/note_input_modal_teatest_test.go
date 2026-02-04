@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -867,6 +868,293 @@ func TestNoteInputModal_UnicodeGoldens_Teatest(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", tc.golden)
+			compareGoldenTeatest(t, goldenFile, rendered)
+		})
+	}
+}
+
+// TestNoteInputModal_MultiLineContent_Teatest tests textarea with multi-line content
+func TestNoteInputModal_MultiLineContent_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "TwoLines",
+			content: "First line\nSecond line",
+		},
+		{
+			name:    "ThreeLines",
+			content: "Line 1\nLine 2\nLine 3",
+		},
+		{
+			name:    "EmptyLineInMiddle",
+			content: "Start\n\nEnd",
+		},
+		{
+			name:    "EmptyFirstLine",
+			content: "\nContent on second line",
+		},
+		{
+			name:    "EmptyLastLine",
+			content: "Content on first line\n",
+		},
+		{
+			name:    "MultipleEmptyLines",
+			content: "Start\n\n\nEnd",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly with newlines preserved
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with multi-line content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			msg, ok := result.(CreateNoteMsg)
+			if !ok {
+				t.Fatalf("Expected CreateNoteMsg, got %T", result)
+			}
+
+			// Content should preserve newlines (TrimSpace only removes leading/trailing)
+			expectedContent := strings.TrimSpace(tc.content)
+			if msg.Content != expectedContent {
+				t.Errorf("Message content mismatch: got %q, want %q", msg.Content, expectedContent)
+			}
+
+			// Verify rendering doesn't panic with multi-line content
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+			rendered := scr.Render()
+			if rendered == "" {
+				t.Error("Expected non-empty rendering")
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_MultiLinePaste_Teatest tests simulating paste of multi-line content
+func TestNoteInputModal_MultiLinePaste_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		pasteContent string
+		wantLines    int
+	}{
+		{
+			name:         "SmallPaste",
+			pasteContent: "Found a bug in module X\nNeeds investigation\nRelated to issue #123",
+			wantLines:    3,
+		},
+		{
+			name:         "LargePaste",
+			pasteContent: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8",
+			wantLines:    8,
+		},
+		{
+			name:         "PasteWithBlanks",
+			pasteContent: "Summary\n\nDetail line 1\nDetail line 2\n\nConclusion",
+			wantLines:    6,
+		},
+		{
+			name:         "PasteListItems",
+			pasteContent: "- Observation 1\n- Observation 2\n- Observation 3",
+			wantLines:    3,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+
+			// Simulate paste by setting value
+			modal.textarea.SetValue(tc.pasteContent)
+
+			// Verify content is preserved
+			if modal.textarea.Value() != tc.pasteContent {
+				t.Errorf("Pasted content not preserved: got %q, want %q", modal.textarea.Value(), tc.pasteContent)
+			}
+
+			// Count lines in stored content
+			lines := strings.Split(modal.textarea.Value(), "\n")
+			if len(lines) != tc.wantLines {
+				t.Errorf("Line count mismatch: got %d lines, want %d lines", len(lines), tc.wantLines)
+			}
+
+			// Verify submit works with pasted multi-line content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			result := cmd()
+			msg, ok := result.(CreateNoteMsg)
+			if !ok {
+				t.Fatalf("Expected CreateNoteMsg, got %T", result)
+			}
+
+			// Content should be trimmed but preserve internal newlines
+			expectedContent := strings.TrimSpace(tc.pasteContent)
+			if msg.Content != expectedContent {
+				t.Errorf("Submitted content mismatch: got %q, want %q", msg.Content, expectedContent)
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_NewlineEdgeCases_Teatest tests edge cases with newlines
+func TestNoteInputModal_NewlineEdgeCases_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		content       string
+		expectSubmit  bool
+		expectedValue string
+	}{
+		{
+			name:         "OnlyNewlines",
+			content:      "\n\n\n",
+			expectSubmit: false, // TrimSpace removes all
+		},
+		{
+			name:          "NewlinePrefix",
+			content:       "\n\n\nActual content",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "NewlineSuffix",
+			content:       "Actual content\n\n\n",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "NewlineBoth",
+			content:       "\n\nActual content\n\n",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "PreserveInternalNewlines",
+			content:       "\n\nLine 1\n\nLine 2\n\n",
+			expectSubmit:  true,
+			expectedValue: "Line 1\n\nLine 2",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Try to submit
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+
+			if tc.expectSubmit {
+				if cmd == nil {
+					t.Fatal("Expected command from submit")
+				}
+
+				result := cmd()
+				msg, ok := result.(CreateNoteMsg)
+				if !ok {
+					t.Fatalf("Expected CreateNoteMsg, got %T", result)
+				}
+
+				if msg.Content != tc.expectedValue {
+					t.Errorf("Content mismatch: got %q, want %q", msg.Content, tc.expectedValue)
+				}
+			} else {
+				// Should not submit empty/whitespace-only content
+				if cmd != nil {
+					result := cmd()
+					if _, ok := result.(CreateNoteMsg); ok {
+						t.Error("Should not submit whitespace-only content")
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_MultiLineGolden_Teatest tests visual rendering of multi-line content
+func TestNoteInputModal_MultiLineGolden_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "TwoLineNote",
+			content: "Database migration issue\nTables not syncing correctly",
+		},
+		{
+			name:    "MultiLineBulletList",
+			content: "- Check logs for errors\n- Verify connection string\n- Restart service",
+		},
+		{
+			name:    "NoteWithBlankLine",
+			content: "Title: Performance degradation\n\nObserved 30% slowdown in API responses",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Focus textarea to show cursor
+			modal.focus = focusTextarea
+
+			// Render
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+
+			// Capture rendered output
+			rendered := scr.Render()
+
+			// Verify golden file
+			goldenFile := filepath.Join("testdata", "note_input_modal_multiline_"+tc.name+"_teatest.golden")
 			compareGoldenTeatest(t, goldenFile, rendered)
 		})
 	}

@@ -1148,3 +1148,290 @@ func TestTaskInputModal_EmptyUnicodeContent(t *testing.T) {
 		})
 	}
 }
+
+// TestTaskInputModal_MultiLineContent tests textarea with multi-line content
+func TestTaskInputModal_MultiLineContent(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "TwoLines",
+			content: "First line\nSecond line",
+		},
+		{
+			name:    "ThreeLines",
+			content: "Line 1\nLine 2\nLine 3",
+		},
+		{
+			name:    "EmptyLineInMiddle",
+			content: "Start\n\nEnd",
+		},
+		{
+			name:    "EmptyFirstLine",
+			content: "\nContent on second line",
+		},
+		{
+			name:    "EmptyLastLine",
+			content: "Content on first line\n",
+		},
+		{
+			name:    "MultipleEmptyLines",
+			content: "Start\n\n\nEnd",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly with newlines preserved
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with multi-line content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			msg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			// Content should preserve newlines (TrimSpace only removes leading/trailing)
+			expectedContent := strings.TrimSpace(tc.content)
+			if msg.Content != expectedContent {
+				t.Errorf("Message content mismatch: got %q, want %q", msg.Content, expectedContent)
+			}
+
+			// Verify rendering doesn't panic with multi-line content
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+			rendered := scr.Render()
+			if rendered == "" {
+				t.Error("Expected non-empty rendering")
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_MultiLinePaste tests simulating paste of multi-line content
+func TestTaskInputModal_MultiLinePaste(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		pasteContent string
+		wantLines    int
+	}{
+		{
+			name:         "SmallPaste",
+			pasteContent: "Implement feature X\nAdd tests\nUpdate docs",
+			wantLines:    3,
+		},
+		{
+			name:         "LargePaste",
+			pasteContent: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8",
+			wantLines:    8,
+		},
+		{
+			name:         "PasteWithBlanks",
+			pasteContent: "Title\n\nDescription line 1\nDescription line 2\n\nFooter",
+			wantLines:    6,
+		},
+		{
+			name:         "PasteListItems",
+			pasteContent: "- Item 1\n- Item 2\n- Item 3",
+			wantLines:    3,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+
+			// Simulate paste by setting value
+			modal.textarea.SetValue(tc.pasteContent)
+
+			// Verify content is preserved
+			if modal.textarea.Value() != tc.pasteContent {
+				t.Errorf("Pasted content not preserved: got %q, want %q", modal.textarea.Value(), tc.pasteContent)
+			}
+
+			// Count lines in stored content
+			lines := strings.Split(modal.textarea.Value(), "\n")
+			if len(lines) != tc.wantLines {
+				t.Errorf("Line count mismatch: got %d lines, want %d lines", len(lines), tc.wantLines)
+			}
+
+			// Verify submit works with pasted multi-line content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			result := cmd()
+			msg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			// Content should be trimmed but preserve internal newlines
+			expectedContent := strings.TrimSpace(tc.pasteContent)
+			if msg.Content != expectedContent {
+				t.Errorf("Submitted content mismatch: got %q, want %q", msg.Content, expectedContent)
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_NewlineEdgeCases tests edge cases with newlines
+func TestTaskInputModal_NewlineEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name          string
+		content       string
+		expectSubmit  bool
+		expectedValue string
+	}{
+		{
+			name:         "OnlyNewlines",
+			content:      "\n\n\n",
+			expectSubmit: false, // TrimSpace removes all
+		},
+		{
+			name:          "NewlinePrefix",
+			content:       "\n\n\nActual content",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "NewlineSuffix",
+			content:       "Actual content\n\n\n",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "NewlineBoth",
+			content:       "\n\nActual content\n\n",
+			expectSubmit:  true,
+			expectedValue: "Actual content",
+		},
+		{
+			name:          "PreserveInternalNewlines",
+			content:       "\n\nLine 1\n\nLine 2\n\n",
+			expectSubmit:  true,
+			expectedValue: "Line 1\n\nLine 2",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Try to submit
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+
+			if tc.expectSubmit {
+				if cmd == nil {
+					t.Fatal("Expected command from submit")
+				}
+
+				result := cmd()
+				msg, ok := result.(CreateTaskMsg)
+				if !ok {
+					t.Fatalf("Expected CreateTaskMsg, got %T", result)
+				}
+
+				if msg.Content != tc.expectedValue {
+					t.Errorf("Content mismatch: got %q, want %q", msg.Content, tc.expectedValue)
+				}
+			} else {
+				// Should not submit empty/whitespace-only content
+				if cmd != nil {
+					result := cmd()
+					if _, ok := result.(CreateTaskMsg); ok {
+						t.Error("Should not submit whitespace-only content")
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_MultiLineGolden tests visual rendering of multi-line content
+func TestTaskInputModal_MultiLineGolden(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "TwoLineTask",
+			content: "Implement user authentication\nAdd login/logout endpoints",
+		},
+		{
+			name:    "MultiLineBulletList",
+			content: "- Fix bug in parser\n- Add error handling\n- Update tests",
+		},
+		{
+			name:    "TaskWithBlankLine",
+			content: "Title: Refactor database layer\n\nMigrate to new ORM framework",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Focus textarea to show cursor
+			modal.focus = focusTextarea
+
+			// Render
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+
+			// Capture rendered output
+			rendered := scr.Render()
+
+			// Verify golden file
+			goldenFile := filepath.Join("testdata", "task_input_modal_multiline_"+tc.name+".golden")
+			compareTaskInputGolden(t, goldenFile, rendered)
+		})
+	}
+}
