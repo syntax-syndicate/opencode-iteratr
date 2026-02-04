@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/session"
@@ -662,4 +663,448 @@ func TestApp_ViewWithPrefixMode(t *testing.T) {
 	// Verify prefix mode state
 	require.True(t, app.awaitingPrefixKey, "should be in prefix mode")
 	require.True(t, app.status.prefixMode, "status bar should show prefix mode")
+}
+
+// --- Command Execution Tests ---
+// These tests verify that App.Update() returns the correct commands for various messages.
+// Commands are executed to verify they return the expected message types.
+
+func TestApp_OpenTaskModalMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.iteration = 1 // Required for modal creation
+
+	task := &session.Task{
+		ID:       "task1",
+		Content:  "Test task",
+		Status:   "remaining",
+		Priority: 2,
+	}
+
+	// Create OpenTaskModalMsg
+	msg := OpenTaskModalMsg{
+		Task: task,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify modal is visible with the task
+	require.True(t, app.taskModal.IsVisible(), "task modal should be visible after OpenTaskModalMsg")
+	require.Equal(t, task, app.taskModal.task, "task modal should contain the correct task")
+
+	// Verify command is nil
+	require.Nil(t, cmd, "command should be nil for OpenTaskModalMsg")
+}
+
+func TestApp_FileChangeMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	// Initially no modified files
+	require.Equal(t, 0, app.modifiedFileCount, "modifiedFileCount should be 0 initially")
+
+	// Create FileChangeMsg
+	msg := FileChangeMsg{
+		Path:      "/tmp/test.go",
+		IsNew:     false,
+		Additions: 5,
+		Deletions: 2,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify modified file count incremented
+	require.Equal(t, 1, app.modifiedFileCount, "modifiedFileCount should be incremented")
+
+	// Verify command returned (status tick + git fetch)
+	require.NotNil(t, cmd, "command should be returned for FileChangeMsg")
+}
+
+func TestApp_OpenSubagentModalMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+	// Create OpenSubagentModalMsg
+	msg := OpenSubagentModalMsg{
+		SessionID:    "subagent-session-123",
+		SubagentType: "codebase-analyzer",
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify subagent modal is created
+	require.NotNil(t, app.subagentModal, "subagent modal should be created")
+	require.Equal(t, "subagent-session-123", app.subagentModal.sessionID, "subagent modal should have correct session ID")
+	require.Equal(t, "codebase-analyzer", app.subagentModal.subagentType, "subagent modal should have correct subagent type")
+
+	// Verify command returned (modal.Start())
+	require.NotNil(t, cmd, "command should be returned for OpenSubagentModalMsg")
+}
+
+func TestApp_UserInputMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	sendChan := make(chan string, 10)
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, sendChan, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	// Initially queue depth is 0
+	require.Equal(t, 0, app.queueDepth, "queueDepth should be 0 initially")
+
+	// Create UserInputMsg
+	msg := UserInputMsg{
+		Text: "test user message",
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify queue depth incremented
+	require.Equal(t, 1, app.queueDepth, "queueDepth should be incremented")
+
+	// Verify message sent to channel
+	select {
+	case sentMsg := <-sendChan:
+		require.Equal(t, "test user message", sentMsg, "message should be sent to sendChan")
+	default:
+		t.Fatal("message should be sent to sendChan")
+	}
+
+	// Command may be returned (SetQueueDepth) or nil depending on dashboard state
+	_ = cmd
+}
+
+func TestApp_QueuedMessageProcessingMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+	app.queueDepth = 3 // Set initial queue depth
+
+	// Create QueuedMessageProcessingMsg
+	msg := QueuedMessageProcessingMsg{
+		Text: "processing message",
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify queue depth decremented
+	require.Equal(t, 2, app.queueDepth, "queueDepth should be decremented")
+
+	// Command may be returned (batch of AppendUserMessage + SetQueueDepth) or nil
+	_ = cmd
+}
+
+func TestApp_AgentOutputMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	// Create AgentOutputMsg
+	msg := AgentOutputMsg{
+		Content: "Agent output text",
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify command returned (AppendText returns command to add message item)
+	// Note: agent.AppendText may return nil depending on state
+	_ = cmd
+}
+
+func TestApp_AgentThinkingMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	// Create AgentThinkingMsg
+	msg := AgentThinkingMsg{
+		Content: "Agent thinking content",
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify command returned (AppendThinking returns command to add thinking item)
+	// Note: agent.AppendThinking may return nil depending on state
+	_ = cmd
+}
+
+func TestApp_AgentFinishMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+	// Create AgentFinishMsg
+	msg := AgentFinishMsg{
+		Reason:   "end_turn",
+		Model:    "claude-sonnet-4",
+		Provider: "anthropic",
+		Duration: 5 * time.Second,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify command returned (batch of AppendFinish + SetAgentBusy + AgentBusyMsg)
+	require.NotNil(t, cmd, "command should be returned for AgentFinishMsg")
+}
+
+func TestApp_IterationStartMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+	// Create IterationStartMsg
+	msg := IterationStartMsg{
+		Number: 10,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify iteration updated
+	require.Equal(t, 10, app.iteration, "iteration should be updated")
+	require.Equal(t, 0, app.modifiedFileCount, "modifiedFileCount should be reset")
+
+	// Verify command returned (batch of SetIteration + AddIterationDivider + SetAgentBusy + AgentBusyMsg + fetchGitInfo)
+	require.NotNil(t, cmd, "command should be returned for IterationStartMsg")
+}
+
+func TestApp_StateUpdateMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	state := &session.State{
+		Session: testfixtures.FixedSessionName,
+		Tasks: map[string]*session.Task{
+			"t1": {ID: "t1", Content: "Task 1", Status: "remaining"},
+		},
+		Notes: []*session.Note{
+			{ID: "n1", Content: "Note 1", Type: "learning", Iteration: 1},
+		},
+	}
+
+	// Create StateUpdateMsg
+	msg := StateUpdateMsg{
+		State: state,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify command returned (status.Tick returns DurationTickMsg)
+	// Note: status.Tick may return nil depending on ticker state
+	_ = cmd
+}
+
+func TestApp_ConnectionStatusMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+	// Create ConnectionStatusMsg
+	msg := ConnectionStatusMsg{
+		Connected: true,
+	}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify command returned (checkConnectionHealth)
+	require.NotNil(t, cmd, "command should be returned for ConnectionStatusMsg")
+}
+
+func TestApp_SessionCompleteMsg_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	// Use nil store - loadInitialState will handle nil gracefully
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+	// Create SessionCompleteMsg
+	msg := SessionCompleteMsg{}
+
+	// Send message to App
+	_, cmd := app.Update(msg)
+
+	// Verify dialog is shown
+	require.True(t, app.dialog.IsVisible(), "dialog should be visible after SessionCompleteMsg")
+
+	// Verify command returned (loadInitialState)
+	require.NotNil(t, cmd, "command should be returned for SessionCompleteMsg")
+}
+
+func TestApp_GlobalKeys_Command(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		keyPress       string
+		expectQuit     bool
+		expectPrefix   bool
+		expectCmd      bool
+		expectedStatus bool
+	}{
+		{
+			name:           "ctrl+c quits",
+			keyPress:       "ctrl+c",
+			expectQuit:     true,
+			expectPrefix:   false,
+			expectCmd:      true,
+			expectedStatus: false,
+		},
+		{
+			name:           "ctrl+x enters prefix mode",
+			keyPress:       "ctrl+x",
+			expectQuit:     false,
+			expectPrefix:   true,
+			expectCmd:      true,
+			expectedStatus: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+
+			// Send key press
+			_, cmd := app.Update(tea.KeyPressMsg{Text: tt.keyPress})
+
+			// Verify quit state
+			require.Equal(t, tt.expectQuit, app.quitting, "quitting state mismatch")
+
+			// Verify prefix state
+			require.Equal(t, tt.expectPrefix, app.awaitingPrefixKey, "prefix state mismatch")
+			require.Equal(t, tt.expectedStatus, app.status.prefixMode, "status prefix mode mismatch")
+
+			// Verify command presence
+			if tt.expectCmd {
+				require.NotNil(t, cmd, "command should be returned")
+			}
+
+			// For quit, verify command returns QuitMsg
+			if tt.expectQuit && cmd != nil {
+				msg := cmd()
+				_, ok := msg.(tea.QuitMsg)
+				require.True(t, ok, "command should return QuitMsg for ctrl+c")
+			}
+		})
+	}
+}
+
+func TestApp_TogglePause_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	mockOrch := testfixtures.NewMockOrchestrator()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, mockOrch)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+
+	// Enter prefix mode
+	app.Update(tea.KeyPressMsg{Text: "ctrl+x"})
+	require.True(t, app.awaitingPrefixKey, "should be in prefix mode")
+
+	// Press 'p' to toggle pause
+	_, cmd := app.Update(tea.KeyPressMsg{Text: "p"})
+
+	// Verify prefix mode exited
+	require.False(t, app.awaitingPrefixKey, "should exit prefix mode")
+
+	// Verify pause was requested
+	require.True(t, mockOrch.WasPauseRequested(), "pause should be requested")
+
+	// Verify command returned (PauseStateMsg)
+	require.NotNil(t, cmd, "command should be returned")
+
+	// Execute command to verify PauseStateMsg
+	if cmd != nil {
+		msg := cmd()
+		pauseMsg, ok := msg.(PauseStateMsg)
+		require.True(t, ok, "command should return PauseStateMsg")
+		require.True(t, pauseMsg.Paused, "PauseStateMsg.Paused should be true")
+	}
+}
+
+func TestApp_HandleSidebarToggle_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.width = testfixtures.TestTermWidth
+	app.height = testfixtures.TestTermHeight
+	app.sidebarVisible = true
+
+	// Enter prefix mode
+	app.Update(tea.KeyPressMsg{Text: "ctrl+x"})
+
+	// Press 'b' to toggle sidebar
+	updatedModel, cmd := app.Update(tea.KeyPressMsg{Text: "b"})
+	app = updatedModel.(*App)
+
+	// Verify sidebar toggled
+	require.False(t, app.sidebarVisible, "sidebar should be hidden")
+	require.True(t, app.sidebarUserHidden, "sidebarUserHidden should be true")
+
+	// Verify layout marked dirty
+	require.True(t, app.layoutDirty, "layoutDirty should be true")
+
+	// Verify command is nil (handleSidebarToggle returns nil)
+	require.Nil(t, cmd, "command should be nil for sidebar toggle")
+}
+
+func TestApp_ToggleLogs_Command(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	app := NewApp(ctx, nil, testfixtures.FixedSessionName, "/tmp", t.TempDir(), nil, nil, nil)
+	app.logsVisible = false
+
+	// Enter prefix mode
+	app.Update(tea.KeyPressMsg{Text: "ctrl+x"})
+
+	// Press 'l' to toggle logs
+	updatedModel, cmd := app.Update(tea.KeyPressMsg{Text: "l"})
+	app = updatedModel.(*App)
+
+	// Verify logs toggled
+	require.True(t, app.logsVisible, "logs should be visible")
+
+	// Verify prefix mode exited
+	require.False(t, app.awaitingPrefixKey, "prefix mode should be exited")
+
+	// Verify command is nil (logs toggle returns nil)
+	require.Nil(t, cmd, "command should be nil for logs toggle")
 }
