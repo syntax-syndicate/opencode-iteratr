@@ -81,12 +81,14 @@ func TestFinishSpecHandlerSuccess(t *testing.T) {
 	}
 
 	// Start a goroutine to handle the channel request
-	var contentErr error
+	errCh := make(chan error, 1)
 	go func() {
 		specReq := <-server.SpecContentChan()
 		// Verify content was received
 		if specReq.Content != "# Test Spec\n\nThis is a test spec." {
-			contentErr = fmt.Errorf("Expected content to match, got: %s", specReq.Content)
+			errCh <- fmt.Errorf("Expected content to match, got: %s", specReq.Content)
+		} else {
+			errCh <- nil
 		}
 		// Simulate successful save
 		specReq.ResultCh <- nil
@@ -101,7 +103,7 @@ func TestFinishSpecHandlerSuccess(t *testing.T) {
 	}
 
 	// Check for errors from goroutine
-	if contentErr != nil {
+	if contentErr := <-errCh; contentErr != nil {
 		t.Error(contentErr)
 	}
 
