@@ -2,6 +2,7 @@ package specwizard
 
 import (
 	"context"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -222,7 +223,12 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 		if a.currentReq != nil {
 			resultCh := a.currentReq.ResultCh
 			go func() {
-				resultCh <- mcpAnswers
+				select {
+				case resultCh <- mcpAnswers:
+					// Successfully sent
+				case <-time.After(5 * time.Second):
+					logger.Warn("Timeout sending answers to MCP handler")
+				}
 			}()
 		}
 
@@ -388,7 +394,12 @@ func (a *AgentPhase) ConfirmSpecSave() {
 	if a.currentSpecReq != nil {
 		resultCh := a.currentSpecReq.ResultCh
 		go func() {
-			resultCh <- nil // Send nil to indicate success
+			select {
+			case resultCh <- nil: // Send nil to indicate success
+				// Successfully sent
+			case <-time.After(5 * time.Second):
+				logger.Warn("Timeout confirming spec save to MCP handler")
+			}
 		}()
 		a.currentSpecReq = nil
 	}

@@ -41,7 +41,7 @@ func (s *Server) registerTools() error {
 										"description": "Longer description of the option",
 									},
 								},
-								"required": []string{"label", "description"},
+								"required": []string{"label"},
 							},
 						},
 						"multiple": map[string]any{

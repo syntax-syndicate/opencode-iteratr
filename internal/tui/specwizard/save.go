@@ -55,8 +55,9 @@ func saveSpec(specDir, title, description, content string) (string, error) {
 func updateREADME(readmePath, filename, title, description string) error {
 	// Prepare description (first line, max 100 chars)
 	desc := firstLine(description)
-	if len(desc) > 100 {
-		desc = desc[:97] + "..."
+	descRunes := []rune(desc)
+	if len(descRunes) > 100 {
+		desc = string(descRunes[:97]) + "..."
 	}
 	if desc == "" {
 		desc = "No description provided"
@@ -65,8 +66,10 @@ func updateREADME(readmePath, filename, title, description string) error {
 	// Format date as YYYY-MM-DD
 	date := time.Now().Format("2006-01-02")
 
-	// Create new table row
-	newRow := fmt.Sprintf("| [%s](%s) | %s | %s |", title, filename, desc, date)
+	// Create new table row - escape pipes in title and description for markdown
+	escapedTitle := strings.ReplaceAll(title, "|", "\\|")
+	escapedDesc := strings.ReplaceAll(desc, "|", "\\|")
+	newRow := fmt.Sprintf("| [%s](%s) | %s | %s |", escapedTitle, filename, escapedDesc, date)
 
 	// Read existing README or create new one
 	var content string

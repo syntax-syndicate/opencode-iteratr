@@ -56,14 +56,8 @@ func (t *TitleStep) Update(msg tea.Msg) tea.Cmd {
 		t.height = msg.Height
 		return nil
 
-	case tea.KeyMsg, tea.KeyPressMsg:
-		var keyStr string
-		switch k := msg.(type) {
-		case tea.KeyMsg:
-			keyStr = k.String()
-		case tea.KeyPressMsg:
-			keyStr = k.String()
-		}
+	case tea.KeyPressMsg:
+		keyStr := msg.String()
 		switch keyStr {
 		case "enter":
 			// Validate before proceeding

@@ -15,7 +15,7 @@
 ## Automated Test Coverage
 
 ### Test Results
-```
+```text
 === Test Suite: internal/tui/specwizard ===
 Total Tests: 137
 Passed: 137

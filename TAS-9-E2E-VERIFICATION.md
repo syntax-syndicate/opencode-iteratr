@@ -50,7 +50,7 @@ $ ./iteratr config
 - All required fields present ✅
 
 ### 5. Prerequisites ✅
-- opencode installed: `/home/space_cowboy/.npm-packages/bin/opencode` ✅
+- opencode installed and available in PATH ✅
 - specs/ directory exists ✅
 - README.md exists in specs/ ✅
 

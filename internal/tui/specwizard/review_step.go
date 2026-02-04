@@ -271,12 +271,16 @@ func (s *ReviewStep) openEditor() tea.Cmd {
 	// Execute editor and read result
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		if err != nil {
+			// Clean up temp file on editor error/cancel
+			_ = os.Remove(tmpfile.Name())
 			return nil
 		}
 
 		// Read modified content
 		content, err := os.ReadFile(tmpfile.Name())
 		if err != nil {
+			// Clean up temp file on read error
+			_ = os.Remove(tmpfile.Name())
 			return nil
 		}
 

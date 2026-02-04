@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/iteratr/internal/logger"
 	"github.com/mark3labs/mcp-go/server"
@@ -96,10 +97,10 @@ func (s *Server) Start(ctx context.Context) (int, error) {
 
 	// Get the port that was assigned
 	s.port = listener.Addr().(*net.TCPAddr).Port
-	// Close the listener - we just needed it to find a free port
-	if err := listener.Close(); err != nil {
-		return 0, fmt.Errorf("failed to close listener: %w", err)
-	}
+	// NOTE: There's a small race window between closing this listener and
+	// httpServer.Start() binding to the same port. This is acceptable for
+	// local development but could cause intermittent failures under load.
+	_ = listener.Close()
 
 	// Create HTTP server with stateless mode
 	s.httpServer = server.NewStreamableHTTPServer(
@@ -112,11 +113,25 @@ func (s *Server) Start(ctx context.Context) (int, error) {
 	// Start server in background
 	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
 	httpServer := s.httpServer
+	errCh := make(chan error, 1)
 	go func() {
 		if err := httpServer.Start(addr); err != nil {
 			logger.Error("Spec MCP server error: %v", err)
+			errCh <- err
+			return
 		}
+		errCh <- nil
 	}()
+
+	// Give the server a moment to start or fail
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return 0, fmt.Errorf("failed to start HTTP server: %w", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		// Server started successfully (no immediate error)
+	}
 
 	logger.Debug("Spec MCP server ready on port %d", s.port)
 	return s.port, nil

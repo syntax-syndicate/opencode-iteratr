@@ -91,6 +91,17 @@ func Run(cfg *config.Config) error {
 
 	p := tea.NewProgram(m)
 	m.program = p // Store program reference for callbacks
+
+	// Ensure cleanup happens regardless of how Run exits
+	defer func() {
+		if m.agentRunner != nil {
+			m.agentRunner.Stop()
+		}
+		if m.mcpServer != nil {
+			_ = m.mcpServer.Stop()
+		}
+	}()
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("wizard failed: %w", err)
@@ -103,14 +114,6 @@ func Run(cfg *config.Config) error {
 
 	if wizModel.cancelled {
 		return fmt.Errorf("wizard cancelled by user")
-	}
-
-	// Clean up agent resources
-	if wizModel.agentRunner != nil {
-		wizModel.agentRunner.Stop()
-	}
-	if wizModel.mcpServer != nil {
-		_ = wizModel.mcpServer.Stop()
 	}
 
 	return nil
