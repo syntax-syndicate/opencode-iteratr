@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/tui/testfixtures"
+	"github.com/stretchr/testify/require"
 )
 
 // TestTaskInputModal_InitialState tests the modal's initial state
@@ -1434,4 +1435,211 @@ func TestTaskInputModal_MultiLineGolden(t *testing.T) {
 			compareTaskInputGolden(t, goldenFile, rendered)
 		})
 	}
+}
+
+// TestTaskInputModal_VeryLongContent tests textarea with content exceeding CharLimit (>1000 chars)
+func TestTaskInputModal_VeryLongContent(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		contentLen     int    // Length of content to generate
+		contentPattern string // Pattern to repeat
+		description    string
+	}{
+		{
+			name:           "1000Chars_ASCII",
+			contentLen:     1000,
+			contentPattern: "This is a test task description. ",
+			description:    "1000 character ASCII content",
+		},
+		{
+			name:           "2000Chars_ASCII",
+			contentLen:     2000,
+			contentPattern: "Task details go here. ",
+			description:    "2000 character ASCII content",
+		},
+		{
+			name:           "5000Chars_ASCII",
+			contentLen:     5000,
+			contentPattern: "ABCDEFGHIJ",
+			description:    "5000 character ASCII content",
+		},
+		{
+			name:           "1000Chars_Unicode",
+			contentLen:     1000,
+			contentPattern: "修复错误添加功能测试验证 ", // Chinese characters
+			description:    "1000 character Unicode content",
+		},
+		{
+			name:           "2000Chars_Mixed",
+			contentLen:     2000,
+			contentPattern: "Task任务 Test测试 ", // Mixed ASCII and Unicode
+			description:    "2000 character mixed ASCII/Unicode content",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+
+			// Generate very long content by repeating pattern
+			var content string
+			for len([]rune(content)) < tc.contentLen {
+				content += tc.contentPattern
+			}
+			// Trim to exact length in runes
+			contentRunes := []rune(content)
+			if len(contentRunes) > tc.contentLen {
+				contentRunes = contentRunes[:tc.contentLen]
+			}
+			content = string(contentRunes)
+
+			// Set the very long content
+			modal.textarea.SetValue(content)
+
+			// Verify content is truncated at CharLimit (500)
+			storedContent := modal.textarea.Value()
+			storedRunes := []rune(storedContent)
+			if len(storedRunes) > 500 {
+				t.Errorf("Content exceeds CharLimit: got %d runes, want ≤500", len(storedRunes))
+			}
+
+			// Verify rendering doesn't panic or break
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			require.NotPanics(t, func() {
+				modal.Draw(scr, area)
+			}, "Drawing modal with very long content should not panic")
+
+			// Verify submit still works with truncated content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			require.NotNil(t, cmd, "Submit should return command even with long content")
+
+			result := cmd()
+			msg, ok := result.(CreateTaskMsg)
+			require.True(t, ok, "Expected CreateTaskMsg, got %T", result)
+
+			// Verify submitted content is at or near the truncated version
+			// (may be slightly shorter due to trimming)
+			submittedRunes := []rune(msg.Content)
+			require.LessOrEqual(t, len(submittedRunes), len(storedRunes),
+				"Submitted content should not exceed stored content length")
+			require.LessOrEqual(t, len(storedRunes)-len(submittedRunes), 5,
+				"Submitted content should be close to stored content (allowing for trimming)")
+		})
+	}
+}
+
+// TestTaskInputModal_VeryLongContentRendering tests visual rendering with very long content
+func TestTaskInputModal_VeryLongContentRendering(t *testing.T) {
+	t.Parallel()
+
+	// Generate 1000 character content
+	content := ""
+	for len([]rune(content)) < 1000 {
+		content += "This is a task description with some reasonable length to test rendering. "
+	}
+	contentRunes := []rune(content)[:1000]
+	content = string(contentRunes)
+
+	modal := NewTaskInputModal()
+	modal.Show()
+	modal.textarea.SetValue(content)
+	modal.focus = focusTextarea
+
+	// Render modal
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+	}
+	scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	modal.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file for visual regression
+	goldenFile := filepath.Join("testdata", "task_input_modal_very_long_content.golden")
+	compareTaskInputGolden(t, goldenFile, rendered)
+}
+
+// TestTaskInputModal_VeryLongContentScrolling tests scrolling behavior with very long content
+func TestTaskInputModal_VeryLongContentScrolling(t *testing.T) {
+	t.Parallel()
+
+	// Generate 2000 character content with newlines
+	lines := make([]string, 50)
+	for i := 0; i < 50; i++ {
+		lines[i] = "Task " + string(rune('A'+i%26)) + " with detailed description to test scrolling in textarea."
+	}
+	content := strings.Join(lines, "\n")
+
+	modal := NewTaskInputModal()
+	modal.Show()
+	modal.textarea.SetValue(content)
+
+	// Content should be truncated at CharLimit
+	storedContent := modal.textarea.Value()
+	storedRunes := []rune(storedContent)
+	require.LessOrEqual(t, len(storedRunes), 500, "Content should be truncated at CharLimit")
+
+	// Verify textarea can handle the content without errors
+	modal.focus = focusTextarea
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+	}
+	scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	require.NotPanics(t, func() {
+		modal.Draw(scr, area)
+	}, "Drawing modal with multi-line long content should not panic")
+
+	// Verify the modal is still functional (can navigate)
+	cmd := modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Nil(t, cmd, "Tab navigation should work with long content")
+	require.Equal(t, focusSubmitButton, modal.focus, "Focus should cycle to submit button")
+}
+
+// TestTaskInputModal_VeryLongContentPerformance tests that very long content doesn't cause performance issues
+func TestTaskInputModal_VeryLongContentPerformance(t *testing.T) {
+	t.Parallel()
+
+	// Generate 10000 character content to test extreme case
+	content := ""
+	for len([]rune(content)) < 10000 {
+		content += "Performance test task description. "
+	}
+	contentRunes := []rune(content)[:10000]
+	content = string(contentRunes)
+
+	modal := NewTaskInputModal()
+	modal.Show()
+
+	// Setting very long content should not hang
+	require.NotPanics(t, func() {
+		modal.textarea.SetValue(content)
+	}, "Setting 10000 character content should not panic")
+
+	// Verify content is properly truncated
+	storedContent := modal.textarea.Value()
+	storedRunes := []rune(storedContent)
+	require.LessOrEqual(t, len(storedRunes), 500, "Content should be truncated at CharLimit")
+
+	// Rendering should be fast (not benchmarked, but should not hang)
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+	}
+	scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+	require.NotPanics(t, func() {
+		modal.Draw(scr, area)
+	}, "Drawing modal with extremely long content should not panic")
 }
