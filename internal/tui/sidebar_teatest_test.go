@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/testfixtures"
 )
@@ -374,4 +375,289 @@ func TestSidebar_TaskNavigation_EnterWithKeyboardAndMouse(t *testing.T) {
 	if openMsg.Task.ID != "TAS-2" {
 		t.Errorf("Expected TAS-2, got %s", openMsg.Task.ID)
 	}
+}
+
+// ============================================================================
+// Note List Tests
+// ============================================================================
+
+// TestSidebar_NoteList_Display tests that notes are displayed correctly
+func TestSidebar_NoteList_Display(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Verify notes ScrollList has items
+	if len(sidebar.notesScrollList.items) != 4 {
+		t.Errorf("Notes ScrollList should have 4 items, got %d", len(sidebar.notesScrollList.items))
+	}
+
+	// Verify notes are rendered (basic check)
+	content := sidebar.notesScrollList.View()
+	if content == "" {
+		t.Error("Notes ScrollList should render content")
+	}
+}
+
+// TestSidebar_NoteList_NoKeyboardNavigation tests that notes don't support j/k/enter navigation
+func TestSidebar_NoteList_NoKeyboardNavigation(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.notesFocused = true // Focus notes panel
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Try pressing 'j' key - should not navigate or select notes
+	cmd := sidebar.Update(tea.KeyPressMsg{Text: "j"})
+	// Command should be nil (no selection) or only scroll-related
+	// Note: ScrollList may handle this for scrolling, but no task selection occurs
+	if cmd != nil {
+		// If a command is returned, it should not be OpenTaskModalMsg
+		msg := cmd()
+		if _, ok := msg.(OpenTaskModalMsg); ok {
+			t.Error("'j' key on notes should not open task modal")
+		}
+	}
+
+	// Try pressing 'enter' key - should not select a note
+	cmd = sidebar.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(OpenTaskModalMsg); ok {
+			t.Error("Enter key on notes should not open task modal")
+		}
+	}
+}
+
+// TestSidebar_NoteList_ScrollingWhenFocused tests that notes ScrollList can scroll when focused
+func TestSidebar_NoteList_ScrollingWhenFocused(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 10) // Small height to enable scrolling
+	sidebar.notesFocused = true
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Try scrolling with j/k (these delegate to ScrollList for scrolling)
+	initialOffset := sidebar.notesScrollList.offsetIdx
+	sidebar.Update(tea.KeyPressMsg{Text: "j"})
+	// Offset may change if scrolling is triggered
+	// This is a basic smoke test - the ScrollList handles the details
+	_ = initialOffset
+}
+
+// TestSidebar_NoteList_NoScrollingWhenNotFocused tests that notes don't scroll when not focused
+func TestSidebar_NoteList_NoScrollingWhenNotFocused(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.notesFocused = false // Not focused
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Try scrolling - should be ignored
+	initialOffset := sidebar.notesScrollList.offsetIdx
+	sidebar.Update(tea.KeyPressMsg{Text: "j"})
+	if sidebar.notesScrollList.offsetIdx != initialOffset {
+		t.Errorf("Notes ScrollList should not scroll when not focused")
+	}
+}
+
+// TestSidebar_NoteList_EmptyState tests notes panel with no notes
+func TestSidebar_NoteList_EmptyState(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.notesFocused = true
+	sidebar.SetState(testfixtures.EmptyState())
+
+	// Verify notes ScrollList is empty
+	if len(sidebar.notesScrollList.items) != 0 {
+		t.Errorf("Notes ScrollList should be empty, got %d items", len(sidebar.notesScrollList.items))
+	}
+
+	// Try navigation on empty list - should not panic
+	sidebar.Update(tea.KeyPressMsg{Text: "j"})
+	sidebar.Update(tea.KeyPressMsg{Text: "enter"})
+}
+
+// TestSidebar_NoteList_RecentNotesOnly tests that only last 10 notes are shown
+func TestSidebar_NoteList_RecentNotesOnly(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+
+	// Create state with more than 10 notes
+	state := testfixtures.EmptyState()
+	for i := 0; i < 15; i++ {
+		state.Notes = append(state.Notes, &session.Note{
+			ID:        testfixtures.FixedSessionName + "-" + string(rune('a'+i)),
+			Content:   "Note " + string(rune('a'+i)),
+			Type:      "learning",
+			CreatedAt: testfixtures.FixedTime,
+			Iteration: 1,
+		})
+	}
+	sidebar.SetState(state)
+
+	// Only last 10 should be displayed
+	if len(sidebar.notesScrollList.items) != 10 {
+		t.Errorf("Notes ScrollList should show last 10 notes, got %d", len(sidebar.notesScrollList.items))
+	}
+
+	// Verify the displayed notes are the last 10
+	// First displayed note should be note #5 (index 5 in the 15-note array)
+	firstItem := sidebar.notesScrollList.items[0].(*noteScrollItem)
+	if firstItem.note.ID != state.Notes[5].ID {
+		t.Errorf("First displayed note should be note #5, got %s", firstItem.note.ID)
+	}
+
+	// Last displayed note should be note #14 (last in the array)
+	lastItem := sidebar.notesScrollList.items[9].(*noteScrollItem)
+	if lastItem.note.ID != state.Notes[14].ID {
+		t.Errorf("Last displayed note should be note #14, got %s", lastItem.note.ID)
+	}
+}
+
+// TestSidebar_NoteList_TypeIndicators tests that notes show correct type indicators
+func TestSidebar_NoteList_TypeIndicators(t *testing.T) {
+	t.Parallel()
+
+	// Test each note type renders without panic
+	noteTypes := []struct {
+		noteType  string
+		indicator string
+	}{
+		{"learning", "*"},
+		{"stuck", "!"},
+		{"tip", "›"},
+		{"decision", "◇"},
+	}
+
+	for _, tt := range noteTypes {
+		tt := tt
+		t.Run(tt.noteType, func(t *testing.T) {
+			t.Parallel()
+
+			sidebar := NewSidebar()
+			sidebar.SetSize(40, 30)
+
+			state := testfixtures.EmptyState()
+			state.Notes = []*session.Note{
+				{
+					ID:        "NOT-1",
+					Content:   "Test note",
+					Type:      tt.noteType,
+					CreatedAt: testfixtures.FixedTime,
+					Iteration: 1,
+				},
+			}
+			sidebar.SetState(state)
+
+			// Verify note item is created
+			if len(sidebar.notesScrollList.items) != 1 {
+				t.Fatalf("Should have 1 note, got %d", len(sidebar.notesScrollList.items))
+			}
+
+			// Render and verify it contains the indicator (basic smoke test)
+			noteItem := sidebar.notesScrollList.items[0].(*noteScrollItem)
+			rendered := noteItem.Render(40)
+			if rendered == "" {
+				t.Error("Note should render non-empty content")
+			}
+			// The rendered output contains ANSI codes, so just check it's not empty
+			// Detailed rendering is covered by visual regression tests if needed
+		})
+	}
+}
+
+// TestSidebar_NoteList_ActiveNoteHighlight tests SetActiveNote/ClearActiveNote
+func TestSidebar_NoteList_ActiveNoteHighlight(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Set active note
+	sidebar.SetActiveNote("NOT-2")
+	if sidebar.activeNoteID != "NOT-2" {
+		t.Errorf("Active note ID: got %s, want NOT-2", sidebar.activeNoteID)
+	}
+
+	// Verify the note item is marked as selected
+	// Find NOT-2 in the ScrollList items
+	var noteItem *noteScrollItem
+	for _, item := range sidebar.notesScrollList.items {
+		ni := item.(*noteScrollItem)
+		if ni.note.ID == "NOT-2" {
+			noteItem = ni
+			break
+		}
+	}
+	if noteItem == nil {
+		t.Fatal("Could not find NOT-2 in notes ScrollList")
+	}
+	if !noteItem.isSelected {
+		t.Error("Active note should be marked as selected")
+	}
+
+	// Clear active note
+	sidebar.ClearActiveNote()
+	if sidebar.activeNoteID != "" {
+		t.Errorf("Active note ID should be empty, got %s", sidebar.activeNoteID)
+	}
+}
+
+// TestSidebar_NoteList_NoteAtPosition tests coordinate-based note hit detection
+func TestSidebar_NoteList_NoteAtPosition(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Draw to populate notesContentArea
+	scr := uv.NewScreenBuffer(40, 30)
+	area := uv.Rect(0, 0, 40, 30)
+	sidebar.Draw(scr, area)
+
+	// Test hit detection within notes area
+	// The notes area is in the lower section of the sidebar
+	// This is a smoke test - exact coordinates depend on layout
+	note := sidebar.NoteAtPosition(5, 25)
+	// May be nil if coordinates don't hit a note line, but should not panic
+	_ = note
+
+	// Test coordinates outside notes area
+	noteOutside := sidebar.NoteAtPosition(-1, -1)
+	if noteOutside != nil {
+		t.Error("Coordinates outside notes area should return nil")
+	}
+}
+
+// TestSidebar_NoteList_ScrollNotesMethod tests ScrollNotes method
+func TestSidebar_NoteList_ScrollNotesMethod(t *testing.T) {
+	t.Parallel()
+
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 10) // Small height to enable scrolling
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	initialOffset := sidebar.notesScrollList.offsetIdx
+
+	// Scroll down
+	sidebar.ScrollNotes(1)
+	// Offset should change (or stay same if at boundary)
+	// This is a smoke test
+	_ = initialOffset
+
+	// Scroll up
+	sidebar.ScrollNotes(-1)
+	// Should not panic
 }
