@@ -2,7 +2,6 @@ package tui
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -1000,10 +999,10 @@ func TestStatusBar_Render_PauseTransitionSequence(t *testing.T) {
 	sb.Draw(canvas1, area1)
 
 	render1 := canvas1.Render()
-	if !contains(render1, "● 1") {
+	if !testfixtures.Contains(render1, "● 1") {
 		t.Error("working state should show in_progress task indicator")
 	}
-	if contains(render1, "PAUSING") || contains(render1, "PAUSED") {
+	if testfixtures.Contains(render1, "PAUSING") || testfixtures.Contains(render1, "PAUSED") {
 		t.Error("working state should not show pause indicators")
 	}
 
@@ -1015,10 +1014,10 @@ func TestStatusBar_Render_PauseTransitionSequence(t *testing.T) {
 	sb.Draw(canvas2, area2)
 
 	render2 := canvas2.Render()
-	if !contains(render2, "PAUSING") {
+	if !testfixtures.Contains(render2, "PAUSING") {
 		t.Error("PAUSING state should show PAUSING indicator")
 	}
-	if contains(render2, "⏸ PAUSED") {
+	if testfixtures.Contains(render2, "⏸ PAUSED") {
 		t.Error("PAUSING state should not show static PAUSED icon")
 	}
 
@@ -1030,10 +1029,10 @@ func TestStatusBar_Render_PauseTransitionSequence(t *testing.T) {
 	sb.Draw(canvas3, area3)
 
 	render3 := canvas3.Render()
-	if !contains(render3, "⏸ PAUSED") {
+	if !testfixtures.Contains(render3, "⏸ PAUSED") {
 		t.Error("PAUSED state should show PAUSED icon")
 	}
-	if contains(render3, "PAUSING") {
+	if testfixtures.Contains(render3, "PAUSING") {
 		t.Error("PAUSED state should not show PAUSING indicator")
 	}
 
@@ -1045,17 +1044,12 @@ func TestStatusBar_Render_PauseTransitionSequence(t *testing.T) {
 	sb.Draw(canvas4, area4)
 
 	render4 := canvas4.Render()
-	if contains(render4, "PAUSING") || contains(render4, "PAUSED") {
+	if testfixtures.Contains(render4, "PAUSING") || testfixtures.Contains(render4, "PAUSED") {
 		t.Error("resumed state should not show pause indicators")
 	}
 }
 
 // contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
-}
-
-// compareStatusBarGolden compares rendered output against golden file
 func compareStatusBarGolden(t *testing.T, canvas uv.ScreenBuffer, name string) {
 	t.Helper()
 	goldenPath := filepath.Join("testdata", "status_"+name+".golden")

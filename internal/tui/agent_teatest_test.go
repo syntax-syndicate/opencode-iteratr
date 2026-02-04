@@ -982,7 +982,7 @@ func TestAgentOutput_Render_Empty(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_empty.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 func TestAgentOutput_Render_WithMessages(t *testing.T) {
@@ -1005,7 +1005,7 @@ func TestAgentOutput_Render_WithMessages(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_with_messages.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 func TestAgentOutput_Render_WithSubagent(t *testing.T) {
@@ -1040,7 +1040,7 @@ func TestAgentOutput_Render_WithSubagent(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_with_subagent.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 func TestAgentOutput_Render_WithFinishedThinking(t *testing.T) {
@@ -1073,7 +1073,7 @@ func TestAgentOutput_Render_WithFinishedThinking(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_finished_thinking.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 func TestAgentOutput_Render_WithError(t *testing.T) {
@@ -1098,7 +1098,7 @@ func TestAgentOutput_Render_WithError(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_with_error.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 func TestAgentOutput_Render_WithToolExpanded(t *testing.T) {
@@ -1136,7 +1136,7 @@ func TestAgentOutput_Render_WithToolExpanded(t *testing.T) {
 	rendered := ao.Render()
 
 	goldenFile := filepath.Join("testdata", "agent_output_tool_expanded.golden")
-	compareAgentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // --- Integration Tests ---
@@ -1198,9 +1198,3 @@ func TestAgentOutput_Integration_FullConversation(t *testing.T) {
 }
 
 // --- Helper Functions ---
-
-// compareAgentGolden compares actual output with golden file
-func compareAgentGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}

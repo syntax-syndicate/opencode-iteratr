@@ -1,14 +1,18 @@
 package testfixtures
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // Initialize test environment
@@ -86,4 +90,41 @@ func RetryTest(t *testing.T, maxAttempts int, fn func() error) {
 	}
 	// All attempts failed
 	t.Fatalf("Test failed after %d attempts: %v", maxAttempts, lastErr)
+}
+
+// GoldenPath builds a path to a golden file in the testdata directory.
+// Example: GoldenPath("status_idle.golden") -> "testdata/status_idle.golden"
+func GoldenPath(filename string) string {
+	return filepath.Join("testdata", filename)
+}
+
+// Contains checks if a string contains a substring.
+// This is a simple helper to make test assertions more readable.
+func Contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
+// ErrSessionNotFound creates a "session not found" error with the given session ID.
+// Useful for testing error handling in components that load sessions.
+func ErrSessionNotFound(sessionID string) error {
+	return fmt.Errorf("session not found: %s", sessionID)
+}
+
+// ErrStreamError creates a stream error.
+// Useful for testing error handling in components that consume event streams.
+func ErrStreamError() error {
+	return errors.New("stream error: EOF")
+}
+
+// CompareRendered creates a screen buffer, renders content, and compares with golden file.
+// This consolidates the common pattern of:
+//
+//	canvas := uv.NewScreenBuffer(TestTermWidth, TestTermHeight)
+//	content.Render(canvas)
+//	testfixtures.CompareGolden(t, goldenPath, canvas.Render())
+func CompareRendered(t *testing.T, goldenPath string, renderFn func(canvas uv.ScreenBuffer)) {
+	t.Helper()
+	canvas := uv.NewScreenBuffer(TestTermWidth, TestTermHeight)
+	renderFn(canvas)
+	CompareGolden(t, goldenPath, canvas.Render())
 }

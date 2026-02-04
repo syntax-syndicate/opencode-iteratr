@@ -574,7 +574,7 @@ func TestTaskInputModal_RenderFocusStates(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", tc.golden)
-			compareTaskInputGolden(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -619,7 +619,7 @@ func TestTaskInputModal_RenderAllPriorities(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", "task_input_modal_priority_"+tc.label+".golden")
-			compareTaskInputGolden(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -649,7 +649,7 @@ func TestTaskInputModal_RenderEmptyContent(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "task_input_modal_empty_content.golden")
-	compareTaskInputGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestTaskInputModal_InvisibleDoesNotRender tests that invisible modal doesn't render
@@ -661,12 +661,6 @@ func TestTaskInputModal_InvisibleDoesNotRender(t *testing.T) {
 	if view != "" {
 		t.Error("Invisible modal should render empty string")
 	}
-}
-
-// compareTaskInputGolden compares rendered output with golden file
-func compareTaskInputGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
 }
 
 // TestTaskInputModal_UnicodeText tests textarea with various unicode characters
@@ -1066,7 +1060,7 @@ func TestTaskInputModal_UnicodeGoldens(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", tc.golden)
-			compareTaskInputGolden(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -1432,7 +1426,7 @@ func TestTaskInputModal_MultiLineGolden(t *testing.T) {
 
 			// Verify golden file
 			goldenFile := filepath.Join("testdata", "task_input_modal_multiline_"+tc.name+".golden")
-			compareTaskInputGolden(t, goldenFile, rendered)
+			testfixtures.CompareGolden(t, goldenFile, rendered)
 		})
 	}
 }
@@ -1568,7 +1562,7 @@ func TestTaskInputModal_VeryLongContentRendering(t *testing.T) {
 
 	// Verify golden file for visual regression
 	goldenFile := filepath.Join("testdata", "task_input_modal_very_long_content.golden")
-	compareTaskInputGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 }
 
 // TestTaskInputModal_VeryLongContentScrolling tests scrolling behavior with very long content

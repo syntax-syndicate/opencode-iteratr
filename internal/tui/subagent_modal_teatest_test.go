@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -34,7 +33,7 @@ func TestSubagentModal_LoadingState(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_loading.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -46,7 +45,7 @@ func TestSubagentModal_ErrorState(t *testing.T) {
 
 	// Set error state
 	modal.loading = false
-	modal.err = errSessionNotFound("session-999")
+	modal.err = testfixtures.ErrSessionNotFound("session-999")
 
 	// Render error state
 	area := uv.Rectangle{
@@ -61,7 +60,7 @@ func TestSubagentModal_ErrorState(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_error.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -73,7 +72,7 @@ func TestSubagentModal_ErrorStateStreamError(t *testing.T) {
 
 	// Set stream error
 	modal.loading = false
-	modal.err = errStreamError()
+	modal.err = testfixtures.ErrStreamError()
 
 	// Render error state
 	area := uv.Rectangle{
@@ -88,7 +87,7 @@ func TestSubagentModal_ErrorStateStreamError(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_error_stream.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -115,7 +114,7 @@ func TestSubagentModal_ContentStateEmpty(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_content_empty.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -158,7 +157,7 @@ func TestSubagentModal_ContentStateWithMessages(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_content_messages.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -205,7 +204,7 @@ func TestSubagentModal_ContentStateWithToolUpdate(t *testing.T) {
 
 	// Verify golden file
 	goldenFile := filepath.Join("testdata", "subagent_modal_content_tool_update.golden")
-	compareSubagentGolden(t, goldenFile, rendered)
+	testfixtures.CompareGolden(t, goldenFile, rendered)
 
 	// Cleanup
 	modal.Close()
@@ -468,21 +467,6 @@ func TestSubagentModal_ScrollViewport(t *testing.T) {
 }
 
 // Helper function for creating session not found error
-func errSessionNotFound(sessionID string) error {
-	return fmt.Errorf("session not found: %s", sessionID)
-}
-
-// Helper function for creating stream error
-func errStreamError() error {
-	return errors.New("stream error: EOF")
-}
-
-// compareSubagentGolden compares rendered output with golden file
-func compareSubagentGolden(t *testing.T, goldenPath, actual string) {
-	t.Helper()
-	testfixtures.CompareGolden(t, goldenPath, actual)
-}
-
 // --- SubagentModal Command Execution Tests ---
 
 func TestSubagentModal_Update_ForwardsToScrollList(t *testing.T) {
