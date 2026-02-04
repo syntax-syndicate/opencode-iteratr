@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -665,4 +666,485 @@ func TestTaskInputModal_InvisibleDoesNotRender(t *testing.T) {
 func compareTaskInputGolden(t *testing.T, goldenPath, actual string) {
 	t.Helper()
 	testfixtures.CompareGolden(t, goldenPath, actual)
+}
+
+// TestTaskInputModal_UnicodeText tests textarea with various unicode characters
+func TestTaskInputModal_UnicodeText(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "BasicUnicode",
+			content: "Café résumé naïve",
+		},
+		{
+			name:    "ChineseCharacters",
+			content: "修复错误 添加功能",
+		},
+		{
+			name:    "JapaneseCharacters",
+			content: "バグを修正 機能を追加",
+		},
+		{
+			name:    "KoreanCharacters",
+			content: "버그 수정 기능 추가",
+		},
+		{
+			name:    "CyrillicCharacters",
+			content: "Исправить ошибку добавить функцию",
+		},
+		{
+			name:    "MixedUnicode",
+			content: "Fix bug 修复 バグ исправить",
+		},
+		{
+			name:    "GreekCharacters",
+			content: "Διόρθωση σφάλματος προσθήκη λειτουργίας",
+		},
+		{
+			name:    "ThaiCharacters",
+			content: "แก้ไขข้อบกพร่อง เพิ่มฟีเจอร์",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with unicode content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateTaskMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_EmojiText tests textarea with emoji characters
+func TestTaskInputModal_EmojiText(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "SingleEmoji",
+			content: "Fix bug 🐛",
+		},
+		{
+			name:    "MultipleEmojis",
+			content: "Add feature ✨ fix bug 🐛 improve performance 🚀",
+		},
+		{
+			name:    "EmojiOnly",
+			content: "🎉 🎊 🎈 🎁",
+		},
+		{
+			name:    "ComplexEmojis",
+			content: "Team meeting 👨‍👩‍👧‍👦 discuss ideas 💡",
+		},
+		{
+			name:    "FlagEmojis",
+			content: "International support 🇺🇸 🇬🇧 🇫🇷 🇩🇪 🇯🇵",
+		},
+		{
+			name:    "SkinToneEmojis",
+			content: "User profile 👍🏻 👍🏼 👍🏽 👍🏾 👍🏿",
+		},
+		{
+			name:    "ZeroWidthJoiner",
+			content: "Fix 👨‍💻 code 👩‍💻 review",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Test length limit with emojis (CharLimit=500)
+			// Each emoji may count differently depending on implementation
+			if len([]rune(modal.textarea.Value())) > 500 {
+				t.Errorf("Content exceeds character limit: got %d runes", len([]rune(modal.textarea.Value())))
+			}
+
+			// Verify submit works with emoji content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateTaskMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_RTLText tests textarea with right-to-left text
+func TestTaskInputModal_RTLText(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "ArabicText",
+			content: "إصلاح الخطأ إضافة ميزة",
+		},
+		{
+			name:    "HebrewText",
+			content: "תיקון באג הוספת תכונה",
+		},
+		{
+			name:    "MixedLTRRTL",
+			content: "Fix bug إصلاح الخطأ add feature",
+		},
+		{
+			name:    "ArabicNumbers",
+			content: "المهمة رقم ١٢٣٤٥",
+		},
+		{
+			name:    "HebrewWithPunctuation",
+			content: "תיקון באג, הוספת תכונה!",
+		},
+		{
+			name:    "PersianText",
+			content: "رفع اشکال افزودن ویژگی",
+		},
+		{
+			name:    "UrduText",
+			content: "خرابی کو ٹھیک کریں فیچر شامل کریں",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with RTL content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateTaskMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_CombiningCharacters tests textarea with unicode combining characters
+func TestTaskInputModal_CombiningCharacters(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "AccentMarks",
+			content: "e\u0301" + "a\u0300" + "o\u0302", // é à ô using combining characters
+		},
+		{
+			name:    "Diacritics",
+			content: "n\u0303" + "c\u0327", // ñ ç using combining characters
+		},
+		{
+			name:    "ZalgoText",
+			content: "T̶e̴s̷t̸ ̶t̴a̷s̸k̶",
+		},
+		{
+			name:    "VietnameseAccents",
+			content: "Thêm tính năng sửa lỗi",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify rendering doesn't panic with combining characters
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+			rendered := scr.Render()
+
+			// Should not panic and should produce some output
+			if len(rendered) == 0 {
+				t.Error("Rendered output should not be empty")
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_SpecialWhitespace tests textarea with various whitespace characters
+func TestTaskInputModal_SpecialWhitespace(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "NoBreakSpace",
+			content: "Test\u00A0task\u00A0content",
+		},
+		{
+			name:    "ThinSpace",
+			content: "Test\u2009task\u2009content",
+		},
+		{
+			name:    "ZeroWidthSpace",
+			content: "Test\u200Btask\u200Bcontent",
+		},
+		{
+			name:    "HairSpace",
+			content: "Test\u200Atask\u200Acontent",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with special whitespace
+			// Note: TrimSpace might handle some of these differently
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateTaskMsg)
+			if !ok {
+				t.Fatalf("Expected CreateTaskMsg, got %T", result)
+			}
+
+			// Content should be trimmed but preserved internally
+			if len(createMsg.Content) == 0 {
+				t.Error("Content should not be empty after submit")
+			}
+		})
+	}
+}
+
+// TestTaskInputModal_UnicodeGoldens tests visual rendering of unicode/emoji/RTL text
+func TestTaskInputModal_UnicodeGoldens(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+		golden  string
+	}{
+		{
+			name:    "UnicodeContent",
+			content: "修复错误 Café résumé",
+			golden:  "task_input_modal_unicode.golden",
+		},
+		{
+			name:    "EmojiContent",
+			content: "Add feature ✨ fix bug 🐛",
+			golden:  "task_input_modal_emoji.golden",
+		},
+		{
+			name:    "RTLContent",
+			content: "إصلاح الخطأ add feature",
+			golden:  "task_input_modal_rtl.golden",
+		},
+		{
+			name:    "MixedContent",
+			content: "Fix 🐛 修复 إصلاح bug",
+			golden:  "task_input_modal_mixed_unicode.golden",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+			modal.focus = focusTextarea
+
+			// Render
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+
+			// Capture rendered output
+			rendered := scr.Render()
+
+			// Verify golden file
+			goldenFile := filepath.Join("testdata", tc.golden)
+			compareTaskInputGolden(t, goldenFile, rendered)
+		})
+	}
+}
+
+// TestTaskInputModal_LongUnicodeContent tests textarea with long unicode content near char limit
+func TestTaskInputModal_LongUnicodeContent(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskInputModal()
+	modal.Show()
+
+	// Create content near the 500 character limit with unicode
+	// Use a mix of single-byte and multi-byte unicode characters
+	unicodeText := "修复错误添加功能 " // Chinese text (~8 runes, ~24 bytes)
+	var longContent string
+	for len([]rune(longContent)) < 480 {
+		longContent += unicodeText
+	}
+
+	modal.textarea.SetValue(longContent)
+
+	// Verify content is stored (may be truncated by CharLimit)
+	storedContent := modal.textarea.Value()
+	if len([]rune(storedContent)) > 500 {
+		t.Errorf("Content exceeds character limit: got %d runes, want ≤500", len([]rune(storedContent)))
+	}
+
+	// Verify submit still works
+	modal.focus = focusSubmitButton
+	msg := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	if msg == nil {
+		t.Error("Expected command from submit")
+	}
+}
+
+// TestTaskInputModal_EmptyUnicodeContent tests textarea with whitespace-only unicode content
+func TestTaskInputModal_EmptyUnicodeContent(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "UnicodeSpaces",
+			content: "\u00A0\u00A0\u00A0", // Non-breaking spaces
+		},
+		{
+			name:    "ZeroWidthSpaces",
+			content: "\u200B\u200B\u200B", // Zero-width spaces
+		},
+		{
+			name:    "MixedUnicodeWhitespace",
+			content: "\u00A0\u2009\u200B\u200A", // Mixed unicode whitespace
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewTaskInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Try to submit
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+
+			// Should not submit if TrimSpace removes all content
+			trimmed := strings.TrimSpace(tc.content)
+			if trimmed == "" && cmd != nil {
+				// If cmd is not nil, it might return CreateTaskMsg
+				// Let's execute it and check
+				result := cmd()
+				if _, ok := result.(CreateTaskMsg); ok {
+					t.Error("Should not submit empty content after trimming unicode whitespace")
+				}
+			}
+		})
+	}
 }

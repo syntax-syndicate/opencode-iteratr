@@ -673,3 +673,201 @@ func compareGoldenTeatest(t *testing.T, goldenPath, actual string) {
 	t.Helper()
 	testfixtures.CompareGolden(t, goldenPath, actual)
 }
+
+// TestNoteInputModal_UnicodeText_Teatest tests textarea with various unicode characters
+func TestNoteInputModal_UnicodeText_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{"BasicUnicode", "Café résumé naïve"},
+		{"ChineseCharacters", "记录错误 添加笔记"},
+		{"JapaneseCharacters", "ノートを追加 バグを記録"},
+		{"KoreanCharacters", "메모 추가 버그 기록"},
+		{"MixedUnicode", "Note 笔记 ノート заметка"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with unicode content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateNoteMsg)
+			if !ok {
+				t.Fatalf("Expected CreateNoteMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateNoteMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_EmojiText_Teatest tests textarea with emoji characters
+func TestNoteInputModal_EmojiText_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{"SingleEmoji", "Note about bug 🐛"},
+		{"MultipleEmojis", "Learning ✨ decision 💡 stuck 🚧"},
+		{"EmojiOnly", "💭 📝 ✅ ❌"},
+		{"ComplexEmojis", "Team discussion 👨‍👩‍👧‍👦 ideas 💡"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with emoji content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateNoteMsg)
+			if !ok {
+				t.Fatalf("Expected CreateNoteMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateNoteMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_RTLText_Teatest tests textarea with right-to-left text
+func TestNoteInputModal_RTLText_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+	}{
+		{"ArabicText", "ملاحظة حول الخطأ"},
+		{"HebrewText", "הערה על הבאג"},
+		{"MixedLTRRTL", "Note ملاحظة הערה about bug"},
+		{"PersianText", "یادداشت درباره خطا"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+
+			// Verify content is stored correctly
+			if modal.textarea.Value() != tc.content {
+				t.Errorf("Content mismatch: got %q, want %q", modal.textarea.Value(), tc.content)
+			}
+
+			// Verify submit works with RTL content
+			modal.focus = focusSubmitButton
+			cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+			if cmd == nil {
+				t.Fatal("Expected command from submit")
+			}
+
+			// Execute command and verify message
+			result := cmd()
+			createMsg, ok := result.(CreateNoteMsg)
+			if !ok {
+				t.Fatalf("Expected CreateNoteMsg, got %T", result)
+			}
+
+			if createMsg.Content != tc.content {
+				t.Errorf("CreateNoteMsg content: got %q, want %q", createMsg.Content, tc.content)
+			}
+		})
+	}
+}
+
+// TestNoteInputModal_UnicodeGoldens_Teatest tests visual rendering of unicode/emoji/RTL text
+func TestNoteInputModal_UnicodeGoldens_Teatest(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		content string
+		golden  string
+	}{
+		{
+			name:    "UnicodeContent",
+			content: "记录错误 Café résumé",
+			golden:  "note_input_modal_unicode_teatest.golden",
+		},
+		{
+			name:    "EmojiContent",
+			content: "Learning ✨ stuck 🚧",
+			golden:  "note_input_modal_emoji_teatest.golden",
+		},
+		{
+			name:    "RTLContent",
+			content: "ملاحظة note הערה",
+			golden:  "note_input_modal_rtl_teatest.golden",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			modal := NewNoteInputModal()
+			modal.Show()
+			modal.textarea.SetValue(tc.content)
+			modal.focus = focusTextarea
+
+			// Render
+			area := uv.Rectangle{
+				Min: uv.Position{X: 0, Y: 0},
+				Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
+			}
+			scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
+			modal.Draw(scr, area)
+
+			// Capture rendered output
+			rendered := scr.Render()
+
+			// Verify golden file
+			goldenFile := filepath.Join("testdata", tc.golden)
+			compareGoldenTeatest(t, goldenFile, rendered)
+		})
+	}
+}
