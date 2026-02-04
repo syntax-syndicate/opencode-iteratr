@@ -110,6 +110,21 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 		// Received questions from agent via MCP
 		logger.Debug("Agent phase: received %d questions", len(msg.Request.Questions))
 
+		if len(msg.Request.Questions) == 0 {
+			logger.Warn("Agent phase: received empty question set")
+			if msg.Request.ResultCh != nil {
+				resultCh := msg.Request.ResultCh
+				go func() {
+					select {
+					case resultCh <- []interface{}{}:
+					case <-time.After(5 * time.Second):
+						logger.Warn("Timeout sending empty answers to MCP handler")
+					}
+				}()
+			}
+			return a, nil
+		}
+
 		// Convert from specmcp.Question to Question
 		a.questions = make([]Question, len(msg.Request.Questions))
 		for i, q := range msg.Request.Questions {
@@ -145,7 +160,6 @@ func (a *AgentPhase) Update(msg tea.Msg) (*AgentPhase, tea.Cmd) {
 		a.currentIndex = 0
 		a.waitingForAgent = false
 		a.questionView = NewQuestionView(a.questions, a.answers, a.currentIndex)
-
 		return a, nil
 
 	case NextQuestionMsg:
