@@ -10,7 +10,7 @@
 ✅ **Build verification**: Binary compiles without warnings or errors  
 ✅ **Command integration**: `iteratr spec` command properly registered and accessible  
 ✅ **Configuration**: Config system working, model configured  
-✅ **Prerequisites**: opencode installed at `/home/space_cowboy/.npm-packages/bin/opencode`
+✅ **Prerequisites**: opencode installed and available in PATH
 
 ## Automated Test Coverage
 
