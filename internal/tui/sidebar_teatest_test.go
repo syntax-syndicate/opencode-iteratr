@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -660,4 +662,309 @@ func TestSidebar_NoteList_ScrollNotesMethod(t *testing.T) {
 	// Scroll up
 	sidebar.ScrollNotes(-1)
 	// Should not panic
+}
+
+// ============================================================================
+// Visual Regression Tests (Golden Files)
+// ============================================================================
+
+// compareSidebarGolden compares rendered output with golden file
+func compareSidebarGolden(t *testing.T, goldenPath, actual string) {
+	t.Helper()
+
+	// Update golden file if -update flag is set
+	if *update {
+		// Ensure testdata directory exists
+		dir := filepath.Dir(goldenPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("failed to create testdata directory: %v", err)
+		}
+
+		if err := os.WriteFile(goldenPath, []byte(actual), 0644); err != nil {
+			t.Fatalf("failed to update golden file %s: %v", goldenPath, err)
+		}
+		t.Logf("Updated golden file: %s", goldenPath)
+		return
+	}
+
+	// Read golden file
+	expected, err := os.ReadFile(goldenPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			t.Fatalf("golden file %s does not exist. Run with -update to create it.", goldenPath)
+		}
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+
+	// Compare
+	if string(expected) != actual {
+		t.Errorf("output does not match golden file %s\n\nExpected:\n%s\n\nActual:\n%s", goldenPath, string(expected), actual)
+	}
+}
+
+// TestSidebar_Render_WithTasks tests rendering sidebar with tasks
+func TestSidebar_Render_WithTasks(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithTasks())
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_with_tasks.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_WithNotes tests rendering sidebar with notes
+func TestSidebar_Render_WithNotes(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithNotes())
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_with_notes.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_FullState tests rendering sidebar with both tasks and notes
+func TestSidebar_Render_FullState(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.FullState())
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_full_state.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_EmptyState tests rendering sidebar with no tasks or notes
+func TestSidebar_Render_EmptyState(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.EmptyState())
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_empty_state.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_TasksFocused tests rendering sidebar with tasks panel focused
+func TestSidebar_Render_TasksFocused(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.FullState())
+	sidebar.SetTasksScrollFocused(true)
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_tasks_focused.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_NotesFocused tests rendering sidebar with notes panel focused
+func TestSidebar_Render_NotesFocused(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.FullState())
+	sidebar.SetNotesScrollFocused(true)
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_notes_focused.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_TaskStatuses tests rendering sidebar with various task statuses
+func TestSidebar_Render_TaskStatuses(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+
+	// Create state with tasks in different statuses
+	state := &session.State{
+		Tasks: map[string]*session.Task{
+			"TAS-1": {ID: "TAS-1", Content: "Remaining task", Status: "remaining", Priority: 1},
+			"TAS-2": {ID: "TAS-2", Content: "In progress task", Status: "in_progress", Priority: 1},
+			"TAS-3": {ID: "TAS-3", Content: "Completed task", Status: "completed", Priority: 1},
+			"TAS-4": {ID: "TAS-4", Content: "Blocked task", Status: "blocked", Priority: 1},
+			"TAS-5": {ID: "TAS-5", Content: "Cancelled task", Status: "cancelled", Priority: 1},
+		},
+	}
+	sidebar.SetState(state)
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_task_statuses.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_NoteTypes tests rendering sidebar with all note types
+func TestSidebar_Render_NoteTypes(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+
+	// Create state with notes of all types
+	state := &session.State{
+		Notes: []*session.Note{
+			{ID: "NOT-1", Content: "Learning note", Type: "learning", CreatedAt: testfixtures.FixedTime, Iteration: 1},
+			{ID: "NOT-2", Content: "Stuck note", Type: "stuck", CreatedAt: testfixtures.FixedTime, Iteration: 1},
+			{ID: "NOT-3", Content: "Tip note", Type: "tip", CreatedAt: testfixtures.FixedTime, Iteration: 1},
+			{ID: "NOT-4", Content: "Decision note", Type: "decision", CreatedAt: testfixtures.FixedTime, Iteration: 1},
+		},
+	}
+	sidebar.SetState(state)
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_note_types.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_ActiveTask tests rendering sidebar with active task highlighted
+func TestSidebar_Render_ActiveTask(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithTasks())
+	sidebar.SetActiveTask("TAS-2")
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_active_task.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_ActiveNote tests rendering sidebar with active note highlighted
+func TestSidebar_Render_ActiveNote(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(40, 30)
+	sidebar.SetState(testfixtures.StateWithNotes())
+	sidebar.SetActiveNote("NOT-2")
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 40, Y: 30},
+	}
+	scr := uv.NewScreenBuffer(40, 30)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_active_note.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
+}
+
+// TestSidebar_Render_SmallScreen tests rendering sidebar on small screen
+func TestSidebar_Render_SmallScreen(t *testing.T) {
+	sidebar := NewSidebar()
+	sidebar.SetSize(30, 20)
+	sidebar.SetState(testfixtures.FullState())
+
+	// Render
+	area := uv.Rectangle{
+		Min: uv.Position{X: 0, Y: 0},
+		Max: uv.Position{X: 30, Y: 20},
+	}
+	scr := uv.NewScreenBuffer(30, 20)
+	sidebar.Draw(scr, area)
+
+	// Capture rendered output
+	rendered := scr.Render()
+
+	// Verify golden file
+	goldenFile := filepath.Join("testdata", "sidebar_small_screen.golden")
+	compareSidebarGolden(t, goldenFile, rendered)
 }
