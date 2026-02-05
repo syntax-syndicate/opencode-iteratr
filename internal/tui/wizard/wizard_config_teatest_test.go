@@ -385,7 +385,7 @@ func TestModelSelector_MultipleUpdates(t *testing.T) {
 	require.Equal(t, models1[1].id, selector.SelectedModel(), "Expected second model after navigation")
 
 	// Second models load (simulating refresh)
-	// When models reload, selectedIdx is preserved if still valid
+	// When models reload, selectedIdx resets to 0 (no config model set)
 	models2 := []*ModelInfo{
 		{id: "anthropic/claude-opus-4", name: "anthropic/claude-opus-4"},
 		{id: "openai/gpt-4-turbo", name: "openai/gpt-4-turbo"},
@@ -393,10 +393,9 @@ func TestModelSelector_MultipleUpdates(t *testing.T) {
 	}
 	_ = selector.Update(ModelsLoadedMsg{models: models2})
 
-	// Without config, selectedIdx is preserved (was at index 1, still valid in new 3-item list)
-	// This is reasonable behavior - user's navigation position is maintained across refreshes
-	require.Equal(t, models2[1].id, selector.SelectedModel(), "Expected selectedIdx preserved after reload")
-	require.Equal(t, 1, selector.selectedIdx, "Expected selectedIdx to remain at 1")
+	// Without config, selectedIdx resets to 0 after refresh
+	require.Equal(t, models2[0].id, selector.SelectedModel(), "Expected first model after reload")
+	require.Equal(t, 0, selector.selectedIdx, "Expected selectedIdx to reset to 0")
 }
 
 // TestModelSelector_NavigationBounds verifies that navigation stays within bounds.
