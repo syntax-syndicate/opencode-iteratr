@@ -1031,18 +1031,21 @@ What's not included in v1`
 Feature: %s
 Description: %s
 
-Interview me using the ask-questions tool to gather requirements. Ask about:
-- Technical implementation details
-- UI/UX preferences  
-- Edge cases and error handling
-- Dependencies and constraints
-- Testing requirements
+Interview me using the ask-questions tool to gather requirements.
 
-IMPORTANT:
-- Batch 3-5 related questions per call (don't ask one at a time)
-- Never repeat questions you've already asked
-- After 2-3 rounds of questions, you should have enough information
-- When done interviewing, use the finish-spec tool
+CRITICAL RULES FOR ask-questions TOOL:
+1. Each question in the batch MUST be unique - no duplicate questions within a batch
+2. NEVER ask a question you have already asked in a previous batch
+3. Before calling ask-questions, review your conversation history to ensure no repeats
+4. Batch 3-5 related questions per call (not one at a time)
+5. After 2-3 rounds of questions, call finish-spec - do not keep asking
+
+Topics to cover (one round each, then move on):
+- Round 1: Core functionality and user workflows
+- Round 2: Edge cases, error handling, constraints
+- Round 3: Technical details only if unclear from previous answers
+
+When you have enough information, immediately use the finish-spec tool. Do not ask more questions.
 
 The spec MUST follow this format:
 

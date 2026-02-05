@@ -72,6 +72,23 @@ func (s *Server) registerTools() error {
 // handleAskQuestions handles the ask-questions tool call from the agent.
 // This handler parses questions, sends them to the UI via channel, and blocks until answers are received.
 func (s *Server) handleAskQuestions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Check if a question request is already pending
+	// This prevents duplicate questions from appearing when the agent calls ask-questions multiple times
+	s.mu.Lock()
+	if s.questionPending {
+		s.mu.Unlock()
+		return mcp.NewToolResultError("a question request is already pending - please wait for the user to answer the current questions before asking more"), nil
+	}
+	s.questionPending = true
+	s.mu.Unlock()
+
+	// Ensure we clear the pending flag when done (success or failure)
+	defer func() {
+		s.mu.Lock()
+		s.questionPending = false
+		s.mu.Unlock()
+	}()
+
 	// Extract arguments
 	args := request.GetArguments()
 	if args == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -645,5 +646,106 @@ func TestAskQuestionsHandlerMultipleQuestions(t *testing.T) {
 	text := extractText(result)
 	if text != `["A","B"]` {
 		t.Errorf("Expected '[\"A\",\"B\"]', got '%s'", text)
+	}
+}
+
+// TestAskQuestionsHandlerRejectsDuplicateRequests tests that concurrent ask-questions calls are rejected.
+// This prevents duplicate questions from appearing in the UI when the agent calls ask-questions multiple times.
+func TestAskQuestionsHandlerRejectsDuplicateRequests(t *testing.T) {
+	server := New("Test Spec", "./specs")
+
+	// Create request
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "ask-questions",
+			Arguments: map[string]any{
+				"questions": []any{
+					map[string]any{
+						"question": "Test question?",
+						"header":   "Test",
+						"options": []any{
+							map[string]any{
+								"label":       "Option",
+								"description": "Test option",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+
+	type handlerResult struct {
+		result *mcp.CallToolResult
+		err    error
+	}
+	firstResultCh := make(chan handlerResult, 1)
+	secondResultCh := make(chan handlerResult, 1)
+
+	// First request - will block on channel send (unbuffered channel, no receiver yet)
+	go func() {
+		result, err := server.handleAskQuestions(ctx, req)
+		firstResultCh <- handlerResult{result, err}
+	}()
+
+	// Wait for first handler to set questionPending flag
+	// It will block on the unbuffered channel send, keeping pending=true
+	time.Sleep(50 * time.Millisecond)
+
+	// Second request - should be rejected immediately because first is pending
+	go func() {
+		result, err := server.handleAskQuestions(ctx, req)
+		secondResultCh <- handlerResult{result, err}
+	}()
+
+	// Wait for second request to complete (should be fast since it's rejected)
+	var secondResult handlerResult
+	select {
+	case secondResult = <-secondResultCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for second handler to be rejected")
+	}
+
+	// Verify second request was rejected
+	if secondResult.err != nil {
+		t.Fatalf("Second handler returned unexpected error: %v", secondResult.err)
+	}
+	if secondResult.result == nil {
+		t.Fatal("Second handler returned nil result")
+	}
+	if !secondResult.result.IsError {
+		t.Fatal("Expected second request to be rejected with error")
+	}
+	text := extractText(secondResult.result)
+	expectedErr := "a question request is already pending - please wait for the user to answer the current questions before asking more"
+	if text != expectedErr {
+		t.Errorf("Unexpected error message: got %q, want %q", text, expectedErr)
+	}
+
+	// Now simulate answering the first request
+	go func() {
+		questionReq := <-server.QuestionChan()
+		questionReq.ResultCh <- []interface{}{"Option"}
+	}()
+
+	// Wait for first request to complete
+	var firstResult handlerResult
+	select {
+	case firstResult = <-firstResultCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for first handler")
+	}
+
+	// Verify first request succeeded
+	if firstResult.err != nil {
+		t.Fatalf("First handler returned unexpected error: %v", firstResult.err)
+	}
+	if firstResult.result == nil {
+		t.Fatal("First handler returned nil result")
+	}
+	if firstResult.result.IsError {
+		t.Fatalf("Expected first request to succeed, got error: %s", extractText(firstResult.result))
 	}
 }

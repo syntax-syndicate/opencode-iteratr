@@ -26,6 +26,10 @@ type Server struct {
 	// Channels for UI communication (per-request response channel pattern)
 	questionCh    chan QuestionRequest
 	specContentCh chan SpecContentRequest
+
+	// Pending request guard - prevents multiple concurrent question requests
+	// which can cause duplicate questions to appear in the UI
+	questionPending bool
 }
 
 // QuestionRequest represents a batch of questions from the agent.
@@ -62,7 +66,7 @@ func New(specTitle, specDir string) *Server {
 	return &Server{
 		specTitle:     specTitle,
 		specDir:       specDir,
-		questionCh:    make(chan QuestionRequest, 1),
+		questionCh:    make(chan QuestionRequest), // unbuffered - ensures one request at a time
 		specContentCh: make(chan SpecContentRequest, 1),
 	}
 }
