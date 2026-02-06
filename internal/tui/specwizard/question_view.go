@@ -487,13 +487,7 @@ func (q *QuestionView) Update(msg tea.Msg) tea.Cmd {
 
 		case "tab":
 			q.focusIndex++
-			// Skip custom input slot if custom is not visible
-			// Custom input is only at index 1 when showCustom is true
-			// When showCustom is false, index 1 goes directly to buttons
-			if q.focusIndex == 1 && !q.showCustom {
-				// Don't skip - index 1 is a valid button position when custom is hidden
-				// The skip was incorrectly assuming index 1 is always reserved for custom
-			}
+			// When showCustom is false, index 1 is a valid button position (not reserved for custom input).
 			// Skip back button position if on first question (no back button exists)
 			// Back button is at backButtonFocusIndex() only when currentIndex > 0
 			if q.focusIndex == q.backButtonFocusIndex() && q.currentIndex == 0 && q.showCustom {
