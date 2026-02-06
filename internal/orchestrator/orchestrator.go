@@ -369,7 +369,11 @@ func (o *Orchestrator) Run() error {
 	}
 	logger.Debug("ACP session started successfully")
 	// Ensure runner is stopped on exit
-	defer o.runner.Stop()
+	defer func() {
+		if o.runner != nil {
+			o.runner.Stop()
+		}
+	}()
 
 	// Subscribe to task completion events for on_task_complete hooks
 	var taskCompleteSub *natsgo.Subscription
