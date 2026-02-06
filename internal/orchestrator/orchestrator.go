@@ -628,7 +628,49 @@ func (o *Orchestrator) Run() error {
 				// If hooks produced piped output, send to agent for immediate recovery
 				if hookOutput != "" {
 					logger.Info("Sending on_error hook output to agent for recovery attempt")
-					recoveryPrompt := fmt.Sprintf("The previous iteration failed with error: %s\n\nDiagnostic output from error hooks:\n%s\n\nPlease analyze the error and continue with the next task.", err.Error(), hookOutput)
+
+					// Check session state to determine recovery instructions.
+					// If the agent was mid-task (no summary yet or task still in_progress),
+					// allow it to continue working. Otherwise tell it to just fix and stop.
+					canContinue := false
+					if errState, loadErr := o.store.LoadState(o.ctx, o.cfg.SessionName); loadErr == nil {
+						// Check if current iteration has no summary yet
+						hasSummary := false
+						for _, iter := range errState.Iterations {
+							if iter.Number == currentIteration && iter.Summary != "" {
+								hasSummary = true
+								break
+							}
+						}
+						// Check if any task is still in_progress
+						hasInProgress := false
+						for _, task := range errState.Tasks {
+							if task.Status == "in_progress" {
+								hasInProgress = true
+								break
+							}
+						}
+						canContinue = !hasSummary || hasInProgress
+					}
+
+					var recoveryPrompt string
+					if canContinue {
+						recoveryPrompt = fmt.Sprintf(
+							"[ON-ERROR HOOKS - iteration #%d]\n"+
+								"The iteration encountered an error: %s\n\n"+
+								"Diagnostic output from error hooks:\n%s\n\n"+
+								"Fix the issue and continue completing your current task.",
+							currentIteration, err.Error(), hookOutput,
+						)
+					} else {
+						recoveryPrompt = fmt.Sprintf(
+							"[ON-ERROR HOOKS - iteration #%d]\n"+
+								"The iteration failed with error: %s\n\n"+
+								"Diagnostic output from error hooks:\n%s\n\n"+
+								"Fix the issue if possible, then STOP. Do NOT pick a new task.",
+							currentIteration, err.Error(), hookOutput,
+						)
+					}
 
 					// Send recovery prompt and wait for response
 					recoveryErr := o.runner.SendMessages(o.ctx, []string{recoveryPrompt})
@@ -640,7 +682,7 @@ func (o *Orchestrator) Run() error {
 						logger.Error("Failed to send recovery prompt to agent: %v", recoveryErr)
 						// Continue to next iteration despite recovery failure
 					} else {
-						logger.Info("Recovery prompt sent successfully")
+						logger.Info("Recovery prompt sent successfully (canContinue=%v)", canContinue)
 					}
 				}
 
