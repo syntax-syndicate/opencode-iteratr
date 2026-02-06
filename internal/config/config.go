@@ -21,6 +21,7 @@ type Config struct {
 	Iterations int    `mapstructure:"iterations" yaml:"iterations"`
 	Headless   bool   `mapstructure:"headless" yaml:"headless"`
 	Template   string `mapstructure:"template" yaml:"template"`
+	SpecDir    string `mapstructure:"spec_dir" yaml:"spec_dir"`
 }
 
 // Load loads configuration with full precedence:
@@ -38,6 +39,7 @@ func Load() (*Config, error) {
 	v.SetDefault("iterations", 0)
 	v.SetDefault("headless", false)
 	v.SetDefault("template", "")
+	v.SetDefault("spec_dir", "specs")
 
 	// Setup ENV binding with ITERATR_ prefix
 	v.SetEnvPrefix("ITERATR")
@@ -69,6 +71,9 @@ func Load() (*Config, error) {
 	}
 	if err := v.BindEnv("template", "ITERATR_TEMPLATE"); err != nil {
 		return nil, fmt.Errorf("binding template env: %w", err)
+	}
+	if err := v.BindEnv("spec_dir", "ITERATR_SPEC_DIR"); err != nil {
+		return nil, fmt.Errorf("binding spec_dir env: %w", err)
 	}
 
 	// Load global config first (if exists)
