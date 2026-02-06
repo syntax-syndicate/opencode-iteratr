@@ -1151,30 +1151,26 @@ func (m *WizardModel) execBuild(specPath string) tea.Cmd {
 
 // buildSpecPrompt constructs the agent prompt for spec creation.
 func buildSpecPrompt(title, description string) string {
-	specFormat := `# [Title]
-
-## Overview
-Brief description of the feature
+	specFormat := `## Overview
+What the feature does
 
 ## User Story
 Who benefits and why
 
 ## Requirements
-Detailed requirements
+Detailed requirements gathered from stakeholders
 
 ## Technical Implementation
-Implementation details
+Routes, components, data flow
+
+## Tasks
+Byte-sized implementation tasks (see task format rules below)
 
 ## UI Mockup
 ASCII or description of the interface
 
-## Tasks
-Small, sequential, dependency-ordered checklist items.
-Each task completable in one focused session.
-- [ ] Task description — success: <one-line criterion>
-
 ## Out of Scope
-What's not included in v1
+What's explicitly not included in v1
 
 ## Open Questions
 Unresolved decisions for future discussion`
@@ -1184,19 +1180,13 @@ Unresolved decisions for future discussion`
 Feature: %s
 Description: %s
 
-Interview me using the ask-questions tool to gather requirements.
+Interview me in detail using the ask-questions tool about literally anything: technical implementation, UI & UX, concerns, tradeoffs, etc. but make sure the questions are not obvious. Be very in-depth and continue interviewing me continually until it's complete. Then, write the spec using finish-spec.
 
 CRITICAL RULES FOR ask-questions TOOL:
 1. Each question in the batch MUST be unique - no duplicate questions within a batch
 2. NEVER ask a question you have already asked in a previous batch
 3. Before calling ask-questions, review your conversation history to ensure no repeats
 4. Batch 3-5 related questions per call (not one at a time)
-5. After 2-3 rounds of questions, call finish-spec - do not keep asking
-
-Topics to cover (one round each, then move on):
-- Round 1: Core functionality and user workflows
-- Round 2: Edge cases, error handling, constraints
-- Round 3: Technical details only if unclear from previous answers
 
 When you have enough information, immediately use the finish-spec tool. Do not ask more questions.
 
@@ -1205,11 +1195,20 @@ The spec MUST follow this format:
 %s
 
 TASK FORMAT RULES:
-- Each task is a checkbox item: - [ ] Description — success: <criterion>
-- Order tasks by dependency (earlier tasks unblock later ones)
-- Each task must be completable in a single focused session
-- Include a one-line success criterion after each checkbox
-- Aim for 5-15 tasks; group related subtasks under numbered headings
+- Break implementation into small, sequential tasks an AI agent can complete one per iteration
+- Each task should be completable in a single focused session
+- Tasks should be ordered by dependency (earlier tasks unblock later ones)
+- Use checkbox format: - [ ] [P#] Task description
+- Group related subtasks under numbered headings
+- Each task should have clear success criteria implicit in description
+- Aim for 5-15 tasks depending on feature complexity
+- Assign priority to each task using prefix format [P0], [P1], etc.
+
+Task Priorities:
+- P0 Critical: Blocks everything, must do first
+- P1 High: Core functionality, do early
+- P2 Medium: Important but not blocking
+- P3 Low: Nice-to-have, can defer
 
 Make the spec extremely concise. Sacrifice grammar for the sake of concision.`,
 		title, description, specFormat)
