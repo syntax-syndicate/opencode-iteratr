@@ -486,7 +486,7 @@ func TestGoBackFromReviewShowsConfirmation(t *testing.T) {
 
 func TestSaveSpecMsg(t *testing.T) {
 	cfg := &config.Config{
-		SpecDir: "./specs",
+		SpecDir: filepath.Join(t.TempDir(), "specs"),
 	}
 
 	// Create wizard at review step
