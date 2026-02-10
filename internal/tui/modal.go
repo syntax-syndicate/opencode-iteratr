@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -12,25 +14,75 @@ import (
 	"github.com/mark3labs/iteratr/internal/tui/theme"
 )
 
+// taskModalFocus tracks which element has keyboard focus in the TaskModal.
+type taskModalFocus int
+
+const (
+	taskModalFocusStatus   taskModalFocus = iota // Status selector row
+	taskModalFocusPriority                       // Priority selector row
+	taskModalFocusContent                        // Content textarea
+	taskModalFocusDelete                         // Delete button
+)
+
+// charLimitTaskContent is the max character limit for task content editing.
+const charLimitTaskContent = 500
+
+// Valid task statuses in cycling order.
+var taskStatuses = []struct {
+	value string
+	icon  string
+}{
+	{"remaining", "○"},
+	{"in_progress", "►"},
+	{"completed", "✓"},
+	{"blocked", "⊘"},
+	{"cancelled", "⊗"},
+}
+
 // TaskModal displays detailed information about a single task in a centered overlay.
+// Supports interactive status/priority cycling, content editing, and task deletion.
 type TaskModal struct {
 	task    *session.Task
 	visible bool
 	width   int // Modal width
 	height  int // Modal height
+	focus   taskModalFocus
 
-	// Render cache
-	cachedContent      string
-	cachedContentWidth int
-	cachedTask         *session.Task
+	// Current editable values (track independently so cycling is immediate)
+	statusIndex   int // Index into taskStatuses
+	priorityIndex int // Index into priorities (from task_input_modal.go)
+
+	// Content editing
+	textarea        textarea.Model
+	contentModified bool // True if textarea content differs from task.Content
 }
 
 // NewTaskModal creates a new TaskModal component.
 func NewTaskModal() *TaskModal {
+	ta := textarea.New()
+	ta.Placeholder = "Task description..."
+	ta.CharLimit = charLimitTaskContent
+	ta.ShowLineNumbers = false
+	ta.Prompt = ""
+	ta.SetWidth(50)
+	ta.SetHeight(4)
+
+	// Override textarea KeyMap to remove ctrl+t from LineNext
+	ta.KeyMap.LineNext = key.NewBinding(key.WithKeys("down"))
+
+	// Style textarea
+	t := theme.Current()
+	styles := textarea.DefaultDarkStyles()
+	styles.Cursor.Color = lipgloss.Color(t.Secondary)
+	styles.Cursor.Shape = tea.CursorBlock
+	styles.Cursor.Blink = true
+	ta.SetStyles(styles)
+
 	return &TaskModal{
-		visible: false,
-		width:   60, // Default width
-		height:  20, // Default height
+		visible:  false,
+		width:    60,
+		height:   26, // Taller to fit textarea
+		textarea: ta,
 	}
 }
 
@@ -38,18 +90,297 @@ func NewTaskModal() *TaskModal {
 func (m *TaskModal) SetTask(task *session.Task) {
 	m.task = task
 	m.visible = true
-	m.cachedContent = "" // Invalidate cache
+	m.focus = taskModalFocusStatus
+	m.contentModified = false
+
+	// Initialize editable values from task
+	m.statusIndex = statusToIndex(task.Status)
+	m.priorityIndex = task.Priority
+	if m.priorityIndex < 0 || m.priorityIndex > 4 {
+		m.priorityIndex = 2
+	}
+
+	// Initialize textarea with task content
+	m.textarea.SetValue(task.Content)
+	m.textarea.Blur()
 }
 
 // Close hides the modal.
 func (m *TaskModal) Close() {
 	m.visible = false
 	m.task = nil
+	m.contentModified = false
+	m.textarea.Blur()
 }
 
 // IsVisible returns whether the modal is currently visible.
 func (m *TaskModal) IsVisible() bool {
 	return m.visible
+}
+
+// Task returns the currently displayed task.
+func (m *TaskModal) Task() *session.Task {
+	return m.task
+}
+
+// Update handles keyboard and paste input for the interactive task modal.
+func (m *TaskModal) Update(msg tea.Msg) tea.Cmd {
+	if !m.visible || m.task == nil {
+		return nil
+	}
+
+	// Handle paste messages when textarea is focused
+	if pasteMsg, ok := msg.(tea.PasteMsg); ok {
+		if m.focus == taskModalFocusContent {
+			return m.handlePaste(pasteMsg)
+		}
+		return nil
+	}
+
+	keyMsg, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		// Forward non-key messages to textarea when focused (cursor blink, etc.)
+		if m.focus == taskModalFocusContent {
+			var cmd tea.Cmd
+			m.textarea, cmd = m.textarea.Update(msg)
+			m.checkContentModified()
+			return cmd
+		}
+		return nil
+	}
+
+	switch keyMsg.String() {
+	case "esc":
+		// If content was modified and textarea is focused, ESC blurs textarea first
+		if m.focus == taskModalFocusContent {
+			m.focus = taskModalFocusStatus
+			m.textarea.Blur()
+			return nil
+		}
+		m.Close()
+		return nil
+
+	case "ctrl+enter":
+		// Save content if modified
+		if m.contentModified {
+			return m.emitContentChange()
+		}
+		return nil
+
+	case "tab":
+		return m.handleTab(false)
+
+	case "shift+tab":
+		return m.handleTab(true)
+
+	case "left", "h":
+		if m.focus == taskModalFocusContent {
+			// Let textarea handle left arrow
+			break
+		}
+		switch m.focus {
+		case taskModalFocusStatus:
+			m.cycleStatusBackward()
+			return m.emitStatusChange()
+		case taskModalFocusPriority:
+			m.cyclePriorityBackward()
+			return m.emitPriorityChange()
+		}
+		return nil
+
+	case "right", "l":
+		if m.focus == taskModalFocusContent {
+			// Let textarea handle right arrow
+			break
+		}
+		switch m.focus {
+		case taskModalFocusStatus:
+			m.cycleStatusForward()
+			return m.emitStatusChange()
+		case taskModalFocusPriority:
+			m.cyclePriorityForward()
+			return m.emitPriorityChange()
+		}
+		return nil
+
+	case "enter", " ":
+		if m.focus == taskModalFocusDelete {
+			taskID := m.task.ID
+			return func() tea.Msg {
+				return RequestDeleteTaskMsg{ID: taskID}
+			}
+		}
+		// Don't intercept enter/space when textarea is focused
+		if m.focus == taskModalFocusContent {
+			break
+		}
+		return nil
+
+	case "d":
+		// Shortcut: 'd' for delete only when NOT in textarea
+		if m.focus != taskModalFocusContent {
+			taskID := m.task.ID
+			return func() tea.Msg {
+				return RequestDeleteTaskMsg{ID: taskID}
+			}
+		}
+	}
+
+	// Forward to textarea when it's focused
+	if m.focus == taskModalFocusContent {
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		m.checkContentModified()
+		return cmd
+	}
+
+	return nil
+}
+
+// RequestDeleteTaskMsg is sent when the user requests task deletion.
+// The App will show a confirmation dialog before actually deleting.
+type RequestDeleteTaskMsg struct {
+	ID string
+}
+
+// handleTab manages focus cycling with textarea focus/blur.
+func (m *TaskModal) handleTab(backward bool) tea.Cmd {
+	oldFocus := m.focus
+
+	if backward {
+		switch m.focus {
+		case taskModalFocusStatus:
+			m.focus = taskModalFocusDelete
+		case taskModalFocusPriority:
+			m.focus = taskModalFocusStatus
+		case taskModalFocusContent:
+			m.focus = taskModalFocusPriority
+		case taskModalFocusDelete:
+			m.focus = taskModalFocusContent
+		}
+	} else {
+		switch m.focus {
+		case taskModalFocusStatus:
+			m.focus = taskModalFocusPriority
+		case taskModalFocusPriority:
+			m.focus = taskModalFocusContent
+		case taskModalFocusContent:
+			m.focus = taskModalFocusDelete
+		case taskModalFocusDelete:
+			m.focus = taskModalFocusStatus
+		}
+	}
+
+	return m.updateTextareaFocus(oldFocus)
+}
+
+// updateTextareaFocus manages textarea focus/blur transitions.
+func (m *TaskModal) updateTextareaFocus(oldFocus taskModalFocus) tea.Cmd {
+	if m.focus == taskModalFocusContent && oldFocus != taskModalFocusContent {
+		return m.textarea.Focus()
+	}
+	if m.focus != taskModalFocusContent && oldFocus == taskModalFocusContent {
+		m.textarea.Blur()
+	}
+	return nil
+}
+
+// checkContentModified updates the contentModified flag.
+func (m *TaskModal) checkContentModified() {
+	if m.task == nil {
+		return
+	}
+	m.contentModified = strings.TrimSpace(m.textarea.Value()) != strings.TrimSpace(m.task.Content)
+}
+
+// handlePaste processes paste input for the textarea with char limit enforcement.
+func (m *TaskModal) handlePaste(msg tea.PasteMsg) tea.Cmd {
+	currentLen := len([]rune(m.textarea.Value()))
+	pasteLen := len([]rune(msg.Content))
+	remainingSpace := charLimitTaskContent - currentLen
+
+	if remainingSpace <= 0 {
+		return func() tea.Msg {
+			return ShowToastMsg{Text: fmt.Sprintf("%d chars truncated", pasteLen)}
+		}
+	}
+
+	if pasteLen > remainingSpace {
+		truncatedContent := string([]rune(msg.Content)[:remainingSpace])
+		truncatedCount := pasteLen - remainingSpace
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(tea.PasteMsg{Content: truncatedContent})
+		m.checkContentModified()
+		return tea.Batch(cmd, func() tea.Msg {
+			return ShowToastMsg{Text: fmt.Sprintf("%d chars truncated", truncatedCount)}
+		})
+	}
+
+	var cmd tea.Cmd
+	m.textarea, cmd = m.textarea.Update(tea.PasteMsg{Content: msg.Content})
+	m.checkContentModified()
+	return cmd
+}
+
+// cycleStatusForward cycles to the next status.
+func (m *TaskModal) cycleStatusForward() {
+	m.statusIndex = (m.statusIndex + 1) % len(taskStatuses)
+}
+
+// cycleStatusBackward cycles to the previous status.
+func (m *TaskModal) cycleStatusBackward() {
+	m.statusIndex = (m.statusIndex - 1 + len(taskStatuses)) % len(taskStatuses)
+}
+
+// cyclePriorityForward cycles to the next priority.
+func (m *TaskModal) cyclePriorityForward() {
+	m.priorityIndex = (m.priorityIndex + 1) % len(priorities)
+}
+
+// cyclePriorityBackward cycles to the previous priority.
+func (m *TaskModal) cyclePriorityBackward() {
+	m.priorityIndex = (m.priorityIndex - 1 + len(priorities)) % len(priorities)
+}
+
+// emitStatusChange returns a command that sends an UpdateTaskStatusMsg.
+func (m *TaskModal) emitStatusChange() tea.Cmd {
+	taskID := m.task.ID
+	status := taskStatuses[m.statusIndex].value
+	return func() tea.Msg {
+		return UpdateTaskStatusMsg{ID: taskID, Status: status}
+	}
+}
+
+// emitPriorityChange returns a command that sends an UpdateTaskPriorityMsg.
+func (m *TaskModal) emitPriorityChange() tea.Cmd {
+	taskID := m.task.ID
+	priority := priorities[m.priorityIndex].value
+	return func() tea.Msg {
+		return UpdateTaskPriorityMsg{ID: taskID, Priority: priority}
+	}
+}
+
+// emitContentChange returns a command that sends an UpdateTaskContentMsg.
+func (m *TaskModal) emitContentChange() tea.Cmd {
+	taskID := m.task.ID
+	content := strings.TrimSpace(m.textarea.Value())
+	if content == "" {
+		return nil // Don't allow empty content
+	}
+	m.contentModified = false
+	return func() tea.Msg {
+		return UpdateTaskContentMsg{ID: taskID, Content: content}
+	}
+}
+
+// statusToIndex converts a status string to its index in taskStatuses.
+func statusToIndex(status string) int {
+	for i, s := range taskStatuses {
+		if s.value == status {
+			return i
+		}
+	}
+	return 0 // Default to "remaining"
 }
 
 // Draw renders the modal centered on the screen buffer (Screen/Draw pattern).
@@ -58,7 +389,7 @@ func (m *TaskModal) Draw(scr uv.Screen, area uv.Rectangle) {
 		return
 	}
 
-	// Calculate modal dimensions (max 60x20, but adapt to screen size)
+	// Calculate modal dimensions
 	modalWidth := m.width
 	modalHeight := m.height
 
@@ -77,6 +408,9 @@ func (m *TaskModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	if modalHeight < 10 {
 		modalHeight = 10
 	}
+
+	// Set textarea width based on modal width
+	m.textarea.SetWidth(modalWidth - 8) // Account for borders + padding
 
 	// Build modal content
 	content := m.buildContent(modalWidth - 4) // Account for padding and borders
@@ -109,62 +443,47 @@ func (m *TaskModal) Draw(scr uv.Screen, area uv.Rectangle) {
 	uv.NewStyledString(modalContent).Draw(scr, modalArea)
 }
 
-// buildContent builds the modal content string with task details.
+// buildContent builds the modal content string with task details and interactive controls.
 func (m *TaskModal) buildContent(width int) string {
 	if m.task == nil {
 		return ""
 	}
 
-	// Return cached content if task and width haven't changed
-	if m.cachedTask == m.task && m.cachedContentWidth == width && m.cachedContent != "" {
-		return m.cachedContent
-	}
-
-	s := theme.Current().S()
+	t := theme.Current()
+	s := t.S()
 	var sections []string
 
-	// === Title Section (with diagonal hatching decoration) ===
+	// === Title Section ===
 	title := renderModalTitle("Task Details", width-2)
 	sections = append(sections, title)
-	sections = append(sections, "") // Blank line
+	sections = append(sections, "")
 
 	// === ID Section ===
 	idLine := s.ModalLabel.Render("ID: ") + s.ModalValue.Render(m.task.ID)
 	sections = append(sections, idLine)
-	sections = append(sections, "") // Blank line
+	sections = append(sections, "")
 
-	// === Status and Priority Section ===
-	statusBadge := m.renderStatusBadge(m.task.Status)
-	priorityBadge := m.renderPriorityBadge(m.task.Priority)
-	statusLine := fmt.Sprintf("%s %s    %s %s",
-		s.ModalLabel.Render("Status:"),
-		statusBadge,
-		s.ModalLabel.Render("Priority:"),
-		priorityBadge)
-	sections = append(sections, statusLine)
-	sections = append(sections, "") // Blank line
+	// === Interactive Status Row ===
+	statusLabel := s.ModalLabel.Render("Status:   ")
+	statusBadges := m.renderStatusBadges()
+	sections = append(sections, statusLabel+statusBadges)
+	sections = append(sections, "")
 
-	// === Separator ===
-	separator := s.ModalSeparator.Render(strings.Repeat("─", width-2))
-	sections = append(sections, separator)
-	sections = append(sections, "") // Blank line
+	// === Interactive Priority Row ===
+	priorityLabel := s.ModalLabel.Render("Priority: ")
+	priorityBadges := m.renderPriorityBadges()
+	sections = append(sections, priorityLabel+priorityBadges)
+	sections = append(sections, "")
 
-	// === Content Section ===
-	// Word-wrap content to fit modal width
-	wrappedContent := s.ModalSection.Render(m.wordWrap(m.task.Content, width-2))
-	sections = append(sections, wrappedContent)
-	sections = append(sections, "") // Blank line
-
-	// === Separator ===
-	sections = append(sections, separator)
-	sections = append(sections, "") // Blank line
+	// === Content Textarea ===
+	sections = append(sections, m.textarea.View())
+	sections = append(sections, "")
 
 	// === Dependencies Section ===
 	if len(m.task.DependsOn) > 0 {
 		depsLabel := s.ModalLabel.Render("Depends on: ")
 		depsContent := s.ModalValue.Render(strings.Join(m.task.DependsOn, ", "))
 		sections = append(sections, depsLabel+depsContent)
-		sections = append(sections, "") // Blank line
 	}
 
 	// === Timestamps Section ===
@@ -172,28 +491,123 @@ func (m *TaskModal) buildContent(width int) string {
 	updatedLine := s.ModalLabel.Render("Updated:  ") + s.ModalValue.Render(m.formatTime(m.task.UpdatedAt))
 	sections = append(sections, createdLine)
 	sections = append(sections, updatedLine)
-	sections = append(sections, "") // Blank line
+	sections = append(sections, "")
 
-	// === Close Instructions (key/description differentiation) ===
-	closeHint := s.HintKey.Render("esc") + " " +
-		s.HintDesc.Render("close") + " " +
-		s.HintSeparator.Render("•") + " " +
-		s.HintKey.Render("click outside") + " " +
-		s.HintDesc.Render("dismiss")
-	closeText := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(closeHint)
-	sections = append(sections, closeText)
+	// === Delete Button + Hint Bar ===
+	deleteButton := m.renderDeleteButton()
+	hintBar := m.renderHintBar()
+	bottomLine := deleteButton + "  " + hintBar
+	bottomText := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(bottomLine)
+	sections = append(sections, bottomText)
 
-	result := strings.Join(sections, "\n")
-
-	// Cache the result
-	m.cachedContent = result
-	m.cachedContentWidth = width
-	m.cachedTask = m.task
-
-	return result
+	return strings.Join(sections, "\n")
 }
 
-// renderStatusBadge renders a styled badge for the task status.
+// renderStatusBadges renders all status badges with the active one highlighted.
+func (m *TaskModal) renderStatusBadges() string {
+	t := theme.Current()
+	s := t.S()
+	var badges []string
+
+	for i, status := range taskStatuses {
+		isActive := i == m.statusIndex
+		text := status.icon + " " + status.value
+
+		if isActive {
+			if m.focus == taskModalFocusStatus {
+				badge := s.Badge.
+					Foreground(lipgloss.Color(t.FgBright)).
+					Background(lipgloss.Color(t.Primary))
+				badges = append(badges, badge.Render(text))
+			} else {
+				badges = append(badges, m.renderStatusBadge(status.value))
+			}
+		} else {
+			badge := s.Badge.Foreground(lipgloss.Color(t.FgMuted))
+			badges = append(badges, badge.Render(text))
+		}
+	}
+
+	return strings.Join(badges, " ")
+}
+
+// renderPriorityBadges renders all priority badges with the active one highlighted.
+func (m *TaskModal) renderPriorityBadges() string {
+	t := theme.Current()
+	s := t.S()
+	var badges []string
+
+	for i, priority := range priorities {
+		isActive := i == m.priorityIndex
+		text := priority.icon + " " + priority.label
+
+		var priorityBadge lipgloss.Style
+		var priorityColor string
+		switch priority.value {
+		case 0:
+			priorityBadge = s.BadgeError
+			priorityColor = t.Error
+		case 1:
+			priorityBadge = s.BadgeWarning
+			priorityColor = t.Warning
+		case 2:
+			priorityBadge = s.BadgeInfo
+			priorityColor = t.Secondary
+		case 3:
+			priorityBadge = s.BadgeMuted
+			priorityColor = t.FgMuted
+		case 4:
+			priorityBadge = s.BadgeMuted.Faint(true)
+			priorityColor = t.FgMuted
+		default:
+			priorityBadge = s.BadgeMuted
+			priorityColor = t.FgMuted
+		}
+
+		if isActive {
+			if m.focus == taskModalFocusPriority {
+				badge := s.Badge.
+					Foreground(lipgloss.Color(t.FgBright)).
+					Background(lipgloss.Color(t.Primary))
+				badges = append(badges, badge.Render(text))
+			} else {
+				badges = append(badges, priorityBadge.Render(text))
+			}
+		} else {
+			badge := s.Badge.Foreground(lipgloss.Color(priorityColor))
+			badges = append(badges, badge.Render(text))
+		}
+	}
+
+	return strings.Join(badges, " ")
+}
+
+// renderDeleteButton renders the delete button with focus-aware styling.
+func (m *TaskModal) renderDeleteButton() string {
+	t := theme.Current()
+	s := t.S()
+
+	if m.focus == taskModalFocusDelete {
+		buttonStyle := s.Badge.
+			Foreground(lipgloss.Color(t.FgBright)).
+			Background(lipgloss.Color(t.Error))
+		return buttonStyle.Render("  Delete  ")
+	}
+
+	return s.BadgeMuted.Render("  Delete  ")
+}
+
+// renderHintBar renders the keyboard shortcut hints for the modal.
+func (m *TaskModal) renderHintBar() string {
+	return RenderHintBar(
+		KeyTab, "cycle",
+		"←→", "change",
+		"ctrl+enter", "save",
+		KeyEsc, "close",
+	)
+}
+
+// renderStatusBadge renders a styled badge for a single task status.
 func (m *TaskModal) renderStatusBadge(status string) string {
 	s := theme.Current().S()
 	var badge lipgloss.Style
@@ -212,39 +626,12 @@ func (m *TaskModal) renderStatusBadge(status string) string {
 	case "blocked":
 		badge = s.BadgeError
 		text = "⊘ blocked"
+	case "cancelled":
+		badge = s.BadgeError
+		text = "⊗ cancelled"
 	default:
 		badge = s.BadgeMuted
 		text = "○ " + status
-	}
-
-	return badge.Render(text)
-}
-
-// renderPriorityBadge renders a styled badge for the task priority.
-func (m *TaskModal) renderPriorityBadge(priority int) string {
-	s := theme.Current().S()
-	var badge lipgloss.Style
-	var text string
-
-	switch priority {
-	case 0:
-		badge = s.BadgeError
-		text = "critical"
-	case 1:
-		badge = s.BadgeWarning
-		text = "high"
-	case 2:
-		badge = s.BadgeInfo
-		text = "medium"
-	case 3:
-		badge = s.BadgeMuted
-		text = "low"
-	case 4:
-		badge = s.BadgeMuted.Faint(true)
-		text = "backlog"
-	default:
-		badge = s.BadgeMuted
-		text = fmt.Sprintf("p%d", priority)
 	}
 
 	return badge.Render(text)
@@ -270,7 +657,6 @@ func (m *TaskModal) wordWrap(text string, width int) string {
 	var currentLine string
 
 	for _, word := range words {
-		// If adding this word would exceed width, start new line
 		testLine := currentLine
 		if testLine != "" {
 			testLine += " "
@@ -278,7 +664,6 @@ func (m *TaskModal) wordWrap(text string, width int) string {
 		testLine += word
 
 		if len(testLine) > width {
-			// Current line is full, save it and start new line
 			if currentLine != "" {
 				lines = append(lines, currentLine)
 			}
@@ -288,15 +673,9 @@ func (m *TaskModal) wordWrap(text string, width int) string {
 		}
 	}
 
-	// Add remaining line
 	if currentLine != "" {
 		lines = append(lines, currentLine)
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// Update handles messages for the modal.
-func (m *TaskModal) Update(msg tea.Msg) tea.Cmd {
-	return nil
 }
