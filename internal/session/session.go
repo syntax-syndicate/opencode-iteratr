@@ -106,7 +106,8 @@ type Note struct {
 	Content   string    `json:"content"`
 	Type      string    `json:"type"` // learning, stuck, tip, decision
 	CreatedAt time.Time `json:"created_at"`
-	Iteration int       `json:"iteration"` // Iteration that created this note
+	UpdatedAt time.Time `json:"updated_at"`
+	Iteration int       `json:"iteration"` // Iteration that last modified this note
 }
 
 // Iteration represents a single iteration execution.
@@ -247,6 +248,31 @@ func (st *State) applyTaskEvent(event Event) {
 			task.UpdatedAt = event.Timestamp
 			task.Iteration = meta.Iteration
 		}
+
+	case "content":
+		// Parse metadata for task ID and iteration
+		var meta struct {
+			TaskID    string `json:"task_id"`
+			Iteration int    `json:"iteration"`
+		}
+		_ = json.Unmarshal(event.Meta, &meta)
+
+		// Update task content if it exists
+		if task, exists := st.Tasks[meta.TaskID]; exists {
+			task.Content = event.Data
+			task.UpdatedAt = event.Timestamp
+			task.Iteration = meta.Iteration
+		}
+
+	case "delete":
+		// Parse metadata for task ID
+		var meta struct {
+			TaskID string `json:"task_id"`
+		}
+		_ = json.Unmarshal(event.Meta, &meta)
+
+		// Remove task from state if it exists
+		delete(st.Tasks, meta.TaskID)
 	}
 }
 
@@ -267,10 +293,63 @@ func (st *State) applyNoteEvent(event Event) {
 			Content:   event.Data,
 			Type:      meta.Type,
 			CreatedAt: event.Timestamp,
+			UpdatedAt: event.Timestamp,
 			Iteration: meta.Iteration,
 		}
 		st.Notes = append(st.Notes, note)
 		st.NoteCounter++
+
+	case "content":
+		// Parse metadata for note ID and iteration
+		var meta struct {
+			NoteID    string `json:"note_id"`
+			Iteration int    `json:"iteration"`
+		}
+		_ = json.Unmarshal(event.Meta, &meta)
+
+		// Update note content if it exists
+		for _, note := range st.Notes {
+			if note.ID == meta.NoteID {
+				note.Content = event.Data
+				note.UpdatedAt = event.Timestamp
+				note.Iteration = meta.Iteration
+				break
+			}
+		}
+
+	case "type":
+		// Parse metadata for note ID, new type, and iteration
+		var meta struct {
+			NoteID    string `json:"note_id"`
+			Type      string `json:"type"`
+			Iteration int    `json:"iteration"`
+		}
+		_ = json.Unmarshal(event.Meta, &meta)
+
+		// Update note type if it exists
+		for _, note := range st.Notes {
+			if note.ID == meta.NoteID {
+				note.Type = meta.Type
+				note.UpdatedAt = event.Timestamp
+				note.Iteration = meta.Iteration
+				break
+			}
+		}
+
+	case "delete":
+		// Parse metadata for note ID
+		var meta struct {
+			NoteID string `json:"note_id"`
+		}
+		_ = json.Unmarshal(event.Meta, &meta)
+
+		// Remove note from slice if it exists
+		for i, note := range st.Notes {
+			if note.ID == meta.NoteID {
+				st.Notes = append(st.Notes[:i], st.Notes[i+1:]...)
+				break
+			}
+		}
 	}
 }
 

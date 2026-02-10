@@ -150,8 +150,8 @@ func TestApp_TaskModal_RenderPerformance(t *testing.T) {
 	}
 	duration := time.Since(start)
 
-	// Should complete 1000 iterations in under 100ms (very generous)
-	maxDuration := 100 * time.Millisecond
+	// Should complete 1000 iterations in under 500ms (interactive modal renders badge rows each time)
+	maxDuration := 500 * time.Millisecond
 	if duration > maxDuration {
 		t.Errorf("Modal content rendering too slow: %v for %d iterations (max %v)",
 			duration, iterations, maxDuration)

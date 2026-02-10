@@ -92,6 +92,7 @@ func StateWithNotes() *session.State {
 				Content:   "Learned about event sourcing pattern",
 				Type:      "learning",
 				CreatedAt: FixedTime,
+				UpdatedAt: FixedTime,
 				Iteration: 1,
 			},
 			{
@@ -99,6 +100,7 @@ func StateWithNotes() *session.State {
 				Content:   "Blocked on missing dependencies",
 				Type:      "stuck",
 				CreatedAt: FixedTime.Add(5 * time.Minute),
+				UpdatedAt: FixedTime.Add(5 * time.Minute),
 				Iteration: 1,
 			},
 			{
@@ -106,6 +108,7 @@ func StateWithNotes() *session.State {
 				Content:   "Use teatest for testing TUI components",
 				Type:      "tip",
 				CreatedAt: FixedTime.Add(10 * time.Minute),
+				UpdatedAt: FixedTime.Add(10 * time.Minute),
 				Iteration: 1,
 			},
 			{
@@ -113,6 +116,7 @@ func StateWithNotes() *session.State {
 				Content:   "Decided to use golden files for visual regression",
 				Type:      "decision",
 				CreatedAt: FixedTime.Add(15 * time.Minute),
+				UpdatedAt: FixedTime.Add(15 * time.Minute),
 				Iteration: 1,
 			},
 		},
@@ -181,6 +185,7 @@ func FullState() *session.State {
 				Content:   "Learned about event sourcing pattern",
 				Type:      "learning",
 				CreatedAt: FixedTime,
+				UpdatedAt: FixedTime,
 				Iteration: 1,
 			},
 			{
@@ -188,6 +193,7 @@ func FullState() *session.State {
 				Content:   "Blocked on missing dependencies",
 				Type:      "stuck",
 				CreatedAt: FixedTime.Add(5 * time.Minute),
+				UpdatedAt: FixedTime.Add(5 * time.Minute),
 				Iteration: 1,
 			},
 		},

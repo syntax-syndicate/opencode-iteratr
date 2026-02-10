@@ -349,6 +349,147 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.taskInputModal.Close()
 		return a, nil
 
+	case UpdateTaskStatusMsg:
+		// Update task status immediately via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.TaskStatus(a.ctx, a.sessionName, session.TaskStatusParams{
+				ID:        msg.ID,
+				Status:    msg.Status,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to update task status: %v", err)
+			}
+		}()
+		return a, nil
+
+	case UpdateTaskPriorityMsg:
+		// Update task priority immediately via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.TaskPriority(a.ctx, a.sessionName, session.TaskPriorityParams{
+				ID:        msg.ID,
+				Priority:  msg.Priority,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to update task priority: %v", err)
+			}
+		}()
+		return a, nil
+
+	case UpdateTaskContentMsg:
+		// Update task content via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.TaskContent(a.ctx, a.sessionName, session.TaskContentParams{
+				ID:        msg.ID,
+				Content:   msg.Content,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to update task content: %v", err)
+			}
+		}()
+		return a, nil
+
+	case RequestDeleteTaskMsg:
+		// Show confirmation dialog before deleting
+		taskID := msg.ID
+		a.dialog.Show(
+			"Delete Task",
+			fmt.Sprintf("Delete task %s? This cannot be undone.", taskID),
+			func() tea.Cmd {
+				return func() tea.Msg {
+					return DeleteTaskMsg{ID: taskID}
+				}
+			},
+		)
+		return a, nil
+
+	case DeleteTaskMsg:
+		// Actually delete the task via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.TaskDelete(a.ctx, a.sessionName, session.TaskDeleteParams{
+				ID:        msg.ID,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to delete task: %v", err)
+			}
+		}()
+		// Close the task modal and clear sidebar selection
+		a.taskModal.Close()
+		if a.sidebar != nil {
+			a.sidebar.ClearActiveTask()
+		}
+		return a, nil
+
+	case UpdateNoteTypeMsg:
+		// Update note type immediately via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.NoteType(a.ctx, a.sessionName, session.NoteTypeParams{
+				ID:        msg.ID,
+				Type:      msg.Type,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to update note type: %v", err)
+			}
+		}()
+		return a, nil
+
+	case UpdateNoteContentMsg:
+		// Update note content via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.NoteContent(a.ctx, a.sessionName, session.NoteContentParams{
+				ID:        msg.ID,
+				Content:   msg.Content,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to update note content: %v", err)
+			}
+		}()
+		return a, nil
+
+	case RequestDeleteNoteMsg:
+		// Show confirmation dialog before deleting
+		noteID := msg.ID
+		a.dialog.Show(
+			"Delete Note",
+			fmt.Sprintf("Delete note %s? This cannot be undone.", noteID),
+			func() tea.Cmd {
+				return func() tea.Msg {
+					return DeleteNoteMsg{ID: noteID}
+				}
+			},
+		)
+		return a, nil
+
+	case DeleteNoteMsg:
+		// Actually delete the note via store
+		iteration := a.iteration
+		go func() {
+			err := a.store.NoteDelete(a.ctx, a.sessionName, session.NoteDeleteParams{
+				ID:        msg.ID,
+				Iteration: iteration,
+			})
+			if err != nil {
+				logger.Warn("failed to delete note: %v", err)
+			}
+		}()
+		// Close the note modal and clear sidebar selection
+		a.noteModal.Close()
+		if a.sidebar != nil {
+			a.sidebar.ClearActiveNote()
+		}
+		return a, nil
+
 	case FileChangeMsg:
 		// Increment modified file count when a file is modified
 		a.modifiedFileCount++
@@ -480,27 +621,23 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// 3. Modal gets priority when visible
 	if a.taskModal != nil && a.taskModal.IsVisible() {
-		// ESC key closes the modal
-		if msg.String() == "esc" {
-			a.taskModal.Close()
-			if a.sidebar != nil {
-				a.sidebar.ClearActiveTask()
-			}
-			return a, nil
+		// Forward all keys to TaskModal for interactive editing
+		cmd := a.taskModal.Update(msg)
+		// If modal was closed by ESC, clear sidebar selection
+		if !a.taskModal.IsVisible() && a.sidebar != nil {
+			a.sidebar.ClearActiveTask()
 		}
-		// Block all other keys when modal is visible
-		return a, nil
+		return a, cmd
 	}
 
 	if a.noteModal != nil && a.noteModal.IsVisible() {
-		if msg.String() == "esc" {
-			a.noteModal.Close()
-			if a.sidebar != nil {
-				a.sidebar.ClearActiveNote()
-			}
-			return a, nil
+		// Forward all keys to NoteModal for interactive editing
+		cmd := a.noteModal.Update(msg)
+		// If modal was closed by ESC, clear sidebar selection
+		if !a.noteModal.IsVisible() && a.sidebar != nil {
+			a.sidebar.ClearActiveNote()
 		}
-		return a, nil
+		return a, cmd
 	}
 
 	// Note input modal gets priority when visible
@@ -553,12 +690,13 @@ func (a *App) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// 2. Read-only modals have no text input — consume paste
+	// 2. TaskModal has textarea for content editing — forward paste
 	if a.taskModal != nil && a.taskModal.IsVisible() {
-		return a, nil
+		return a, a.taskModal.Update(tea.PasteMsg{Content: content})
 	}
+	// 2b. NoteModal has textarea for content editing — forward paste
 	if a.noteModal != nil && a.noteModal.IsVisible() {
-		return a, nil
+		return a, a.noteModal.Update(tea.PasteMsg{Content: content})
 	}
 
 	// 3. Note input modal gets priority when visible
@@ -1121,6 +1259,46 @@ type CreateTaskMsg struct {
 	Content   string
 	Priority  int
 	Iteration int
+}
+
+// UpdateTaskStatusMsg is sent when the user changes a task's status in the task modal.
+type UpdateTaskStatusMsg struct {
+	ID     string
+	Status string
+}
+
+// UpdateTaskPriorityMsg is sent when the user changes a task's priority in the task modal.
+type UpdateTaskPriorityMsg struct {
+	ID       string
+	Priority int
+}
+
+// UpdateTaskContentMsg is sent when the user saves edited content in the task modal.
+type UpdateTaskContentMsg struct {
+	ID      string
+	Content string
+}
+
+// DeleteTaskMsg is sent when the user confirms task deletion from the task modal.
+type DeleteTaskMsg struct {
+	ID string
+}
+
+// UpdateNoteTypeMsg is sent when the user changes a note's type in the note modal.
+type UpdateNoteTypeMsg struct {
+	ID   string
+	Type string
+}
+
+// UpdateNoteContentMsg is sent when the user saves edited content in the note modal.
+type UpdateNoteContentMsg struct {
+	ID      string
+	Content string
+}
+
+// DeleteNoteMsg is sent when the user confirms note deletion from the note modal.
+type DeleteNoteMsg struct {
+	ID string
 }
 
 // HookStartMsg is sent when a hook command starts executing.

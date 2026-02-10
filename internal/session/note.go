@@ -75,6 +75,7 @@ func (s *Store) NoteAdd(ctx context.Context, session string, params NoteAddParam
 		Content:   params.Content,
 		Type:      params.Type,
 		CreatedAt: now,
+		UpdatedAt: now,
 		Iteration: params.Iteration,
 	}
 
@@ -108,6 +109,149 @@ func (s *Store) NoteList(ctx context.Context, session string, params NoteListPar
 	}
 
 	return filtered, nil
+}
+
+// NoteContentParams represents the parameters for updating note content.
+type NoteContentParams struct {
+	ID        string `json:"id"`      // Note ID (exact match)
+	Content   string `json:"content"` // New content text
+	Iteration int    `json:"iteration"`
+}
+
+// NoteContent updates the content text of an existing note.
+func (s *Store) NoteContent(ctx context.Context, session string, params NoteContentParams) error {
+	if params.ID == "" {
+		return fmt.Errorf("note ID is required")
+	}
+	if params.Content == "" {
+		return fmt.Errorf("content is required")
+	}
+
+	// Load current state to verify note exists
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	if !noteExists(state, params.ID) {
+		return fmt.Errorf("note not found: %s", params.ID)
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"note_id":   params.ID,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeNote,
+		Action:  "content",
+		Data:    params.Content,
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
+// NoteTypeParams represents the parameters for updating note type.
+type NoteTypeParams struct {
+	ID        string `json:"id"`   // Note ID (exact match)
+	Type      string `json:"type"` // New type: learning, stuck, tip, decision
+	Iteration int    `json:"iteration"`
+}
+
+// NoteType updates the type of an existing note.
+func (s *Store) NoteType(ctx context.Context, session string, params NoteTypeParams) error {
+	if params.ID == "" {
+		return fmt.Errorf("note ID is required")
+	}
+	if params.Type == "" {
+		return fmt.Errorf("type is required")
+	}
+	if !isValidNoteType(params.Type) {
+		return fmt.Errorf("invalid type: %s (must be learning, stuck, tip, or decision)", params.Type)
+	}
+
+	// Load current state to verify note exists
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	if !noteExists(state, params.ID) {
+		return fmt.Errorf("note not found: %s", params.ID)
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"note_id":   params.ID,
+		"type":      params.Type,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeNote,
+		Action:  "type",
+		Data:    params.Type,
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
+// NoteDeleteParams represents the parameters for deleting a note.
+type NoteDeleteParams struct {
+	ID        string `json:"id"`        // Note ID (exact match)
+	Iteration int    `json:"iteration"` // Current iteration
+}
+
+// NoteDelete removes a note from the session.
+// The note must exist. This publishes a "delete" event that will remove the note from state.
+func (s *Store) NoteDelete(ctx context.Context, session string, params NoteDeleteParams) error {
+	if params.ID == "" {
+		return fmt.Errorf("note ID is required")
+	}
+
+	// Load current state to verify note exists
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	if !noteExists(state, params.ID) {
+		return fmt.Errorf("note not found: %s", params.ID)
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"note_id":   params.ID,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeNote,
+		Action:  "delete",
+		Data:    params.ID,
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
+// noteExists checks if a note with the given ID exists in the state.
+func noteExists(state *State, id string) bool {
+	for _, note := range state.Notes {
+		if note.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // isValidNoteType checks if a note type string is valid.

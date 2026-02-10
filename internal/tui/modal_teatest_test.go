@@ -23,7 +23,7 @@ func TestTaskModal_Initialization(t *testing.T) {
 	require.False(t, modal.IsVisible(), "modal should not be visible initially")
 	require.Nil(t, modal.task, "modal should not have a task initially")
 	require.Equal(t, 60, modal.width, "modal should have default width")
-	require.Equal(t, 20, modal.height, "modal should have default height")
+	require.Equal(t, 26, modal.height, "modal should have default height")
 }
 
 func TestTaskModal_SetTaskAndClose(t *testing.T) {
@@ -61,7 +61,7 @@ func TestTaskModal_StatusBadges(t *testing.T) {
 		{"remaining", "○ remaining"},
 		{"completed", "✓ completed"},
 		{"blocked", "⊘ blocked"},
-		{"cancelled", "○ cancelled"},
+		{"cancelled", "⊗ cancelled"},
 		{"unknown", "○ unknown"},
 	}
 
@@ -74,29 +74,25 @@ func TestTaskModal_StatusBadges(t *testing.T) {
 	}
 }
 
-func TestTaskModal_PriorityBadges(t *testing.T) {
+func TestTaskModal_PriorityBadgesRendering(t *testing.T) {
 	t.Parallel()
 
 	modal := NewTaskModal()
-
-	tests := []struct {
-		priority int
-		expected string
-	}{
-		{0, "critical"},
-		{1, "high"},
-		{2, "medium"},
-		{3, "low"},
-		{4, "backlog"},
-		{5, "p5"},
-		{6, "p6"},
+	// Set a task so renderPriorityBadges() works (it reads m.priorityIndex)
+	task := &session.Task{
+		ID:       "TAS-PRI",
+		Content:  "Test priority badges",
+		Status:   "remaining",
+		Priority: 2, // medium
 	}
+	modal.SetTask(task)
 
-	for _, tt := range tests {
-		t.Run(tt.expected, func(t *testing.T) {
-			badge := modal.renderPriorityBadge(tt.priority)
-			require.Contains(t, badge, tt.expected, "badge should contain expected text for priority %d", tt.priority)
-		})
+	// renderPriorityBadges renders all badges; the active one is highlighted
+	badges := modal.renderPriorityBadges()
+
+	// All priority labels should be present
+	for _, label := range []string{"critical", "high", "medium", "low", "backlog"} {
+		require.Contains(t, badges, label, "priority badges should contain '%s'", label)
 	}
 }
 
@@ -476,9 +472,9 @@ func TestTaskModalGolden_NoDependencies(t *testing.T) {
 // compareGolden compares rendered output with golden file
 // Note: compareGolden is defined in messages_expanded_test.go and shared across golden file tests
 
-// --- TaskModal Command Execution Tests ---
+// --- TaskModal Interactive Tests ---
 
-func TestTaskModal_Update_ReturnsNil(t *testing.T) {
+func TestTaskModal_Update_EscClosesModal(t *testing.T) {
 	t.Parallel()
 
 	modal := NewTaskModal()
@@ -488,23 +484,150 @@ func TestTaskModal_Update_ReturnsNil(t *testing.T) {
 		Status:  "in_progress",
 	}
 	modal.SetTask(task)
+	require.True(t, modal.IsVisible(), "modal should be visible after SetTask")
 
-	// Test that Update returns nil for all message types
-	testCases := []struct {
-		name string
-		msg  tea.Msg
-	}{
-		{"KeyPressMsg", tea.KeyPressMsg{Text: "enter"}},
-		{"KeyPressMsg esc", tea.KeyPressMsg{Text: "esc"}},
-		{"KeyPressMsg space", tea.KeyPressMsg{Text: " "}},
-	}
+	cmd := modal.Update(tea.KeyPressMsg{Text: "esc"})
+	require.Nil(t, cmd, "ESC should return nil cmd")
+	require.False(t, modal.IsVisible(), "modal should be hidden after ESC")
+}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := modal.Update(tc.msg)
-			require.Nil(t, cmd, "TaskModal.Update should always return nil")
-		})
+func TestTaskModal_Update_TabCyclesFocus(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:       "TAS-TAB",
+		Content:  "Test focus cycling",
+		Status:   "remaining",
+		Priority: 2,
 	}
+	modal.SetTask(task)
+
+	// Initial focus should be status
+	require.Equal(t, taskModalFocusStatus, modal.focus, "initial focus should be status")
+
+	// Tab -> priority
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusPriority, modal.focus, "after tab should be priority")
+
+	// Tab -> content
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusContent, modal.focus, "after second tab should be content")
+
+	// Tab -> delete
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusDelete, modal.focus, "after third tab should be delete")
+
+	// Tab -> wraps to status
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusStatus, modal.focus, "after fourth tab should wrap to status")
+}
+
+func TestTaskModal_Update_StatusCycling(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:       "TAS-STATUS",
+		Content:  "Test status cycling",
+		Status:   "remaining",
+		Priority: 2,
+	}
+	modal.SetTask(task)
+
+	// Focus should be on status by default
+	require.Equal(t, taskModalFocusStatus, modal.focus)
+	require.Equal(t, 0, modal.statusIndex, "initial status index should be 0 (remaining)")
+
+	// Right arrow cycles forward
+	cmd := modal.Update(tea.KeyPressMsg{Text: "right"})
+	require.NotNil(t, cmd, "status change should return a command")
+	require.Equal(t, 1, modal.statusIndex, "status should cycle to in_progress")
+
+	// Verify the command emits UpdateTaskStatusMsg
+	msg := cmd()
+	statusMsg, ok := msg.(UpdateTaskStatusMsg)
+	require.True(t, ok, "command should emit UpdateTaskStatusMsg")
+	require.Equal(t, "TAS-STATUS", statusMsg.ID)
+	require.Equal(t, "in_progress", statusMsg.Status)
+}
+
+func TestTaskModal_Update_PriorityCycling(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:       "TAS-PRI",
+		Content:  "Test priority cycling",
+		Status:   "remaining",
+		Priority: 2, // medium
+	}
+	modal.SetTask(task)
+
+	// Tab to priority focus
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusPriority, modal.focus)
+
+	// Right arrow cycles forward
+	cmd := modal.Update(tea.KeyPressMsg{Text: "right"})
+	require.NotNil(t, cmd, "priority change should return a command")
+	require.Equal(t, 3, modal.priorityIndex, "priority should cycle to low")
+
+	msg := cmd()
+	priMsg, ok := msg.(UpdateTaskPriorityMsg)
+	require.True(t, ok, "command should emit UpdateTaskPriorityMsg")
+	require.Equal(t, "TAS-PRI", priMsg.ID)
+	require.Equal(t, 3, priMsg.Priority)
+}
+
+func TestTaskModal_Update_DeleteButton(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:       "TAS-DEL",
+		Content:  "Test delete",
+		Status:   "remaining",
+		Priority: 2,
+	}
+	modal.SetTask(task)
+
+	// Tab three times to get to delete button (status -> priority -> content -> delete)
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	require.Equal(t, taskModalFocusDelete, modal.focus)
+
+	// Enter on delete button should emit RequestDeleteTaskMsg
+	cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	require.NotNil(t, cmd, "delete should return a command")
+
+	msg := cmd()
+	delMsg, ok := msg.(RequestDeleteTaskMsg)
+	require.True(t, ok, "command should emit RequestDeleteTaskMsg")
+	require.Equal(t, "TAS-DEL", delMsg.ID)
+}
+
+func TestTaskModal_Update_DShortcut(t *testing.T) {
+	t.Parallel()
+
+	modal := NewTaskModal()
+	task := &session.Task{
+		ID:       "TAS-DKEY",
+		Content:  "Test d shortcut",
+		Status:   "remaining",
+		Priority: 2,
+	}
+	modal.SetTask(task)
+
+	// 'd' from any focus should emit RequestDeleteTaskMsg
+	cmd := modal.Update(tea.KeyPressMsg{Text: "d"})
+	require.NotNil(t, cmd, "d shortcut should return a command")
+
+	msg := cmd()
+	delMsg, ok := msg.(RequestDeleteTaskMsg)
+	require.True(t, ok, "d shortcut should emit RequestDeleteTaskMsg")
+	require.Equal(t, "TAS-DKEY", delMsg.ID)
 }
 
 func TestTaskModal_Update_WhenNotVisible(t *testing.T) {

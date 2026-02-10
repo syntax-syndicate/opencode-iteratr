@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/mark3labs/iteratr/internal/session"
 	"github.com/mark3labs/iteratr/internal/tui/testfixtures"
 )
 
@@ -29,8 +30,8 @@ func TestNoteModal_InitialState(t *testing.T) {
 	if modal.width != 60 {
 		t.Errorf("Default width: got %d, want 60", modal.width)
 	}
-	if modal.height != 14 {
-		t.Errorf("Default height: got %d, want 14", modal.height)
+	if modal.height != 22 {
+		t.Errorf("Default height: got %d, want 22", modal.height)
 	}
 }
 
@@ -52,6 +53,21 @@ func TestNoteModal_SetNote(t *testing.T) {
 	// Note should be set
 	if modal.note != note {
 		t.Error("Note should be set to provided note")
+	}
+
+	// Focus should start on type selector
+	if modal.focus != noteModalFocusType {
+		t.Errorf("Focus should start on type, got %d", modal.focus)
+	}
+
+	// Type index should match the note's type
+	if modal.typeIndex != noteTypeToIndex(note.Type) {
+		t.Errorf("Type index should be %d for %s, got %d", noteTypeToIndex(note.Type), note.Type, modal.typeIndex)
+	}
+
+	// Content should not be modified
+	if modal.contentModified {
+		t.Error("Content should not be marked modified on SetNote")
 	}
 }
 
@@ -81,59 +97,14 @@ func TestNoteModal_Close(t *testing.T) {
 	if modal.note != nil {
 		t.Error("Note should be nil after Close")
 	}
-}
 
-// TestNoteModal_Update tests that Update returns nil (no-op)
-func TestNoteModal_Update(t *testing.T) {
-	t.Parallel()
-
-	modal := NewNoteModal()
-	state := testfixtures.StateWithNotes()
-	modal.SetNote(state.Notes[0])
-
-	// Update should return nil for any message
-	cmd := modal.Update(tea.KeyPressMsg{Text: "esc"})
-	if cmd != nil {
-		t.Error("Update should return nil for key messages")
-	}
-
-	cmd = modal.Update(tea.WindowSizeMsg{Width: 100, Height: 50})
-	if cmd != nil {
-		t.Error("Update should return nil for window size messages")
+	// Content modified should be reset
+	if modal.contentModified {
+		t.Error("Content modified should be reset after Close")
 	}
 }
 
-// --- NoteModal Command Execution Tests ---
-
-func TestNoteModal_Update_ReturnsNilForAllMessages(t *testing.T) {
-	t.Parallel()
-
-	modal := NewNoteModal()
-	state := testfixtures.StateWithNotes()
-	modal.SetNote(state.Notes[0])
-
-	// Test that Update returns nil for all message types
-	testCases := []struct {
-		name string
-		msg  tea.Msg
-	}{
-		{"KeyPressMsg enter", tea.KeyPressMsg{Text: "enter"}},
-		{"KeyPressMsg esc", tea.KeyPressMsg{Text: "esc"}},
-		{"KeyPressMsg space", tea.KeyPressMsg{Text: " "}},
-		{"KeyPressMsg arrow", tea.KeyPressMsg{Text: "up"}},
-		{"WindowSizeMsg", tea.WindowSizeMsg{Width: 100, Height: 50}},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := modal.Update(tc.msg)
-			if cmd != nil {
-				t.Errorf("NoteModal.Update should always return nil, got command for %s", tc.name)
-			}
-		})
-	}
-}
-
+// TestNoteModal_Update_WhenNotVisible tests Update when modal is not visible
 func TestNoteModal_Update_WhenNotVisible(t *testing.T) {
 	t.Parallel()
 
@@ -146,6 +117,7 @@ func TestNoteModal_Update_WhenNotVisible(t *testing.T) {
 	}
 }
 
+// TestNoteModal_Update_WhenNilNote tests Update when note is nil
 func TestNoteModal_Update_WhenNilNote(t *testing.T) {
 	t.Parallel()
 
@@ -157,6 +129,329 @@ func TestNoteModal_Update_WhenNilNote(t *testing.T) {
 		t.Error("Update should return nil when note is nil")
 	}
 }
+
+// TestNoteModal_ESC_ClosesModal tests that ESC closes the modal when not in textarea
+func TestNoteModal_ESC_ClosesModal(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Focus is on type selector (default)
+	cmd := modal.Update(tea.KeyPressMsg{Text: "esc"})
+	_ = cmd
+
+	if modal.IsVisible() {
+		t.Error("ESC should close modal when not in textarea")
+	}
+}
+
+// TestNoteModal_ESC_BlursTextarea tests that ESC blurs textarea when textarea is focused
+func TestNoteModal_ESC_BlursTextarea(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Tab to content textarea
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	if modal.focus != noteModalFocusContent {
+		t.Fatalf("Expected focus on content, got %d", modal.focus)
+	}
+
+	// ESC should blur textarea and move focus to type
+	modal.Update(tea.KeyPressMsg{Text: "esc"})
+
+	if modal.focus != noteModalFocusType {
+		t.Errorf("ESC in textarea should move focus to type, got %d", modal.focus)
+	}
+	if !modal.IsVisible() {
+		t.Error("Modal should still be visible after ESC from textarea")
+	}
+}
+
+// TestNoteModal_TabCycling tests focus cycling with tab
+func TestNoteModal_TabCycling(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Start: type
+	if modal.focus != noteModalFocusType {
+		t.Fatalf("Expected initial focus on type, got %d", modal.focus)
+	}
+
+	// Tab: type -> content
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	if modal.focus != noteModalFocusContent {
+		t.Errorf("Tab from type should go to content, got %d", modal.focus)
+	}
+
+	// Tab: content -> delete
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	if modal.focus != noteModalFocusDelete {
+		t.Errorf("Tab from content should go to delete, got %d", modal.focus)
+	}
+
+	// Tab: delete -> type (wraps)
+	modal.Update(tea.KeyPressMsg{Text: "tab"})
+	if modal.focus != noteModalFocusType {
+		t.Errorf("Tab from delete should wrap to type, got %d", modal.focus)
+	}
+}
+
+// TestNoteModal_ShiftTabCycling tests reverse focus cycling with shift+tab
+func TestNoteModal_ShiftTabCycling(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Start: type
+	// Shift+Tab: type -> delete (wraps backward)
+	modal.Update(tea.KeyPressMsg{Text: "shift+tab"})
+	if modal.focus != noteModalFocusDelete {
+		t.Errorf("Shift+tab from type should wrap to delete, got %d", modal.focus)
+	}
+
+	// Shift+Tab: delete -> content
+	modal.Update(tea.KeyPressMsg{Text: "shift+tab"})
+	if modal.focus != noteModalFocusContent {
+		t.Errorf("Shift+tab from delete should go to content, got %d", modal.focus)
+	}
+
+	// Shift+Tab: content -> type
+	modal.Update(tea.KeyPressMsg{Text: "shift+tab"})
+	if modal.focus != noteModalFocusType {
+		t.Errorf("Shift+tab from content should go to type, got %d", modal.focus)
+	}
+}
+
+// TestNoteModal_TypeCycling tests type cycling with left/right arrows
+func TestNoteModal_TypeCycling(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0]) // learning (index 0)
+
+	// Focus should be on type selector
+	if modal.focus != noteModalFocusType {
+		t.Fatalf("Expected focus on type, got %d", modal.focus)
+	}
+
+	// Right arrow should cycle to stuck (index 1)
+	cmd := modal.Update(tea.KeyPressMsg{Text: "right"})
+	if modal.typeIndex != 1 {
+		t.Errorf("Expected type index 1 (stuck), got %d", modal.typeIndex)
+	}
+	// Should emit UpdateNoteTypeMsg
+	if cmd == nil {
+		t.Fatal("Expected command from type cycling")
+	}
+	msg := cmd()
+	typeMsg, ok := msg.(UpdateNoteTypeMsg)
+	if !ok {
+		t.Fatalf("Expected UpdateNoteTypeMsg, got %T", msg)
+	}
+	if typeMsg.Type != "stuck" {
+		t.Errorf("Expected type 'stuck', got '%s'", typeMsg.Type)
+	}
+
+	// Left arrow should cycle back to learning (index 0)
+	cmd = modal.Update(tea.KeyPressMsg{Text: "left"})
+	if modal.typeIndex != 0 {
+		t.Errorf("Expected type index 0 (learning), got %d", modal.typeIndex)
+	}
+	msg = cmd()
+	typeMsg, ok = msg.(UpdateNoteTypeMsg)
+	if !ok {
+		t.Fatalf("Expected UpdateNoteTypeMsg, got %T", msg)
+	}
+	if typeMsg.Type != "learning" {
+		t.Errorf("Expected type 'learning', got '%s'", typeMsg.Type)
+	}
+}
+
+// TestNoteModal_TypeCycling_Wraps tests that type cycling wraps around
+func TestNoteModal_TypeCycling_Wraps(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0]) // learning (index 0)
+
+	// Left from first should wrap to last (decision)
+	cmd := modal.Update(tea.KeyPressMsg{Text: "left"})
+	if modal.typeIndex != 3 {
+		t.Errorf("Expected type index 3 (decision), got %d", modal.typeIndex)
+	}
+	msg := cmd()
+	typeMsg := msg.(UpdateNoteTypeMsg)
+	if typeMsg.Type != "decision" {
+		t.Errorf("Expected type 'decision', got '%s'", typeMsg.Type)
+	}
+}
+
+// TestNoteModal_DeleteButton tests delete button interaction
+func TestNoteModal_DeleteButton(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Tab to delete button
+	modal.Update(tea.KeyPressMsg{Text: "tab"}) // type -> content
+	modal.Update(tea.KeyPressMsg{Text: "tab"}) // content -> delete
+
+	if modal.focus != noteModalFocusDelete {
+		t.Fatalf("Expected focus on delete, got %d", modal.focus)
+	}
+
+	// Enter on delete button should emit RequestDeleteNoteMsg
+	cmd := modal.Update(tea.KeyPressMsg{Text: "enter"})
+	if cmd == nil {
+		t.Fatal("Expected command from delete button")
+	}
+	msg := cmd()
+	deleteMsg, ok := msg.(RequestDeleteNoteMsg)
+	if !ok {
+		t.Fatalf("Expected RequestDeleteNoteMsg, got %T", msg)
+	}
+	if deleteMsg.ID != "NOT-1" {
+		t.Errorf("Expected note ID 'NOT-1', got '%s'", deleteMsg.ID)
+	}
+}
+
+// TestNoteModal_DeleteShortcut tests 'd' shortcut for delete
+func TestNoteModal_DeleteShortcut(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// 'd' from type selector should emit delete request
+	cmd := modal.Update(tea.KeyPressMsg{Text: "d"})
+	if cmd == nil {
+		t.Fatal("Expected command from 'd' shortcut")
+	}
+	msg := cmd()
+	deleteMsg, ok := msg.(RequestDeleteNoteMsg)
+	if !ok {
+		t.Fatalf("Expected RequestDeleteNoteMsg, got %T", msg)
+	}
+	if deleteMsg.ID != "NOT-1" {
+		t.Errorf("Expected note ID 'NOT-1', got '%s'", deleteMsg.ID)
+	}
+}
+
+// TestNoteModal_DeleteShortcut_NotInTextarea tests that 'd' doesn't trigger delete in textarea
+func TestNoteModal_DeleteShortcut_NotInTextarea(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// Tab to textarea
+	modal.Update(tea.KeyPressMsg{Text: "tab"}) // type -> content
+	if modal.focus != noteModalFocusContent {
+		t.Fatalf("Expected focus on content, got %d", modal.focus)
+	}
+
+	// 'd' in textarea should type 'd', not delete
+	cmd := modal.Update(tea.KeyPressMsg{Text: "d"})
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(RequestDeleteNoteMsg); ok {
+			t.Error("'d' in textarea should not trigger delete")
+		}
+	}
+}
+
+// TestNoteModal_ContentEditing tests content save with ctrl+enter
+func TestNoteModal_ContentEditing(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	note := &session.Note{
+		ID:        "NOT-1",
+		Content:   "Original content",
+		Type:      "learning",
+		CreatedAt: testfixtures.FixedTime,
+		UpdatedAt: testfixtures.FixedTime,
+		Iteration: 1,
+	}
+	modal.SetNote(note)
+
+	// Tab to textarea
+	modal.Update(tea.KeyPressMsg{Text: "tab"}) // type -> content
+
+	// Type some text (modify content)
+	modal.Update(tea.KeyPressMsg{Text: "x"})
+
+	// Content should be modified
+	if !modal.contentModified {
+		t.Error("Content should be marked modified after typing")
+	}
+
+	// ctrl+enter should save
+	cmd := modal.Update(tea.KeyPressMsg{Text: "ctrl+enter"})
+	if cmd == nil {
+		t.Fatal("Expected command from ctrl+enter save")
+	}
+	msg := cmd()
+	contentMsg, ok := msg.(UpdateNoteContentMsg)
+	if !ok {
+		t.Fatalf("Expected UpdateNoteContentMsg, got %T", msg)
+	}
+	if contentMsg.ID != "NOT-1" {
+		t.Errorf("Expected note ID 'NOT-1', got '%s'", contentMsg.ID)
+	}
+}
+
+// TestNoteModal_CtrlEnter_NoOpWhenUnmodified tests ctrl+enter with unmodified content
+func TestNoteModal_CtrlEnter_NoOpWhenUnmodified(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	modal.SetNote(state.Notes[0])
+
+	// ctrl+enter without modification should be a no-op
+	cmd := modal.Update(tea.KeyPressMsg{Text: "ctrl+enter"})
+	if cmd != nil {
+		t.Error("ctrl+enter with no modifications should return nil")
+	}
+}
+
+// TestNoteModal_Note_ReturnsCurrentNote tests the Note() getter
+func TestNoteModal_Note_ReturnsCurrentNote(t *testing.T) {
+	t.Parallel()
+
+	modal := NewNoteModal()
+	state := testfixtures.StateWithNotes()
+	note := state.Notes[0]
+	modal.SetNote(note)
+
+	if modal.Note() != note {
+		t.Error("Note() should return the current note")
+	}
+
+	modal.Close()
+	if modal.Note() != nil {
+		t.Error("Note() should return nil after Close")
+	}
+}
+
+// --- NoteModal Rendering Tests ---
 
 // TestNoteModal_InvisibleDoesNotRender tests that invisible modal doesn't render
 func TestNoteModal_InvisibleDoesNotRender(t *testing.T) {
@@ -427,11 +722,40 @@ func TestNoteModal_Centering(t *testing.T) {
 	rendered := scr.Render()
 
 	// Modal should have content in the center, not at edges
-	// This is verified via visual inspection of the golden file
-	// but we can do a basic sanity check
 	if len(rendered) == 0 {
 		t.Error("Modal should render content")
 	}
 }
 
-// compareNoteModalGolden compares rendered output with golden file
+// TestNoteModal_TypeBadgesRendering tests that all type badges render correctly
+func TestNoteModal_TypeBadgesRendering(t *testing.T) {
+	testCases := []struct {
+		name      string
+		noteType  string
+		typeIndex int
+	}{
+		{"Learning type", "learning", 0},
+		{"Stuck type", "stuck", 1},
+		{"Tip type", "tip", 2},
+		{"Decision type", "decision", 3},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			modal := NewNoteModal()
+			state := testfixtures.StateWithNotes()
+			modal.SetNote(state.Notes[tc.typeIndex])
+
+			// Verify type index is correct
+			if modal.typeIndex != tc.typeIndex {
+				t.Errorf("Expected type index %d for %s, got %d", tc.typeIndex, tc.noteType, modal.typeIndex)
+			}
+
+			// Verify badge rendering doesn't panic
+			badges := modal.renderTypeBadges()
+			if badges == "" {
+				t.Error("Type badges should not be empty")
+			}
+		})
+	}
+}

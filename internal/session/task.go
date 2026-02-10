@@ -300,6 +300,94 @@ func (s *Store) TaskPriority(ctx context.Context, session string, params TaskPri
 	return err
 }
 
+// TaskContentParams represents the parameters for updating task content.
+type TaskContentParams struct {
+	ID        string `json:"id"`      // Task ID (exact match)
+	Content   string `json:"content"` // New content text
+	Iteration int    `json:"iteration"`
+}
+
+// TaskContent updates the content text of an existing task.
+func (s *Store) TaskContent(ctx context.Context, session string, params TaskContentParams) error {
+	if params.ID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	if params.Content == "" {
+		return fmt.Errorf("content is required")
+	}
+
+	// Load current state to verify task exists
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+	if _, exists := state.Tasks[params.ID]; !exists {
+		return fmt.Errorf("task not found: %s", params.ID)
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"task_id":   params.ID,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeTask,
+		Action:  "content",
+		Data:    params.Content,
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
+// TaskDeleteParams represents the parameters for deleting a task.
+type TaskDeleteParams struct {
+	ID        string `json:"id"`        // Task ID (exact match)
+	Iteration int    `json:"iteration"` // Current iteration
+}
+
+// TaskDelete removes a task from the session.
+// The task must exist. This publishes a "delete" event that will remove the task from state.
+func (s *Store) TaskDelete(ctx context.Context, session string, params TaskDeleteParams) error {
+	// Validate required fields
+	if params.ID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+
+	// Load current state to verify task exists
+	state, err := s.LoadState(ctx, session)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// Verify task exists
+	if _, exists := state.Tasks[params.ID]; !exists {
+		return fmt.Errorf("task not found: %s", params.ID)
+	}
+
+	// Create event metadata
+	meta, _ := json.Marshal(map[string]any{
+		"task_id":   params.ID,
+		"iteration": params.Iteration,
+	})
+
+	// Create and publish event
+	event := Event{
+		Session: session,
+		Type:    nats.EventTypeTask,
+		Action:  "delete",
+		Data:    params.ID, // Store task ID in data field for convenience
+		Meta:    meta,
+	}
+
+	_, err = s.PublishEvent(ctx, event)
+	return err
+}
+
 // TaskDependsParams represents the parameters for adding a task dependency.
 type TaskDependsParams struct {
 	ID        string `json:"id"`         // Task ID or prefix (8+ chars)

@@ -15,7 +15,7 @@ Iteratr is a Go TUI application built with BubbleTea v2 that manages iterative d
 ## Component Tree
 
 ```
-App (internal/tui/app.go:37-1158)
+App (internal/tui/app.go:37-1415)
 ├── Root BubbleTea Model
 ├── Implements: tea.Model (Init, Update, View)
 ├── State Management: session.Store, NATS event subscription, Orchestrator control
@@ -139,16 +139,30 @@ App (internal/tui/app.go:37-1158)
 │    └── Message Handling:
 │        └── KeyPress: esc (close)
 │
-├─── NoteModal (internal/tui/note_modal.go:12-220) [Modal Overlay]
-│    ├── Note detail view
+├─── NoteModal (internal/tui/note_modal.go:42-597) [Modal Overlay]
+│    ├── Interactive note editor modal
 │    ├── Visibility: Controlled by App.noteModal.visible
-│    ├── Renders: Centered modal (60x14) with note details
-│    ├── Content: ID, Type badge, Content, Timestamp
+│    ├── Child Components:
+│    │   └── textarea.Model (bubbles v2 - content editing, 500 char limit)
+│    ├── Focus Zones: noteModalFocusType, noteModalFocusContent, noteModalFocusDelete
+│    ├── Renders: Centered modal (60x22) with interactive controls
+│    ├── Content: ID, Type selector (badges), Content textarea, Created/Updated timestamps, Delete button, hint bar
+│    ├── Type Selection: learning, stuck, tip, decision (cycle with left/right, immediate save via UpdateNoteTypeMsg)
 │    ├── Mouse Interaction:
 │    │   ├── Click outside → closes modal
 │    │   └── Click on different note → switches note
 │    └── Message Handling:
-│        └── KeyPress: esc (close)
+│        ├── KeyPress: Tab/Shift+Tab (cycle focus zones)
+│        ├── KeyPress: left/right (cycle type when Type focused)
+│        ├── KeyPress: ctrl+enter (save content → UpdateNoteContentMsg)
+│        ├── KeyPress: enter/space (delete when Delete focused → RequestDeleteNoteMsg)
+│        ├── KeyPress: d (delete shortcut from non-textarea focus → RequestDeleteNoteMsg)
+│        ├── KeyPress: esc (blur textarea if focused, else close modal)
+│        ├── PasteMsg → forwarded to textarea when Content focused (with char limit truncation + ShowToastMsg)
+│        ├── UpdateNoteTypeMsg → emitted on type cycle (App → store.NoteType())
+│        ├── UpdateNoteContentMsg → emitted on ctrl+enter save (App → store.NoteContent())
+│        ├── RequestDeleteNoteMsg → emitted on delete (App → confirmation Dialog → DeleteNoteMsg → store.NoteDelete())
+│        └── DeleteNoteMsg → closes modal, clears sidebar selection
 │
 ├─── NoteInputModal (internal/tui/note_input_modal.go:14-512) [Modal Overlay]
 │    ├── Interactive note creation modal
@@ -351,8 +365,8 @@ App.handleKeyPress(KeyPressMsg)
     → ctrl+x n: create note (opens NoteInputModal)
     → ctrl+x t: create task (opens TaskInputModal)
     → ctrl+x p: toggle pause/resume
-  Priority 3: TaskModal visible → ESC closes
-  Priority 4: NoteModal visible → ESC closes
+  Priority 3: TaskModal visible → forward all keys to TaskModal.Update()
+  Priority 4: NoteModal visible → forward all keys to NoteModal.Update()
   Priority 5: NoteInputModal visible → forward to modal Update()
   Priority 6: TaskInputModal visible → forward to modal Update()
   Priority 7: SubagentModal visible → ESC closes, else forward scroll keys
@@ -417,14 +431,14 @@ App.View()
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `internal/tui/app.go` | Root BubbleTea model, message routing, layout | 1158 |
+| `internal/tui/app.go` | Root BubbleTea model, message routing, layout | 1415 |
 | `internal/tui/dashboard.go` | Main content area, focus management | 325 |
 | `internal/tui/agent.go` | Agent conversation display, user input | 1024 |
 | `internal/tui/sidebar.go` | Tasks/notes lists with logo and pulse animation | 878 |
 | `internal/tui/status.go` | Status bar with session/git info, pause state | 374 |
 | `internal/tui/logs.go` | Event log modal overlay | 223 |
 | `internal/tui/modal.go` | Task detail modal | 303 |
-| `internal/tui/note_modal.go` | Note detail modal | 220 |
+| `internal/tui/note_modal.go` | Interactive note editor modal | 597 |
 | `internal/tui/note_input_modal.go` | Note creation modal with textarea | 512 |
 | `internal/tui/task_input_modal.go` | Task creation modal with textarea | 443 |
 | `internal/tui/subagent_modal.go` | Subagent session viewer modal | 630 |
