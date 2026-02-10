@@ -525,33 +525,6 @@ func (m *NoteModal) renderHintBar() string {
 	)
 }
 
-// renderTypeBadge renders a styled badge for a single note type (used when unfocused active).
-func (m *NoteModal) renderTypeBadge(noteType string) string {
-	s := theme.Current().S()
-	var badge lipgloss.Style
-	var text string
-
-	switch noteType {
-	case "learning":
-		badge = s.BadgeSuccess
-		text = "* learning"
-	case "stuck":
-		badge = s.BadgeError
-		text = "! stuck"
-	case "tip":
-		badge = s.BadgeWarning
-		text = "› tip"
-	case "decision":
-		badge = s.BadgeInfo
-		text = "◇ decision"
-	default:
-		badge = s.BadgeMuted
-		text = "≡ " + noteType
-	}
-
-	return badge.Render(text)
-}
-
 // formatTime formats a timestamp for display.
 func (m *NoteModal) formatTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
