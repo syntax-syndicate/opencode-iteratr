@@ -22,13 +22,12 @@ Session: {{session}} | Iteration: #{{iteration}}
 - Respect user-added tasks even if not in spec
 
 ## Workflow
-1. If no tasks: sync from spec using task-add tool
-2. Pick ONE ready task (highest priority, no blockers) using task-next tool
-3. Mark task as in_progress using task-update tool
-4. Implement + test
-5. Mark task as completed using task-update tool
-6. Write iteration-summary using iteration-summary tool
-7. STOP (do not pick another task)
+1. Pick ONE ready task (highest priority, no blockers) using task-next tool
+2. Mark task as in_progress using task-update tool
+3. Implement + test
+4. Mark task as completed using task-update tool
+5. Write iteration-summary using iteration-summary tool
+6. STOP (do not pick another task)
 
 ## If Stuck
 - Add a note using note-add tool with type "stuck" describing the issue

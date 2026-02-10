@@ -156,6 +156,45 @@ func BuildPrompt(ctx context.Context, cfg BuildConfig) (string, error) {
 	return result, nil
 }
 
+// BuildIteration0Prompt builds the prompt for Iteration #0 (planning phase).
+// Uses the Iteration0Template with a minimal variable set (spec, tasks, extra).
+func BuildIteration0Prompt(ctx context.Context, cfg BuildConfig) (string, error) {
+	logger.Debug("Building Iteration #0 prompt for session: %s", cfg.SessionName)
+
+	// Load session state
+	state, err := cfg.Store.LoadState(ctx, cfg.SessionName)
+	if err != nil {
+		logger.Error("Failed to load session state: %v", err)
+		return "", fmt.Errorf("failed to load session state: %w", err)
+	}
+
+	// Load spec file content
+	specContent := ""
+	if cfg.SpecPath != "" {
+		logger.Debug("Loading spec file: %s", cfg.SpecPath)
+		data, err := os.ReadFile(cfg.SpecPath)
+		if err != nil {
+			logger.Error("Failed to read spec file: %v", err)
+			return "", fmt.Errorf("failed to read spec file: %w", err)
+		}
+		specContent = string(data)
+		logger.Debug("Spec file loaded: %d bytes", len(specContent))
+	}
+
+	// Format state data (minimal set for planning)
+	vars := Variables{
+		Session: cfg.SessionName,
+		Spec:    specContent,
+		Tasks:   formatTasks(state),
+		Extra:   cfg.ExtraInstructions,
+	}
+
+	// Render template with variables
+	result := Render(Iteration0Template, vars)
+	logger.Debug("Iteration #0 prompt rendered: %d characters", len(result))
+	return result, nil
+}
+
 // formatNotes formats notes grouped by type for template injection.
 // Returns empty string if no notes (section header will be omitted).
 func formatNotes(state *session.State) string {
@@ -192,7 +231,7 @@ func formatNotes(state *session.State) string {
 // Always includes section header since workflow requires checking tasks.
 func formatTasks(state *session.State) string {
 	if len(state.Tasks) == 0 {
-		return "## Current Tasks\nNo tasks yet - sync tasks from spec before starting work."
+		return "## Current Tasks\nNo tasks loaded."
 	}
 
 	// Group tasks by status

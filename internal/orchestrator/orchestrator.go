@@ -218,7 +218,13 @@ func (o *Orchestrator) Run() error {
 	}
 
 	// Determine starting iteration number
-	startIteration := len(state.Iterations) + 1
+	// Fresh sessions start at iteration 0 (planning phase); resumed sessions skip to next iteration
+	startIteration := len(state.Iterations)
+	if startIteration == 0 {
+		logger.Debug("Fresh session, will run Iteration #0 (planning phase)")
+	} else {
+		startIteration++ // Resume at next iteration after last completed
+	}
 	logger.Debug("Starting from iteration %d (found %d previous iterations)", startIteration, len(state.Iterations))
 
 	// Check if session was marked complete (e.g., by external process or previous run)
@@ -376,7 +382,21 @@ func (o *Orchestrator) Run() error {
 		}
 	}()
 
+	// Run Iteration #0 (planning phase) for fresh sessions
+	// No hooks are executed during iteration #0 — hooks are set up after.
+	if startIteration == 0 {
+		if err := o.runIteration0(); err != nil {
+			if o.ctx.Err() != nil {
+				logger.Info("Context cancelled during Iteration #0")
+				return nil
+			}
+			return fmt.Errorf("iteration #0 failed: %w", err)
+		}
+		startIteration = 1 // Main loop starts at iteration 1
+	}
+
 	// Subscribe to task completion events for on_task_complete hooks
+	// (after iteration #0 so hooks don't fire during planning phase)
 	var taskCompleteSub *natsgo.Subscription
 	if o.hooksConfig != nil && len(o.hooksConfig.Hooks.OnTaskComplete) > 0 {
 		logger.Debug("Subscribing to task completion events for on_task_complete hooks")
@@ -465,7 +485,7 @@ func (o *Orchestrator) Run() error {
 		}()
 	}
 
-	// Execute session_start hooks if configured (before iteration loop)
+	// Execute session_start hooks if configured (after iteration #0, before main loop)
 	if o.hooksConfig != nil && len(o.hooksConfig.Hooks.SessionStart) > 0 {
 		logger.Debug("Executing %d session_start hook(s)", len(o.hooksConfig.Hooks.SessionStart))
 		hookVars := hooks.Variables{
@@ -874,6 +894,57 @@ func (o *Orchestrator) Run() error {
 		} else {
 			logger.Info("Session_end hooks completed successfully")
 		}
+	}
+
+	return nil
+}
+
+// runIteration0 executes Iteration #0 (planning phase) for fresh sessions.
+// Uses the same MCP server as the main loop but with a planning-only prompt
+// that instructs the agent to load all tasks from the spec.
+// No hooks are executed during iteration #0.
+func (o *Orchestrator) runIteration0() error {
+	logger.Info("=== Starting Iteration #0 (Planning Phase) ===")
+
+	// Log iteration start
+	if err := o.store.IterationStart(o.ctx, o.cfg.SessionName, 0); err != nil {
+		return fmt.Errorf("failed to log iteration #0 start: %w", err)
+	}
+
+	// Send iteration start message to TUI
+	if o.tuiProgram != nil {
+		o.tuiProgram.Send(tui.IterationStartMsg{Number: 0})
+	}
+
+	// Build the planning prompt using the Iteration #0 template
+	prompt, err := template.BuildIteration0Prompt(o.ctx, template.BuildConfig{
+		SessionName:       o.cfg.SessionName,
+		Store:             o.store,
+		IterationNumber:   0,
+		SpecPath:          o.cfg.SpecPath,
+		ExtraInstructions: o.cfg.ExtraInstructions,
+		NATSPort:          o.natsPort,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to build iteration #0 prompt: %w", err)
+	}
+	logger.Debug("Iteration #0 prompt built, length: %d characters", len(prompt))
+
+	// Run the agent using the main MCP server (same as iteration loop)
+	logger.Info("Running agent for Iteration #0")
+	if err := o.runner.RunIteration(o.ctx, prompt, ""); err != nil {
+		return fmt.Errorf("iteration #0 agent execution failed: %w", err)
+	}
+
+	// Log iteration complete
+	if err := o.store.IterationComplete(o.ctx, o.cfg.SessionName, 0); err != nil {
+		return fmt.Errorf("failed to log iteration #0 complete: %w", err)
+	}
+
+	logger.Info("=== Iteration #0 (Planning Phase) completed ===")
+
+	if o.cfg.Headless {
+		fmt.Printf("\n✓ Iteration #0 (planning) complete\n\n")
 	}
 
 	return nil
