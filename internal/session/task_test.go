@@ -584,6 +584,102 @@ func TestTaskOperations(t *testing.T) {
 		}
 	})
 
+	t.Run("TaskList sorts by priority then ID", func(t *testing.T) {
+		sortSession := "test-session-task-list-sort"
+
+		// Create tasks in non-priority order
+		t1, _ := store.TaskAdd(ctx, sortSession, TaskAddParams{
+			Content:   "Low priority task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, sortSession, TaskPriorityParams{
+			ID: t1.ID, Priority: 3, Iteration: 1,
+		})
+
+		t2, _ := store.TaskAdd(ctx, sortSession, TaskAddParams{
+			Content:   "Critical task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, sortSession, TaskPriorityParams{
+			ID: t2.ID, Priority: 0, Iteration: 1,
+		})
+
+		t3, _ := store.TaskAdd(ctx, sortSession, TaskAddParams{
+			Content:   "High priority task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, sortSession, TaskPriorityParams{
+			ID: t3.ID, Priority: 1, Iteration: 1,
+		})
+
+		t4, _ := store.TaskAdd(ctx, sortSession, TaskAddParams{
+			Content:   "Another high priority task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, sortSession, TaskPriorityParams{
+			ID: t4.ID, Priority: 1, Iteration: 1,
+		})
+
+		result, err := store.TaskList(ctx, sortSession)
+		if err != nil {
+			t.Fatalf("TaskList failed: %v", err)
+		}
+
+		if len(result.Remaining) != 4 {
+			t.Fatalf("expected 4 remaining tasks, got %d", len(result.Remaining))
+		}
+
+		// Should be sorted: priority 0 (t2), priority 1 (t3 before t4 by ID), priority 3 (t1)
+		if result.Remaining[0].ID != t2.ID {
+			t.Errorf("expected first task to be critical (P0) %s, got %s", t2.ID, result.Remaining[0].ID)
+		}
+		if result.Remaining[1].Priority != 1 || result.Remaining[2].Priority != 1 {
+			t.Error("expected second and third tasks to be P1")
+		}
+		// Among equal priorities, lower ID comes first
+		if result.Remaining[1].ID > result.Remaining[2].ID {
+			t.Errorf("expected P1 tasks sorted by ID, got %s before %s", result.Remaining[1].ID, result.Remaining[2].ID)
+		}
+		if result.Remaining[3].ID != t1.ID {
+			t.Errorf("expected last task to be low priority (P3) %s, got %s", t1.ID, result.Remaining[3].ID)
+		}
+	})
+
+	t.Run("TaskNext picks lowest ID among equal priorities", func(t *testing.T) {
+		tieSession := "test-session-task-next-tie"
+
+		// Create multiple tasks with same priority
+		t1, _ := store.TaskAdd(ctx, tieSession, TaskAddParams{
+			Content:   "First equal task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, tieSession, TaskPriorityParams{
+			ID: t1.ID, Priority: 1, Iteration: 1,
+		})
+
+		t2, _ := store.TaskAdd(ctx, tieSession, TaskAddParams{
+			Content:   "Second equal task",
+			Iteration: 1,
+		})
+		_ = store.TaskPriority(ctx, tieSession, TaskPriorityParams{
+			ID: t2.ID, Priority: 1, Iteration: 1,
+		})
+
+		// Run multiple times to verify determinism (map iteration is random)
+		for i := 0; i < 10; i++ {
+			nextTask, err := store.TaskNext(ctx, tieSession)
+			if err != nil {
+				t.Fatalf("TaskNext failed on iteration %d: %v", i, err)
+			}
+			if nextTask == nil {
+				t.Fatalf("expected a task on iteration %d, got nil", i)
+			}
+			if nextTask.ID != t1.ID {
+				t.Errorf("iteration %d: expected lowest ID %s, got %s", i, t1.ID, nextTask.ID)
+			}
+		}
+	})
+
 	t.Run("TaskAdd rejects duplicate content", func(t *testing.T) {
 		// Use a dedicated session
 		dupSession := "test-session-dup-content"

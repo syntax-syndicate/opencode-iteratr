@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -392,6 +393,21 @@ func (s *Store) TaskList(ctx context.Context, session string) (*TaskListResult, 
 		}
 	}
 
+	// Sort each group by priority (ascending), then by ID for deterministic order
+	sortTasks := func(tasks []*Task) {
+		sort.Slice(tasks, func(i, j int) bool {
+			if tasks[i].Priority != tasks[j].Priority {
+				return tasks[i].Priority < tasks[j].Priority
+			}
+			return tasks[i].ID < tasks[j].ID
+		})
+	}
+	sortTasks(result.Remaining)
+	sortTasks(result.InProgress)
+	sortTasks(result.Completed)
+	sortTasks(result.Blocked)
+	sortTasks(result.Cancelled)
+
 	return result, nil
 }
 
@@ -455,7 +471,9 @@ func (s *Store) TaskNext(ctx context.Context, session string) (*Task, error) {
 		}
 
 		// This task is ready - compare priority (lower is higher priority)
-		if bestTask == nil || task.Priority < bestTask.Priority {
+		// Use ID as tiebreaker for deterministic selection among equal priorities
+		if bestTask == nil || task.Priority < bestTask.Priority ||
+			(task.Priority == bestTask.Priority && task.ID < bestTask.ID) {
 			bestTask = task
 		}
 	}
