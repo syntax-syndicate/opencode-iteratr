@@ -232,6 +232,14 @@ func (s *StatusBar) buildRight() string {
 			theme.Current().S().HintDesc.Render("(awaiting key...)")
 	}
 
+	// Show restart hint when session is complete
+	if s.state != nil && s.state.Complete {
+		if s.sidebarHidden {
+			return RenderHintBar(KeyCtrlXR, "restart", KeyCtrlXB, "sidebar", KeyCtrlXL, "logs", KeyCtrlC, "quit")
+		}
+		return RenderHintBar(KeyCtrlXR, "restart", KeyCtrlXL, "logs", KeyCtrlC, "quit")
+	}
+
 	// Show sidebar hint when hidden
 	if s.sidebarHidden {
 		return RenderHintBar(KeyCtrlXB, "sidebar", KeyCtrlXP, "pause", KeyCtrlXL, "logs", KeyCtrlC, "quit")

@@ -21,6 +21,7 @@ const (
 	KeyCtrlXN   = "ctrl+x n" // Create note
 	KeyCtrlXT   = "ctrl+x t" // Create task
 	KeyCtrlXP   = "ctrl+x p" // Pause/resume
+	KeyCtrlXR   = "ctrl+x r" // Restart completed session
 	KeyPgUpDown = "pgup/pgdn"
 	KeyHomeEnd  = "home/end"
 	KeyI        = "i"

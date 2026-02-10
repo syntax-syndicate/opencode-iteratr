@@ -15,7 +15,7 @@ Iteratr is a Go TUI application built with BubbleTea v2 that manages iterative d
 ## Component Tree
 
 ```
-App (internal/tui/app.go:37-1415)
+App (internal/tui/app.go:37-1445)
 ├── Root BubbleTea Model
 ├── Implements: tea.Model (Init, Update, View)
 ├── State Management: session.Store, NATS event subscription, Orchestrator control
@@ -98,7 +98,7 @@ App (internal/tui/app.go:37-1415)
 │        ├── noteIndex (ID → position lookup)
 │        └── pulsedTaskIDs (track status changes)
 │
-├─── StatusBar (internal/tui/status.go:18-374)
+├─── StatusBar (internal/tui/status.go:18-394)
 │    ├── Session info, git status, and keybinding hints
 │    ├── Implements: FullComponent
 │    ├── Child Components:
@@ -106,7 +106,7 @@ App (internal/tui/app.go:37-1415)
 │    ├── Layout: Single row at top of screen
 │    ├── Renders: "iteratr | session | branch* hash | H:MM:SS | Iteration #N | stats | [spinner] | PAUSED/PAUSING | hints"
 │    ├── Left Side: title, session name, git info, duration, iteration number, task stats, file count, spinner, pause state
-│    ├── Right Side: keybinding hints (ctrl+x p pause, ctrl+x l logs, ctrl+c quit)
+│    ├── Right Side: keybinding hints (ctrl+x r restart [when complete], ctrl+x p pause, ctrl+x l logs, ctrl+c quit)
 │    ├── Prefix Mode: Shows "(awaiting key...)" when waiting for second key
 │    └── Message Handling:
 │        ├── StateUpdateMsg → updates task stats, starts/stops spinner
@@ -339,6 +339,16 @@ ctrl+x p → togglePause()
   → StatusBar displays PAUSING... (agent busy) or PAUSED (agent idle)
 ```
 
+### Restart Session Flow
+```
+ctrl+x r → restartSession()
+  → Guard: state.Complete must be true (no-op otherwise)
+  → store.SessionRestart(sessionName) (async goroutine)
+  → status.stoppedAt = zero (clear frozen timestamp)
+  → status.StartDurationTick() (resume timer)
+  → ShowToastMsg{"Session restarted"}
+```
+
 ### Subagent Modal Flow
 ```
 Click SubagentMessageItem with sessionID
@@ -365,6 +375,7 @@ App.handleKeyPress(KeyPressMsg)
     → ctrl+x n: create note (opens NoteInputModal)
     → ctrl+x t: create task (opens TaskInputModal)
     → ctrl+x p: toggle pause/resume
+    → ctrl+x r: restart completed session
   Priority 3: TaskModal visible → forward all keys to TaskModal.Update()
   Priority 4: NoteModal visible → forward all keys to NoteModal.Update()
   Priority 5: NoteInputModal visible → forward to modal Update()
@@ -431,11 +442,11 @@ App.View()
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `internal/tui/app.go` | Root BubbleTea model, message routing, layout | 1415 |
+| `internal/tui/app.go` | Root BubbleTea model, message routing, layout | 1445 |
 | `internal/tui/dashboard.go` | Main content area, focus management | 325 |
 | `internal/tui/agent.go` | Agent conversation display, user input | 1024 |
 | `internal/tui/sidebar.go` | Tasks/notes lists with logo and pulse animation | 878 |
-| `internal/tui/status.go` | Status bar with session/git info, pause state | 374 |
+| `internal/tui/status.go` | Status bar with session/git info, pause state | 394 |
 | `internal/tui/logs.go` | Event log modal overlay | 223 |
 | `internal/tui/modal.go` | Task detail modal | 303 |
 | `internal/tui/note_modal.go` | Interactive note editor modal | 597 |
@@ -447,7 +458,7 @@ App.View()
 | `internal/tui/messages.go` | Message item types for conversation display | 1680 |
 | `internal/tui/anim.go` | Animation components (Spinner, Pulse, GradientSpinner) | 229 |
 | `internal/tui/draw.go` | Drawing utilities (DrawText, DrawStyled, DrawPanel) | 122 |
-| `internal/tui/hints.go` | Keybinding hint rendering utilities | 118 |
+| `internal/tui/hints.go` | Keybinding hint rendering utilities | 99 |
 | `internal/tui/markdown.go` | Markdown rendering via glamour | 37 |
 | `internal/tui/styles.go` | Modal title rendering with gradient | 35 |
 | `internal/tui/notes.go` | NotesPanel component (grouped notes view) | 223 |

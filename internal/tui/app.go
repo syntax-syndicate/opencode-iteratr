@@ -610,6 +610,9 @@ func (a *App) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "p":
 			// ctrl+x p -> toggle pause/resume
 			return a, a.togglePause()
+		case "r":
+			// ctrl+x r -> restart completed session
+			return a, a.restartSession()
 		case "ctrl+c", "esc":
 			// Allow escape or ctrl+c to exit prefix mode
 			return a, nil
@@ -943,6 +946,45 @@ func (a *App) togglePause() tea.Cmd {
 			return PauseStateMsg{Paused: false}
 		}
 	}
+}
+
+// restartSession handles the ctrl+x r keyboard shortcut to restart a completed session.
+// Only takes effect when the session is marked complete. It clears the completion flag
+// via SessionRestart and resumes the duration timer, allowing iteration to continue.
+func (a *App) restartSession() tea.Cmd {
+	// Guard: only restart if session is complete
+	if a.store == nil || a.status == nil || a.status.state == nil || !a.status.state.Complete {
+		return nil
+	}
+
+	// Call SessionRestart to clear the completion flag, then send a message
+	// through sendChan to unblock the orchestrator's post-completion loop.
+	// The ordering matters: SessionRestart must complete before the orchestrator
+	// reloads state, so both happen sequentially in the same goroutine.
+	go func() {
+		if err := a.store.SessionRestart(a.ctx, a.sessionName); err != nil {
+			logger.Warn("failed to restart session: %v", err)
+			return
+		}
+		// Signal orchestrator to check state and resume iterations
+		if a.sendChan != nil {
+			select {
+			case a.sendChan <- "Session restarted. Continue with remaining tasks.":
+			default:
+				logger.Warn("sendChan full, restart signal dropped")
+			}
+		}
+	}()
+
+	// Resume the duration timer
+	a.status.stoppedAt = time.Time{} // Clear stopped timestamp
+
+	return tea.Batch(
+		a.status.StartDurationTick(),
+		func() tea.Msg {
+			return ShowToastMsg{Text: "Session restarted"}
+		},
+	)
 }
 
 // handleSidebarToggle toggles the sidebar visibility and manages focus and persistence.
