@@ -1157,3 +1157,123 @@ func TestToolMessageItem_TaggedReadFormat_Truncation(t *testing.T) {
 	require.Contains(t, result, "more lines", "should show truncation hint")
 	require.Contains(t, result, "10 more lines", "should count only content lines for truncation")
 }
+
+// --- renderTodoList Tests ---
+
+func TestRenderTodoList_BasicRendering(t *testing.T) {
+	t.Parallel()
+
+	todos := []any{
+		map[string]any{"content": "First task", "status": "completed", "priority": "high"},
+		map[string]any{"content": "Second task", "status": "in_progress", "priority": "high"},
+		map[string]any{"content": "Third task", "status": "pending", "priority": "medium"},
+	}
+
+	result := renderTodoList(todos, 80)
+
+	require.NotEmpty(t, result, "render should not be empty")
+	require.Contains(t, result, "First task", "should contain first todo content")
+	require.Contains(t, result, "Second task", "should contain second todo content")
+	require.Contains(t, result, "Third task", "should contain third todo content")
+	require.Contains(t, result, "[✓]", "should contain completed checkbox")
+	require.Contains(t, result, "[•]", "should contain in_progress checkbox")
+	require.Contains(t, result, "[ ]", "should contain pending checkbox")
+}
+
+func TestRenderTodoList_CancelledStatus(t *testing.T) {
+	t.Parallel()
+
+	todos := []any{
+		map[string]any{"content": "Cancelled task", "status": "cancelled", "priority": "low"},
+	}
+
+	result := renderTodoList(todos, 80)
+
+	require.Contains(t, result, "[✗]", "should contain cancelled checkbox")
+	require.Contains(t, result, "Cancelled task", "should contain task content")
+}
+
+func TestRenderTodoList_EmptyList(t *testing.T) {
+	t.Parallel()
+
+	result := renderTodoList([]any{}, 80)
+	require.Empty(t, result, "empty todo list should produce empty output")
+}
+
+func TestRenderTodoList_LongContentWraps(t *testing.T) {
+	t.Parallel()
+
+	todos := []any{
+		map[string]any{
+			"content":  "This is a very long todo item that should wrap to multiple lines when rendered at a narrow width",
+			"status":   "pending",
+			"priority": "high",
+		},
+	}
+
+	result := renderTodoList(todos, 40)
+
+	require.NotEmpty(t, result, "render should not be empty")
+	lines := strings.Split(result, "\n")
+	require.Greater(t, len(lines), 1, "long content should wrap to multiple lines")
+}
+
+// --- TodoWrite ToolMessageItem Integration Tests ---
+
+func TestToolMessageItem_TodoWriteRendering(t *testing.T) {
+	t.Parallel()
+
+	item := ToolMessageItem{
+		id:       "todo-1",
+		toolName: "Todowrite",
+		status:   ToolStatusSuccess,
+		input: map[string]any{
+			"todos": []any{
+				map[string]any{"content": "Research existing code", "status": "completed", "priority": "high"},
+				map[string]any{"content": "Implement feature", "status": "in_progress", "priority": "high"},
+				map[string]any{"content": "Write tests", "status": "pending", "priority": "medium"},
+			},
+		},
+		output:   `[{"content":"Research existing code","status":"completed","priority":"high"}]`,
+		expanded: false,
+		maxLines: 10,
+	}
+
+	result := item.Render(80)
+
+	require.NotEmpty(t, result, "render should not be empty")
+	require.Contains(t, result, "Todowrite", "should contain tool name in header")
+	// Should render formatted todos, not raw JSON
+	require.Contains(t, result, "[✓]", "should contain completed checkbox")
+	require.Contains(t, result, "[•]", "should contain in_progress checkbox")
+	require.Contains(t, result, "[ ]", "should contain pending checkbox")
+	require.Contains(t, result, "Research existing code", "should contain todo content")
+	// Should NOT show raw JSON output
+	require.NotContains(t, result, `"content":`, "should not contain raw JSON")
+}
+
+func TestToolMessageItem_TodoWriteNoParams(t *testing.T) {
+	t.Parallel()
+
+	item := ToolMessageItem{
+		id:       "todo-2",
+		toolName: "Todowrite",
+		status:   ToolStatusSuccess,
+		input: map[string]any{
+			"todos": []any{
+				map[string]any{"content": "Do something", "status": "pending", "priority": "high"},
+			},
+		},
+		output:   "[]",
+		expanded: false,
+		maxLines: 10,
+	}
+
+	result := item.Render(80)
+
+	// Header should NOT contain raw todos param
+	lines := strings.Split(result, "\n")
+	require.NotEmpty(t, lines)
+	header := lines[0]
+	require.NotContains(t, header, "todos=", "header should not show raw todos param")
+}

@@ -393,8 +393,11 @@ func (t *ToolMessageItem) Render(width int) string {
 	// Add formatted params if present
 	if len(t.input) > 0 {
 		// For edit/write tools, only show filePath in header (body shows the rest)
+		// For TodoWrite, suppress params entirely (body shows the formatted list)
 		paramInput := t.input
-		if t.kind == "edit" || (t.input["content"] != nil && t.input["filePath"] != nil) {
+		if _, hasTodos := t.input["todos"]; hasTodos {
+			paramInput = nil
+		} else if t.kind == "edit" || (t.input["content"] != nil && t.input["filePath"] != nil) {
 			paramInput = make(map[string]any)
 			if fp, ok := t.input["filePath"]; ok {
 				paramInput["filePath"] = fp
@@ -489,6 +492,18 @@ func (t *ToolMessageItem) Render(width int) string {
 		}
 	}
 
+	// Check for TodoWrite tool
+	isTodoWrite := false
+	if todos, hasTodos := t.input["todos"]; hasTodos {
+		if todoList, ok := todos.([]any); ok && len(todoList) > 0 {
+			isTodoWrite = true
+			result.WriteString("\n\n")
+			rendered := renderTodoList(todoList, outputWidth)
+			result.WriteString(rendered)
+			result.WriteString("\n")
+		}
+	}
+
 	// Check for diagnostics in output
 	hasDiagnostics := false
 	if t.output != "" && strings.Contains(t.output, "<diagnostics") {
@@ -510,8 +525,8 @@ func (t *ToolMessageItem) Render(width int) string {
 		}
 	}
 
-	// Render remaining output if not fully handled by diff/diagnostics/write
-	if t.output != "" && !isEditDiff && !isWriteFile && !hasDiagnostics {
+	// Render remaining output if not fully handled by diff/diagnostics/write/todos
+	if t.output != "" && !isEditDiff && !isWriteFile && !hasDiagnostics && !isTodoWrite {
 		result.WriteString("\n\n") // blank line between header and output
 
 		// Extract content from tagged format (strips <path>, <type> metadata)
@@ -1650,6 +1665,63 @@ func renderDiagnostics(output string, width int) string {
 	}
 
 	return strings.TrimRight(result.String(), "\n")
+}
+
+// renderTodoList renders a list of todo items as a formatted checklist.
+// Each todo is expected to be a map with "content", "status", and optionally "priority" keys.
+// Status values: "completed" → [✓], "in_progress" → [•], "pending" → [ ], "cancelled" → [✗]
+func renderTodoList(todos []any, width int) string {
+	s := theme.Current().S()
+	var result strings.Builder
+
+	// Content width accounts for the 2-char margin + 4-char prefix "[✓] "
+	const indent = "  " // 2-char left margin to align with tool header
+	const prefixLen = 4 // "[✓] " = 4 visible chars
+	contentWidth := width - prefixLen
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	for i, item := range todos {
+		todoMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		content := fmt.Sprintf("%v", todoMap["content"])
+		status := fmt.Sprintf("%v", todoMap["status"])
+
+		// Choose checkbox icon and style based on status
+		var checkbox string
+		switch status {
+		case "completed":
+			checkbox = s.ToolIconSuccess.Render("[✓]")
+		case "in_progress":
+			checkbox = s.ToolIconPending.Render("[•]")
+		case "cancelled":
+			checkbox = s.ToolIconCanceled.Render("[✗]")
+		default: // pending
+			checkbox = s.ToolParams.Render("[ ]")
+		}
+
+		// Wrap long content text to fit within available width
+		wrapped := wrapText(content, contentWidth)
+		wrappedLines := strings.Split(wrapped, "\n")
+		for j, line := range wrappedLines {
+			if j == 0 {
+				result.WriteString(indent + checkbox + " " + line)
+			} else {
+				// Continuation lines: align with content after checkbox
+				padding := strings.Repeat(" ", prefixLen)
+				result.WriteString(indent + padding + line)
+			}
+			if i < len(todos)-1 || j < len(wrappedLines)-1 {
+				result.WriteString("\n")
+			}
+		}
+	}
+
+	return result.String()
 }
 
 // truncateLine truncates a line to fit within maxWidth, adding ellipsis if needed.
