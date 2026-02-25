@@ -328,6 +328,9 @@ func TestLoad_NoConfig(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("Load() default LogLevel = %v, want info", cfg.LogLevel)
 	}
+	if cfg.WatchDataDir != false {
+		t.Errorf("Load() default WatchDataDir = %v, want false", cfg.WatchDataDir)
+	}
 }
 
 func TestLoad_WithGlobalConfig(t *testing.T) {

@@ -115,3 +115,22 @@ func (ft *FileTracker) HasChanges() bool {
 
 	return len(ft.changes) > 0
 }
+
+// MergeWatcherPaths adds paths detected by the filesystem watcher that
+// aren't already tracked via ACP events. Watcher-only files get minimal
+// metadata (path only, no additions/deletions counts).
+func (ft *FileTracker) MergeWatcherPaths(paths []string) {
+	ft.mu.Lock()
+	defer ft.mu.Unlock()
+
+	for _, relPath := range paths {
+		if _, exists := ft.changes[relPath]; exists {
+			// Already tracked by ACP with richer metadata — skip
+			continue
+		}
+		ft.changes[relPath] = &FileChange{
+			Path:    relPath,
+			AbsPath: filepath.Join(ft.workDir, relPath),
+		}
+	}
+}

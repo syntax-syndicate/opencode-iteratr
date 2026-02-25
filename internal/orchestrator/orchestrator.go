@@ -41,6 +41,7 @@ type Config struct {
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
 	Reset             bool   // Reset session data before starting
 	AutoCommit        bool   // Auto-commit modified files after iteration
+	WatchDataDir      bool   // Include data_dir in file watcher (default false)
 }
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
@@ -61,7 +62,8 @@ type Orchestrator struct {
 	stopped           bool               // Track if Stop() was already called
 	isPrimary         bool               // True if this instance owns the NATS server
 	hooksConfig       *hooks.Config      // Hooks configuration (nil if no hooks file)
-	fileTracker       *agent.FileTracker // Tracks files modified during iteration
+	fileTracker       *agent.FileTracker // Tracks files modified during iteration (ACP events)
+	fileWatcher       *agent.FileWatcher // Watches filesystem for all file changes (fsnotify)
 	autoCommit        bool               // Auto-commit modified files after iteration
 	pendingHookOutput string             // Buffer for hook output to be sent in next iteration
 	pendingMu         sync.Mutex         // Protects pendingHookOutput (needed for NATS callback)
@@ -390,6 +392,28 @@ func (o *Orchestrator) Run() error {
 		}
 	}()
 
+	// Start filesystem watcher for robust file change detection
+	excludeDirs := []string{".git", "node_modules"}
+	if !o.cfg.WatchDataDir {
+		excludeDirs = append(excludeDirs, o.cfg.DataDir)
+	}
+	fw, err := agent.NewFileWatcher(o.cfg.WorkDir, excludeDirs)
+	if err != nil {
+		logger.Warn("Failed to create file watcher: %v (falling back to ACP-only tracking)", err)
+	} else {
+		if err := fw.Start(); err != nil {
+			logger.Warn("Failed to start file watcher: %v (falling back to ACP-only tracking)", err)
+		} else {
+			o.fileWatcher = fw
+			defer func() {
+				if o.fileWatcher != nil {
+					o.fileWatcher.Stop()
+					o.fileWatcher = nil
+				}
+			}()
+		}
+	}
+
 	// Run Iteration #0 (planning phase) for fresh sessions
 	// No hooks are executed during iteration #0 — hooks are set up after.
 	if startIteration == 0 {
@@ -537,8 +561,11 @@ func (o *Orchestrator) Run() error {
 
 		logger.Info("=== Starting iteration #%d ===", currentIteration)
 
-		// Clear file tracker for new iteration
+		// Clear file tracker and watcher for new iteration
 		o.fileTracker.Clear()
+		if o.fileWatcher != nil {
+			o.fileWatcher.Clear()
+		}
 		logger.Debug("File tracker cleared for iteration #%d", currentIteration)
 
 		// Log iteration start
@@ -771,6 +798,15 @@ func (o *Orchestrator) Run() error {
 			}
 		}
 
+		// Merge filesystem watcher changes into file tracker before auto-commit.
+		// This catches files modified via bash, subprocesses, patches, etc.
+		// that ACP event tracking alone would miss.
+		if o.fileWatcher != nil && o.fileWatcher.HasChanges() {
+			watcherPaths := o.fileWatcher.ChangedPaths()
+			logger.Debug("File watcher detected %d changed paths, merging into tracker", len(watcherPaths))
+			o.fileTracker.MergeWatcherPaths(watcherPaths)
+		}
+
 		// Run auto-commit if enabled and files were modified
 		if o.autoCommit && o.fileTracker.HasChanges() {
 			logger.Info("Auto-commit enabled with %d modified files, running commit", o.fileTracker.Count())
@@ -914,6 +950,12 @@ func (o *Orchestrator) Run() error {
 func (o *Orchestrator) runIteration0() error {
 	logger.Info("=== Starting Iteration #0 (Planning Phase) ===")
 
+	// Clear file tracker and watcher for iteration #0
+	o.fileTracker.Clear()
+	if o.fileWatcher != nil {
+		o.fileWatcher.Clear()
+	}
+
 	// Log iteration start
 	if err := o.store.IterationStart(o.ctx, o.cfg.SessionName, 0); err != nil {
 		return fmt.Errorf("failed to log iteration #0 start: %w", err)
@@ -953,6 +995,17 @@ func (o *Orchestrator) runIteration0() error {
 
 	if o.cfg.Headless {
 		fmt.Printf("\n✓ Iteration #0 (planning) complete\n\n")
+	}
+
+	// Run auto-commit for iteration #0 if enabled and files were modified
+	if o.fileWatcher != nil && o.fileWatcher.HasChanges() {
+		o.fileTracker.MergeWatcherPaths(o.fileWatcher.ChangedPaths())
+	}
+	if o.autoCommit && o.fileTracker.HasChanges() {
+		logger.Info("Auto-commit enabled with %d modified files after iteration #0", o.fileTracker.Count())
+		if err := o.runAutoCommit(o.ctx); err != nil {
+			logger.Warn("Auto-commit failed after iteration #0: %v", err)
+		}
 	}
 
 	return nil
@@ -1133,6 +1186,15 @@ func (o *Orchestrator) Stop() error {
 			multiErr.Append(ierr.NewTransientError("TUI shutdown", fmt.Errorf("timed out after 2s")))
 		}
 		o.tuiProgram = nil
+	}
+
+	// Stop file watcher
+	if o.fileWatcher != nil {
+		logger.Debug("Stopping file watcher")
+		if err := o.fileWatcher.Stop(); err != nil {
+			logger.Warn("File watcher stop failed: %v", err)
+		}
+		o.fileWatcher = nil
 	}
 
 	// Stop agent runner (closes ACP connection and subprocess)
