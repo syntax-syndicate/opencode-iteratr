@@ -13,16 +13,16 @@ import (
 
 // Config holds all configuration values for iteratr.
 type Config struct {
-	Model        string `mapstructure:"model" yaml:"model"`
-	AutoCommit   bool   `mapstructure:"auto_commit" yaml:"auto_commit"`
-	DataDir      string `mapstructure:"data_dir" yaml:"data_dir"`
-	LogLevel     string `mapstructure:"log_level" yaml:"log_level"`
-	LogFile      string `mapstructure:"log_file" yaml:"log_file"`
-	Iterations   int    `mapstructure:"iterations" yaml:"iterations"`
-	Headless     bool   `mapstructure:"headless" yaml:"headless"`
-	Template     string `mapstructure:"template" yaml:"template"`
-	SpecDir      string `mapstructure:"spec_dir" yaml:"spec_dir"`
-	WatchDataDir bool   `mapstructure:"watch_data_dir" yaml:"watch_data_dir"`
+	Model         string `mapstructure:"model" yaml:"model"`
+	AutoCommit    bool   `mapstructure:"auto_commit" yaml:"auto_commit"`
+	DataDir       string `mapstructure:"data_dir" yaml:"data_dir"`
+	LogLevel      string `mapstructure:"log_level" yaml:"log_level"`
+	LogFile       string `mapstructure:"log_file" yaml:"log_file"`
+	Iterations    int    `mapstructure:"iterations" yaml:"iterations"`
+	Headless      bool   `mapstructure:"headless" yaml:"headless"`
+	Template      string `mapstructure:"template" yaml:"template"`
+	SpecDir       string `mapstructure:"spec_dir" yaml:"spec_dir"`
+	CommitDataDir bool   `mapstructure:"commit_data_dir" yaml:"commit_data_dir"`
 }
 
 // Load loads configuration with full precedence:
@@ -41,7 +41,7 @@ func Load() (*Config, error) {
 	v.SetDefault("headless", false)
 	v.SetDefault("template", "")
 	v.SetDefault("spec_dir", "specs")
-	v.SetDefault("watch_data_dir", false)
+	v.SetDefault("commit_data_dir", false)
 
 	// Setup ENV binding with ITERATR_ prefix
 	v.SetEnvPrefix("ITERATR")
@@ -77,8 +77,8 @@ func Load() (*Config, error) {
 	if err := v.BindEnv("spec_dir", "ITERATR_SPEC_DIR"); err != nil {
 		return nil, fmt.Errorf("binding spec_dir env: %w", err)
 	}
-	if err := v.BindEnv("watch_data_dir", "ITERATR_WATCH_DATA_DIR"); err != nil {
-		return nil, fmt.Errorf("binding watch_data_dir env: %w", err)
+	if err := v.BindEnv("commit_data_dir", "ITERATR_COMMIT_DATA_DIR"); err != nil {
+		return nil, fmt.Errorf("binding commit_data_dir env: %w", err)
 	}
 
 	// Load global config first (if exists)

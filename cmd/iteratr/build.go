@@ -317,7 +317,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		Model:             buildFlags.model,
 		Reset:             buildFlags.reset,
 		AutoCommit:        buildFlags.autoCommit,
-		WatchDataDir:      cfg.WatchDataDir,
+		CommitDataDir:     cfg.CommitDataDir,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create orchestrator: %w", err)

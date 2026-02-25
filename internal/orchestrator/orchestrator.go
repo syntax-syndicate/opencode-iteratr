@@ -41,7 +41,7 @@ type Config struct {
 	Model             string // Model to use (e.g., anthropic/claude-sonnet-4-5)
 	Reset             bool   // Reset session data before starting
 	AutoCommit        bool   // Auto-commit modified files after iteration
-	WatchDataDir      bool   // Include data_dir in file watcher (default false)
+	CommitDataDir     bool   // Include data_dir in auto-commit (default false)
 }
 
 // Orchestrator manages the iteration loop with embedded NATS, agent runner, and TUI.
@@ -393,10 +393,9 @@ func (o *Orchestrator) Run() error {
 	}()
 
 	// Start filesystem watcher for robust file change detection
-	excludeDirs := []string{".git", "node_modules"}
-	if !o.cfg.WatchDataDir {
-		excludeDirs = append(excludeDirs, o.cfg.DataDir)
-	}
+	// Data dir is always excluded from watching (NATS writes cause constant noise).
+	// commit_data_dir controls whether data dir is included in the auto-commit prompt.
+	excludeDirs := []string{".git", "node_modules", o.cfg.DataDir}
 	fw, err := agent.NewFileWatcher(o.cfg.WorkDir, excludeDirs)
 	if err != nil {
 		logger.Warn("Failed to create file watcher: %v (falling back to ACP-only tracking)", err)
@@ -1147,8 +1146,14 @@ func (o *Orchestrator) buildCommitPrompt(ctx context.Context) string {
 
 	sb.WriteString("\nInstructions:\n")
 	sb.WriteString("1. Stage only the listed files with `git add`\n")
-	sb.WriteString("2. Create a commit with a clear, conventional message\n")
-	sb.WriteString("3. Do NOT push\n")
+	if o.cfg.CommitDataDir {
+		sb.WriteString(fmt.Sprintf("2. Also stage the data directory: `git add %s`\n", o.cfg.DataDir))
+		sb.WriteString("3. Create a commit with a clear, conventional message\n")
+		sb.WriteString("4. Do NOT push\n")
+	} else {
+		sb.WriteString("2. Create a commit with a clear, conventional message\n")
+		sb.WriteString("3. Do NOT push\n")
+	}
 
 	return sb.String()
 }

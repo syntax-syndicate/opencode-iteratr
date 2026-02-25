@@ -27,10 +27,11 @@ Current file tracking parses ACP `tool_call_update` events — only catches file
    - `.git/`
    - `node_modules/`
 
-3. **Data Dir Exclusion** (configurable)
-   - New config: `watch_data_dir` (default: `false`)
-   - When false, excludes `data_dir` (default `.iteratr/`) from watcher
-   - When true, data dir changes are tracked and eligible for auto-commit
+3. **Data Dir Commit** (configurable)
+   - New config: `commit_data_dir` (default: `false`)
+   - Data dir always excluded from fsnotify watcher (NATS writes cause constant noise)
+   - When true, auto-commit prompt instructs agent to also `git add <data_dir>`
+   - When false (default), data dir is not included in commits
 
 4. **Hybrid Detection**
    - Keep ACP event tracking for real-time TUI updates (immediate `FileChangeMsg`)
@@ -100,25 +101,24 @@ func (ft *FileTracker) MergeWatcherPaths(paths []string)
 // internal/config/config.go
 type Config struct {
     // ...existing fields...
-    WatchDataDir bool `mapstructure:"watch_data_dir" yaml:"watch_data_dir"`
+    CommitDataDir bool `mapstructure:"commit_data_dir" yaml:"commit_data_dir"`
 }
 ```
 
-Default: `false`. ENV: `ITERATR_WATCH_DATA_DIR`.
+Default: `false`. ENV: `ITERATR_COMMIT_DATA_DIR`.
 
 ```yaml
 # iteratr.yml
-watch_data_dir: false  # default: don't track data_dir changes
+commit_data_dir: false  # default: don't include data_dir in commits
 ```
 
 ### Orchestrator Integration
 
 ```go
 // In Run():
-excludeDirs := []string{".git", "node_modules"}
-if !o.cfg.WatchDataDir {
-    excludeDirs = append(excludeDirs, o.cfg.DataDir)
-}
+// Data dir always excluded from watcher (NATS writes cause noise).
+// commit_data_dir only controls whether the commit prompt includes it.
+excludeDirs := []string{".git", "node_modules", o.cfg.DataDir}
 fw, err := agent.NewFileWatcher(o.cfg.WorkDir, excludeDirs)
 // Start watcher (once for session)
 fw.Start()
@@ -136,8 +136,8 @@ o.fileTracker.MergeWatcherPaths(fw.ChangedPaths())
 ## Tasks
 
 ### 1. Add config field
-- [ ] Add `WatchDataDir bool` to Config struct with default false
-- [ ] Add env binding `ITERATR_WATCH_DATA_DIR`
+- [ ] Add `CommitDataDir bool` to Config struct with default false
+- [ ] Add env binding `ITERATR_COMMIT_DATA_DIR`
 - [ ] Update config tests
 
 ### 2. Create FileWatcher

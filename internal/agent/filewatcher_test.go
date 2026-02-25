@@ -267,7 +267,8 @@ func TestFileWatcher_DataDirExclusion(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	// Exclude .iteratr (simulating watch_data_dir: false)
+	// Data dir is always excluded from watching (commit_data_dir only
+	// controls whether the auto-commit prompt includes it)
 	fw, err := NewFileWatcher(dir, []string{".git", ".iteratr"})
 	if err != nil {
 		t.Fatalf("NewFileWatcher() error = %v", err)
