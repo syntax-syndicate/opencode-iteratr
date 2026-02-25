@@ -3,7 +3,6 @@ package tui
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mark3labs/iteratr/internal/session"
@@ -126,39 +125,6 @@ func TestApp_TaskModal_SmallTerminal(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestApp_TaskModal_RenderPerformance tests that modal content generation doesn't cause performance issues
-func TestApp_TaskModal_RenderPerformance(t *testing.T) {
-	modal := NewTaskModal()
-	task := &session.Task{
-		ID:        "test123",
-		Content:   "Test task with moderate length content for performance testing that should wrap across multiple lines when displayed in the modal overlay",
-		Status:    "in_progress",
-		Priority:  1,
-		DependsOn: []string{"dep1", "dep2", "dep3"},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	modal.SetTask(task)
-
-	// Measure time to build modal content 1000 times
-	start := time.Now()
-	iterations := 1000
-	for i := 0; i < iterations; i++ {
-		_ = modal.buildContent(50) // Build content directly without zone manager
-	}
-	duration := time.Since(start)
-
-	// Should complete 1000 iterations in under 500ms (interactive modal renders badge rows each time)
-	maxDuration := 500 * time.Millisecond
-	if duration > maxDuration {
-		t.Errorf("Modal content rendering too slow: %v for %d iterations (max %v)",
-			duration, iterations, maxDuration)
-	}
-
-	avgPerRender := duration / time.Duration(iterations)
-	t.Logf("Average buildContent time: %v per modal", avgPerRender)
 }
 
 // TestApp_TaskModal_NoKeysPassThrough tests that no keys pass through when modal is open

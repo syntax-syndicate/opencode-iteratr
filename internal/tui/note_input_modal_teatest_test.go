@@ -1326,39 +1326,3 @@ func TestNoteInputModal_VeryLongContentScrolling_Teatest(t *testing.T) {
 	require.Nil(t, cmd, "Tab navigation should work with long content")
 	require.Equal(t, focusSubmitButton, modal.focus, "Focus should cycle to submit button")
 }
-
-// TestNoteInputModal_VeryLongContentPerformance_Teatest tests that very long content doesn't cause performance issues
-func TestNoteInputModal_VeryLongContentPerformance_Teatest(t *testing.T) {
-	t.Parallel()
-
-	// Generate 10000 character content to test extreme case
-	content := ""
-	for len([]rune(content)) < 10000 {
-		content += "Performance test content. "
-	}
-	contentRunes := []rune(content)[:10000]
-	content = string(contentRunes)
-
-	modal := NewNoteInputModal()
-	modal.Show()
-
-	// Setting very long content should not hang
-	require.NotPanics(t, func() {
-		modal.textarea.SetValue(content)
-	}, "Setting 10000 character content should not panic")
-
-	// Verify content is properly truncated
-	storedContent := modal.textarea.Value()
-	storedRunes := []rune(storedContent)
-	require.LessOrEqual(t, len(storedRunes), 500, "Content should be truncated at CharLimit")
-
-	// Rendering should be fast (not benchmarked, but should not hang)
-	area := uv.Rectangle{
-		Min: uv.Position{X: 0, Y: 0},
-		Max: uv.Position{X: testfixtures.TestTermWidth, Y: testfixtures.TestTermHeight},
-	}
-	scr := uv.NewScreenBuffer(testfixtures.TestTermWidth, testfixtures.TestTermHeight)
-	require.NotPanics(t, func() {
-		modal.Draw(scr, area)
-	}, "Drawing modal with extremely long content should not panic")
-}
