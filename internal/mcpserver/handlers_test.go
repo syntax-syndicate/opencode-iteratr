@@ -13,6 +13,12 @@ import (
 
 // setupTestServer creates a server with a test store
 func setupTestServer(t *testing.T) (*Server, func()) {
+	srv, _, cleanup := setupTestServerWithStore(t)
+	return srv, cleanup
+}
+
+// setupTestServerWithStore creates a server and also returns the store for direct iteration management
+func setupTestServerWithStore(t *testing.T) (*Server, *session.Store, func()) {
 	ctx := context.Background()
 
 	// Create embedded NATS
@@ -51,7 +57,7 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 		ns.Shutdown()
 	}
 
-	return srv, cleanup
+	return srv, store, cleanup
 }
 
 // extractText extracts text from CallToolResult.Content[0]
@@ -1851,5 +1857,391 @@ func TestHandleNoteList_NoArguments(t *testing.T) {
 	text := extractText(result)
 	if !strings.Contains(text, "Test note") {
 		t.Errorf("expected note in result, got: %s", text)
+	}
+}
+
+// --- In-progress validation tests ---
+
+func TestHandleTaskUpdate_RejectsSecondInProgress(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add two tasks
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{"content": "Task A"},
+					map[string]any{"content": "Task B"},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add tasks: %v", err)
+	}
+
+	// Set first task to in_progress
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "in_progress",
+			},
+		},
+	}
+	result, err := srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("failed to update task: %v", err)
+	}
+	text := extractText(result)
+	if !strings.Contains(text, "Updated task TAS-1") {
+		t.Fatalf("expected success for first in_progress, got: %s", text)
+	}
+
+	// Try to set second task to in_progress - should be rejected
+	updateReq2 := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-2",
+				"status": "in_progress",
+			},
+		},
+	}
+	result, err = srv.handleTaskUpdate(ctx, updateReq2)
+	if err != nil {
+		t.Fatalf("handleTaskUpdate returned error: %v", err)
+	}
+
+	text = extractText(result)
+	if !strings.Contains(text, "Only one task can be in progress") {
+		t.Errorf("expected in-progress rejection, got: %s", text)
+	}
+	if !strings.Contains(text, "TAS-1") {
+		t.Errorf("expected reference to current in-progress task TAS-1, got: %s", text)
+	}
+}
+
+func TestHandleTaskUpdate_RejectsInProgressSameIteration(t *testing.T) {
+	srv, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Start iteration 1
+	if err := store.IterationStart(ctx, "test-session", 1); err != nil {
+		t.Fatalf("failed to start iteration: %v", err)
+	}
+
+	// Add two tasks
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{"content": "Task A"},
+					map[string]any{"content": "Task B"},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add tasks: %v", err)
+	}
+
+	// Set first task to in_progress
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "in_progress",
+			},
+		},
+	}
+	result, err := srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("failed to start task: %v", err)
+	}
+	text := extractText(result)
+	if !strings.Contains(text, "Updated task TAS-1") {
+		t.Fatalf("expected success, got: %s", text)
+	}
+
+	// Complete first task
+	completeReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "completed",
+			},
+		},
+	}
+	_, err = srv.handleTaskUpdate(ctx, completeReq)
+	if err != nil {
+		t.Fatalf("failed to complete task: %v", err)
+	}
+
+	// Try to start second task in same iteration - should be rejected (Rule 2)
+	updateReq2 := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-2",
+				"status": "in_progress",
+			},
+		},
+	}
+	result, err = srv.handleTaskUpdate(ctx, updateReq2)
+	if err != nil {
+		t.Fatalf("handleTaskUpdate returned error: %v", err)
+	}
+
+	text = extractText(result)
+	if !strings.Contains(text, "already started during this iteration") {
+		t.Errorf("expected same-iteration rejection, got: %s", text)
+	}
+}
+
+func TestHandleTaskUpdate_AllowsInProgressNewIteration(t *testing.T) {
+	srv, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Start iteration 1
+	if err := store.IterationStart(ctx, "test-session", 1); err != nil {
+		t.Fatalf("failed to start iteration 1: %v", err)
+	}
+
+	// Add two tasks
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{"content": "Task A"},
+					map[string]any{"content": "Task B"},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add tasks: %v", err)
+	}
+
+	// Set first task to in_progress and complete it
+	for _, update := range []map[string]any{
+		{"id": "TAS-1", "status": "in_progress"},
+		{"id": "TAS-1", "status": "completed"},
+	} {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      "task-update",
+				Arguments: update,
+			},
+		}
+		_, err := srv.handleTaskUpdate(ctx, req)
+		if err != nil {
+			t.Fatalf("failed to update task: %v", err)
+		}
+	}
+
+	// Complete iteration 1 and start iteration 2
+	if err := store.IterationComplete(ctx, "test-session", 1); err != nil {
+		t.Fatalf("failed to complete iteration 1: %v", err)
+	}
+	if err := store.IterationStart(ctx, "test-session", 2); err != nil {
+		t.Fatalf("failed to start iteration 2: %v", err)
+	}
+
+	// Now setting TAS-2 to in_progress should succeed (new iteration)
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-2",
+				"status": "in_progress",
+			},
+		},
+	}
+	result, err := srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("handleTaskUpdate returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Updated task TAS-2") {
+		t.Errorf("expected success for new iteration, got: %s", text)
+	}
+}
+
+func TestHandleTaskAdd_RejectsInProgressWhenOneExists(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a task and set it to in_progress
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{"content": "Existing task"},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add task: %v", err)
+	}
+
+	updateReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-1",
+				"status": "in_progress",
+			},
+		},
+	}
+	_, err = srv.handleTaskUpdate(ctx, updateReq)
+	if err != nil {
+		t.Fatalf("failed to update task: %v", err)
+	}
+
+	// Try to add a new task with in_progress status - should be rejected
+	addReq2 := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{
+						"content": "New task",
+						"status":  "in_progress",
+					},
+				},
+			},
+		},
+	}
+	result, err := srv.handleTaskAdd(ctx, addReq2)
+	if err != nil {
+		t.Fatalf("handleTaskAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Only one task can be in progress") {
+		t.Errorf("expected in-progress rejection, got: %s", text)
+	}
+}
+
+func TestHandleTaskAdd_RejectsMultipleInProgressInBatch(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Try to add batch with multiple in_progress tasks
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{
+						"content": "Task A",
+						"status":  "in_progress",
+					},
+					map[string]any{
+						"content": "Task B",
+						"status":  "in_progress",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := srv.handleTaskAdd(context.Background(), addReq)
+	if err != nil {
+		t.Fatalf("handleTaskAdd returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Only one task can be in progress") {
+		t.Errorf("expected batch in-progress rejection, got: %s", text)
+	}
+}
+
+func TestHandleTaskUpdate_AllowsNonInProgressUpdates(t *testing.T) {
+	srv, store, cleanup := setupTestServerWithStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Start iteration 1
+	if err := store.IterationStart(ctx, "test-session", 1); err != nil {
+		t.Fatalf("failed to start iteration: %v", err)
+	}
+
+	// Add task and set it in_progress then completed
+	addReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-add",
+			Arguments: map[string]any{
+				"tasks": []any{
+					map[string]any{"content": "Task A"},
+					map[string]any{"content": "Task B"},
+				},
+			},
+		},
+	}
+	_, err := srv.handleTaskAdd(ctx, addReq)
+	if err != nil {
+		t.Fatalf("failed to add tasks: %v", err)
+	}
+
+	// Start and complete task A
+	for _, update := range []map[string]any{
+		{"id": "TAS-1", "status": "in_progress"},
+		{"id": "TAS-1", "status": "completed"},
+	} {
+		req := mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      "task-update",
+				Arguments: update,
+			},
+		}
+		_, err := srv.handleTaskUpdate(ctx, req)
+		if err != nil {
+			t.Fatalf("failed to update task: %v", err)
+		}
+	}
+
+	// Non-in_progress updates (like blocked) should still work in same iteration
+	blockReq := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name: "task-update",
+			Arguments: map[string]any{
+				"id":     "TAS-2",
+				"status": "blocked",
+			},
+		},
+	}
+	result, err := srv.handleTaskUpdate(ctx, blockReq)
+	if err != nil {
+		t.Fatalf("handleTaskUpdate returned error: %v", err)
+	}
+
+	text := extractText(result)
+	if !strings.Contains(text, "Updated task TAS-2") {
+		t.Errorf("expected success for non-in_progress update, got: %s", text)
 	}
 }

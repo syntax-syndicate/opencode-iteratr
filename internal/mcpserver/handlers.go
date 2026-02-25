@@ -10,6 +10,34 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// validateInProgress checks whether a task can be set to in_progress.
+// Returns a non-empty guidance message if the transition is not allowed.
+// Rule 1: Only one task can be in progress at a time.
+// Rule 2: No new tasks can be marked in progress until a new iteration starts.
+func validateInProgress(state *session.State, currentIteration int) string {
+	// Rule 1: Check if any task is already in progress
+	for _, task := range state.Tasks {
+		if task.Status == "in_progress" {
+			return fmt.Sprintf(
+				"Only one task can be in progress at a time. Task %s (%q) is currently in progress. "+
+					"Complete or update it before starting another task.",
+				task.ID, task.Content,
+			)
+		}
+	}
+
+	// Rule 2: Check if a task was already started during this iteration
+	if len(state.Iterations) > 0 {
+		currentIter := state.Iterations[len(state.Iterations)-1]
+		if currentIter.Number == currentIteration && currentIter.TaskStarted {
+			return "A task was already started during this iteration. " +
+				"Record your iteration summary and wait for the next iteration before starting a new task."
+		}
+	}
+
+	return ""
+}
+
 // handleTaskAdd adds one or more tasks to the session.
 func (s *Server) handleTaskAdd(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Extract arguments
@@ -69,6 +97,32 @@ func (s *Server) handleTaskAdd(ctx context.Context, request mcp.CallToolRequest)
 		})
 	}
 
+	// Validate in_progress constraints if any task requests that status
+	inProgressCount := 0
+	for _, tp := range taskParams {
+		if tp.Status == "in_progress" {
+			inProgressCount++
+		}
+	}
+	if inProgressCount > 1 {
+		return mcp.NewToolResultText(
+			"Only one task can be in progress at a time. This batch contains multiple tasks with in_progress status.",
+		), nil
+	}
+	if inProgressCount == 1 {
+		state, err := s.store.LoadState(ctx, s.sessName)
+		if err != nil {
+			return mcp.NewToolResultText(fmt.Sprintf("error: failed to load state: %v", err)), nil
+		}
+		currentIteration := 0
+		if len(state.Iterations) > 0 {
+			currentIteration = state.Iterations[len(state.Iterations)-1].Number
+		}
+		if msg := validateInProgress(state, currentIteration); msg != "" {
+			return mcp.NewToolResultText(msg), nil
+		}
+	}
+
 	// Call TaskBatchAdd
 	tasks, err := s.store.TaskBatchAdd(ctx, s.sessName, taskParams)
 	if err != nil {
@@ -115,6 +169,13 @@ func (s *Server) handleTaskUpdate(ctx context.Context, request mcp.CallToolReque
 
 	// Update status if provided
 	if status, ok := args["status"].(string); ok && status != "" {
+		// Validate in_progress transitions
+		if status == "in_progress" {
+			if msg := validateInProgress(state, currentIteration); msg != "" {
+				return mcp.NewToolResultText(msg), nil
+			}
+		}
+
 		err := s.store.TaskStatus(ctx, s.sessName, session.TaskStatusParams{
 			ID:        id,
 			Status:    status,

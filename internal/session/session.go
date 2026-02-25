@@ -119,6 +119,7 @@ type Iteration struct {
 	Complete    bool      `json:"complete"`
 	Summary     string    `json:"summary,omitempty"`      // What was accomplished
 	TasksWorked []string  `json:"tasks_worked,omitempty"` // Task IDs touched
+	TaskStarted bool      `json:"task_started,omitempty"` // Whether a task was set to in_progress during this iteration
 }
 
 // SessionInfo provides summary information about a session for UI display.
@@ -143,6 +144,17 @@ func (st *State) Apply(event Event) {
 		st.applyIterationEvent(event)
 	case nats.EventTypeControl:
 		st.applyControlEvent(event)
+	}
+}
+
+// markIterationTaskStarted sets TaskStarted=true on the iteration matching the given number.
+// Called during state reconstruction when a task is set to in_progress.
+func (st *State) markIterationTaskStarted(iterNum int) {
+	for _, iter := range st.Iterations {
+		if iter.Number == iterNum {
+			iter.TaskStarted = true
+			return
+		}
 	}
 }
 
@@ -192,6 +204,11 @@ func (st *State) applyTaskEvent(event Event) {
 		st.Tasks[event.ID] = task
 		st.TaskCounter++
 
+		// Track that a task was started during this iteration
+		if meta.Status == "in_progress" {
+			st.markIterationTaskStarted(meta.Iteration)
+		}
+
 	case "status":
 		// Parse metadata for task ID and new status
 		var meta struct {
@@ -206,6 +223,11 @@ func (st *State) applyTaskEvent(event Event) {
 			task.Status = meta.Status
 			task.UpdatedAt = event.Timestamp
 			task.Iteration = meta.Iteration
+		}
+
+		// Track that a task was started during this iteration
+		if meta.Status == "in_progress" {
+			st.markIterationTaskStarted(meta.Iteration)
 		}
 
 	case "priority":
