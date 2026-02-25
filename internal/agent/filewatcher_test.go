@@ -19,10 +19,14 @@ func TestNewFileWatcher(t *testing.T) {
 	if fw.workDir != dir {
 		t.Errorf("workDir = %q, want %q", fw.workDir, dir)
 	}
-	if !fw.excludeDirs[".git"] {
+	if fw.ignore == nil {
+		t.Error("expected ignore to be initialized")
+	}
+	// Hard-coded excludes are loaded as dir-only rules
+	if !fw.ignore.IsIgnored(".git", true) {
 		t.Error("expected .git to be excluded")
 	}
-	if !fw.excludeDirs["node_modules"] {
+	if !fw.ignore.IsIgnored("node_modules", true) {
 		t.Error("expected node_modules to be excluded")
 	}
 }
@@ -97,7 +101,7 @@ func TestFileWatcher_DetectsModifiedFile(t *testing.T) {
 func TestFileWatcher_ExcludesDirectories(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create excluded directory and file before starting watcher
+	// Create excluded directory before starting watcher
 	gitDir := filepath.Join(dir, ".git")
 	if err := os.MkdirAll(gitDir, 0755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
@@ -132,7 +136,6 @@ func TestFileWatcher_ExcludesDirectories(t *testing.T) {
 		}
 	}
 
-	// Should have the tracked file
 	found := false
 	for _, p := range paths {
 		if p == "tracked.txt" {
@@ -141,6 +144,70 @@ func TestFileWatcher_ExcludesDirectories(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected tracked.txt in changes, got %v", paths)
+	}
+}
+
+func TestFileWatcher_ExcludesGitignorePatterns(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a .gitignore
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\nbuild/\n"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Create build directory
+	if err := os.MkdirAll(filepath.Join(dir, "build"), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	fw, err := NewFileWatcher(dir, []string{".git"})
+	if err != nil {
+		t.Fatalf("NewFileWatcher() error = %v", err)
+	}
+
+	if err := fw.Start(); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer fw.Stop()
+
+	// Create a .log file (gitignored)
+	if err := os.WriteFile(filepath.Join(dir, "debug.log"), []byte("log"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Create a file in build/ (gitignored directory)
+	if err := os.WriteFile(filepath.Join(dir, "build", "output.bin"), []byte("bin"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// Create a tracked file
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	paths := fw.ChangedPaths()
+
+	// Should NOT contain the .log or build/ files
+	for _, p := range paths {
+		if filepath.Ext(p) == ".log" {
+			t.Errorf("gitignored .log file found in changes: %s", p)
+		}
+		if filepath.HasPrefix(p, "build") {
+			t.Errorf("gitignored build/ file found in changes: %s", p)
+		}
+	}
+
+	// Should contain main.go (and possibly .gitignore itself)
+	found := false
+	for _, p := range paths {
+		if p == "main.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected main.go in changes, got %v", paths)
 	}
 }
 

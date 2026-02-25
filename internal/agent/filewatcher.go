@@ -16,36 +16,39 @@ const debounceInterval = 100 * time.Millisecond
 
 // FileWatcher watches the working directory for filesystem changes using fsnotify.
 // It catches all file modifications regardless of source (agent tools, bash, subprocesses).
+// Respects .gitignore patterns plus any hard-coded exclusions.
 type FileWatcher struct {
-	watcher     *fsnotify.Watcher
-	workDir     string
-	excludeDirs map[string]bool      // directory basenames to skip
-	changed     map[string]time.Time // relative path -> last event time
-	mu          sync.Mutex
-	done        chan struct{}
-	stopped     chan struct{}
+	watcher *fsnotify.Watcher
+	workDir string
+	ignore  *gitIgnore           // gitignore + hard-coded exclusions
+	changed map[string]time.Time // relative path -> last event time
+	mu      sync.Mutex
+	done    chan struct{}
+	stopped chan struct{}
 }
 
 // NewFileWatcher creates a watcher for the given directory.
-// excludeDirs is a list of directory basenames to skip (e.g. ".git", "node_modules").
+// excludeDirs are additional directory names to always exclude (e.g. ".git", data dir).
+// .gitignore patterns in workDir are loaded automatically.
 func NewFileWatcher(workDir string, excludeDirs []string) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 
-	exclude := make(map[string]bool, len(excludeDirs))
+	// Load .gitignore, then add hard-coded exclusions as directory patterns
+	ignore := loadGitIgnore(workDir)
 	for _, d := range excludeDirs {
-		exclude[d] = true
+		ignore.addPattern(d + "/")
 	}
 
 	return &FileWatcher{
-		watcher:     w,
-		workDir:     workDir,
-		excludeDirs: exclude,
-		changed:     make(map[string]time.Time),
-		done:        make(chan struct{}),
-		stopped:     make(chan struct{}),
+		watcher: w,
+		workDir: workDir,
+		ignore:  ignore,
+		changed: make(map[string]time.Time),
+		done:    make(chan struct{}),
+		stopped: make(chan struct{}),
 	}, nil
 }
 
@@ -57,7 +60,7 @@ func (fw *FileWatcher) Start() error {
 	}
 
 	go fw.eventLoop()
-	logger.Info("FileWatcher started for %s (excluding %v)", fw.workDir, fw.excludeList())
+	logger.Info("FileWatcher started for %s (%d gitignore rules loaded)", fw.workDir, len(fw.ignore.rules))
 	return nil
 }
 
@@ -75,21 +78,13 @@ func (fw *FileWatcher) Clear() {
 	fw.changed = make(map[string]time.Time)
 }
 
-// ChangedPaths returns sorted relative paths of files that changed,
-// filtered by the debounce interval (only paths with no events in the
-// last debounceInterval are included).
+// ChangedPaths returns sorted relative paths of files that changed.
 func (fw *FileWatcher) ChangedPaths() []string {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
-	now := time.Now()
 	paths := make([]string, 0, len(fw.changed))
-	for p, t := range fw.changed {
-		// Include all paths — debounce window only prevents rapid re-adds
-		// in the event loop. By the time auto-commit runs (seconds/minutes
-		// after edits), all paths are settled.
-		_ = t
-		_ = now
+	for p := range fw.changed {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
@@ -104,11 +99,10 @@ func (fw *FileWatcher) HasChanges() bool {
 }
 
 // addRecursive walks the directory tree and adds watches for all
-// non-excluded directories.
+// non-ignored directories.
 func (fw *FileWatcher) addRecursive(root string) error {
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			// Skip inaccessible paths
 			if info != nil && info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -117,12 +111,15 @@ func (fw *FileWatcher) addRecursive(root string) error {
 		if !info.IsDir() {
 			return nil
 		}
-		if fw.isExcluded(path) {
+
+		// Check gitignore rules for this directory
+		rel, relErr := filepath.Rel(fw.workDir, path)
+		if relErr == nil && rel != "." && fw.ignore.IsIgnored(rel, true) {
 			return filepath.SkipDir
 		}
+
 		if err := fw.watcher.Add(path); err != nil {
 			logger.Warn("FileWatcher: failed to watch %s: %v", path, err)
-			// Don't fail entirely — watch what we can
 			if strings.Contains(err.Error(), "no space left on device") ||
 				strings.Contains(err.Error(), "too many open files") {
 				logger.Error("FileWatcher: inotify watch limit reached. Increase fs.inotify.max_user_watches")
@@ -166,23 +163,6 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 
 	path := event.Name
 
-	// Skip excluded directories and their contents
-	if fw.isExcludedPath(path) {
-		return
-	}
-
-	// If a new directory was created, add it to the watch list
-	if event.Has(fsnotify.Create) {
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			if !fw.isExcluded(path) {
-				if err := fw.addRecursive(path); err != nil {
-					logger.Warn("FileWatcher: failed to watch new dir %s: %v", path, err)
-				}
-			}
-			return // don't track directory creation itself
-		}
-	}
-
 	// Normalize to relative path
 	relPath, err := filepath.Rel(fw.workDir, path)
 	if err != nil {
@@ -194,38 +174,26 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 		return
 	}
 
+	// Check if a directory — needed for dir-only gitignore rules
+	isDir := false
+	if info, statErr := os.Stat(path); statErr == nil {
+		isDir = info.IsDir()
+	}
+
+	// Check gitignore rules
+	if fw.ignore.IsIgnored(relPath, isDir) {
+		return
+	}
+
+	// If a new directory was created, add it to the watch list
+	if event.Has(fsnotify.Create) && isDir {
+		if err := fw.addRecursive(path); err != nil {
+			logger.Warn("FileWatcher: failed to watch new dir %s: %v", path, err)
+		}
+		return // don't track directory creation itself
+	}
+
 	fw.mu.Lock()
 	fw.changed[relPath] = time.Now()
 	fw.mu.Unlock()
-}
-
-// isExcluded checks if a directory path should be excluded based on its basename.
-func (fw *FileWatcher) isExcluded(path string) bool {
-	base := filepath.Base(path)
-	return fw.excludeDirs[base]
-}
-
-// isExcludedPath checks if any component of the path is excluded.
-func (fw *FileWatcher) isExcludedPath(path string) bool {
-	rel, err := filepath.Rel(fw.workDir, path)
-	if err != nil {
-		return false
-	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	for _, part := range parts {
-		if fw.excludeDirs[part] {
-			return true
-		}
-	}
-	return false
-}
-
-// excludeList returns the exclude dirs as a sorted slice (for logging).
-func (fw *FileWatcher) excludeList() []string {
-	list := make([]string, 0, len(fw.excludeDirs))
-	for d := range fw.excludeDirs {
-		list = append(list, d)
-	}
-	sort.Strings(list)
-	return list
 }
